@@ -1,0 +1,28 @@
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; height: 100%; font: 13px/1.4 system-ui, "Microsoft YaHei", sans-serif; background: #f6f7f9; color: #1d2330; }
+.shell { display: flex; height: 100%; }
+.outline { width: 340px; display: flex; flex-direction: column; border-right: 1px solid #d9dde4; background: #fff; }
+.outline textarea { flex: 1; border: 0; padding: 10px 12px; font: 14px/1.6 Consolas, "Microsoft YaHei", monospace; resize: none; outline: none; tab-size: 2; }
+.errs { color: #c0392b; padding: 6px 10px; border-top: 1px solid #eee; font-size: 12px; max-height: 30%; overflow: auto; }
+main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.bar { display: flex; gap: 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid #d9dde4; background: #fff; flex-wrap: wrap; }
+.bar.top { gap: 14px; }
+.hint { color: #7a8394; font-size: 12px; }
+.crumbs a { cursor: pointer; color: #2b7bff; }
+.crumbs { font-weight: 600; }
+.bar button { font: inherit; padding: 2px 10px; border: 1px solid #c7ccd6; background: #f3f5f8; border-radius: 4px; cursor: pointer; }
+.switch { margin-left: auto; color: #7a8394; }
+.canvas { flex: 1; position: relative; min-height: 0; }
+.card { background: #fff; border: 1.5px solid #b8c0cc; border-radius: 8px; padding: 8px 12px; min-width: 150px; max-width: 220px; box-shadow: 0 1px 2px rgba(0,0,0,.06); transition: opacity .15s; }
+.card.sel { border-color: #1d2330; box-shadow: 0 0 0 2px rgba(29,35,48,.15); }
+.card.dim { opacity: .3; }
+.card .title { font-weight: 600; display: flex; gap: 6px; align-items: center; }
+.card .st { font-size: 12px; }
+.card .kids { margin-left: auto; font-size: 11px; color: #7a8394; background: #eef1f5; border-radius: 10px; padding: 0 6px; font-weight: 400; }
+.card img { display: block; max-width: 100%; max-height: 120px; margin-top: 6px; border-radius: 4px; }
+.card.portal { border-style: dashed; color: #7a8394; font-size: 12px; min-width: 0; background: #fafbfc; }
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal > div { background: #fff; width: min(760px, 92vw); max-height: 85vh; display: flex; flex-direction: column; border-radius: 8px; overflow: hidden; }
+.modal pre { margin: 0; padding: 12px; overflow: auto; font: 12px/1.5 Consolas, "Microsoft YaHei", monospace; }
+/* tldraw：卡片填满形状，选中框与卡片对齐 */
+.fill > .card { width: 100%; height: 100%; max-width: none; }
