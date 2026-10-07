@@ -135,6 +135,11 @@ for (const kind of ['reactflow']) {
   ok((await crumbNow()) === '根', '鼠标后退键 → 回到根 ' + await crumbNow());
   await side(4); await sleep(600);
   ok((await crumbNow()).includes('游戏AI'), '鼠标前进键 → 回到游戏AI ' + await crumbNow());
+  // 快捷键页：? 弹出，Esc 关
+  await page.keyboard.press('?'); await sleep(300);
+  ok((await page.$$eval('.help kbd', ks => ks.map(k => k.innerText))).includes('Tab'), '? 弹出快捷键页');
+  await page.keyboard.press('Escape'); await sleep(200);
+  ok((await page.$('.help')) === null, 'Esc 关掉快捷键页');
   // 大纲树：点一下 = 导航 + 属性面板显示内容，不进编辑
   await page.click('.orow:has-text("短期记忆")'); await sleep(600);
   ok((await crumbNow()).includes('记忆与人格'), '点大纲树 → 画布跳到那一页 ' + await crumbNow());

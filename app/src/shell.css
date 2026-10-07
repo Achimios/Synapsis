@@ -138,3 +138,13 @@ pre.raw { margin: 0; white-space: pre-wrap; word-break: break-word; font: var(--
 .orow:hover .odrill { visibility: visible; }
 .orow .odrill:hover { background: #444; color: #fff; }
 .orow input { flex: 1; min-width: 0; font: inherit; background: var(--panel2); color: #fff; border: 1px solid var(--accent); border-radius: 2px; padding: 0 3px; outline: none; }
+/* 快捷键页 */
+.modal > div.help { width: min(880px, 94vw); }
+.helpgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; padding: 10px 14px 14px; overflow: auto; }
+.helpgrid h4 { margin: 6px 0 4px; font-size: 11px; color: var(--dim); letter-spacing: 1px; }
+.helpgrid table { border-collapse: collapse; width: 100%; }
+.helpgrid td { padding: 2px 4px; border-top: 1px solid var(--line); vertical-align: top; }
+.helpgrid td:first-child { white-space: nowrap; width: 1%; }
+.helpgrid kbd { font: 11px Consolas, monospace; background: var(--panel2); border: 1px solid var(--line2); border-radius: 3px; padding: 0 4px; color: #fff; }
+.hint.keys { cursor: pointer; }
+.side .bar.tabs .hint { border: 0; border-radius: 0; width: auto; height: auto; display: block; flex: 1; cursor: default; }

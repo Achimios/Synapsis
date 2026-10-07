@@ -14,3 +14,8 @@
 12. Windows 上 git checkout 把文件转成 CRLF → 「内容没变就不写」必须先统一换行再比（`sameText`），否则一次 apply 重写全部文件。
 13. frontmatter 与正文之间固定空一行：不固定的话，人写的/导入的/工具写的格式不一致，往返会抖动（删掉空行也算改了正文）。
 14. PowerShell 5.1 的 `FolderBrowserDialog` 是老式树形窗口；要资源管理器同款得 Add-Type 调 `IFileOpenDialog` + `FOS_PICKFOLDERS`。PS 脚本含中文必须带 BOM；读 node 的 UTF-8 输出前设 `[Console]::OutputEncoding`。
+15. **Electron 单实例转交别解析 argv**：`second-instance` 收到的命令行被 Chromium 重排过，`--ws` 后面可能是它自己的开关（弹过「文件夹不存在：…--allow-file-access-from-files」）→ 用 `requestSingleInstanceLock(additionalData)` 直接传数据。
+16. **拖放的 `dataTransfer` 只在事件同步阶段可读**：先 `getData` / 取 `files` 再 await；从浏览器拖来的图多半是网址（`text/uri-list` / `text/html`），不是文件。
+17. **React 组件里 `useEffect` 的依赖数组在渲染时就求值**：引用了后面才 `useState` 的变量 → `Cannot access … before initialization`，整页白屏（2026-10-08 propsOpen）。状态声明放在所有用到它的 effect 之前。
+18. **全局键盘处理是 if/else 链时，新加的分支要看前面有没有同键先吃掉**（Esc 先被「取消选中」吃了，快捷键页关不掉）。
+

@@ -49,7 +49,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
 const countAll = n => n.descendants ?? n.children.length;
 
 // >v<🎨画布-属性面板-节点属性/出入边/正文（工作区模式下正文可改，失焦保存）
-export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onSelect, onClose, file, onOpenMd, onReveal }) {
+export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onSelect, onClose, file, tab, onTab, raw, onReveal }) {
   const n = graph.nodes.get(id);
   const [body, setBody] = useState(wsNode?.body || '');
   useEffect(() => setBody(wsNode?.body || ''), [id, wsNode?.body]);
@@ -63,7 +63,14 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
   const edgeRow = (e, other, inner) => <li key={e.from + e.to}><a onClick={() => onSelect(other)}>{lab(other)}</a>{e.label && <span className="el">{e.label}{e.kind ? '·' + e.kind : ''}</span>}{via(e, inner)}</li>;
   return (
     <aside className="side">
-      <div className="bar"><b>属性</b><span className="hint" title={id}>{id}</span><button onClick={onClose}>✕</button></div>
+      <div className="bar tabs"><a className={tab !== 'raw' ? 'on' : ''} onClick={() => onTab('info')}>概览</a>
+        {file && <a className={tab === 'raw' ? 'on' : ''} onClick={() => onTab('raw')} title="节点 .md 原文（含 frontmatter）">原文</a>}
+        <span className="hint" title={id}>{id}</span><button onClick={onClose} title="关闭（I）">✕</button></div>
+      {tab === 'raw' && file ? <div className="sidebody"><h3>{n.label}</h3>
+        <div className="filerow"><span className="hint" title={file}>{file}</span>
+          <button onClick={() => onReveal(file, 'select')} title="在资源管理器中显示">📂</button>
+          <button onClick={() => onReveal(file, 'open')} title="用默认程序打开（Obsidian / 编辑器）">↗</button></div>
+        <pre className="raw">{raw ?? '读取中…'}</pre></div> :
       <div className="sidebody">
         <h3>{n.label}</h3>
         <div className="row">状态 {STATUS.map(([s, ic]) => <button key={s} className={n.status === s ? 'on' : ''} onClick={() => onStatus(id, s)}>{ic}</button>)}</div>
@@ -75,11 +82,10 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
         <div className="eh">正文{editable ? '（失焦自动保存）' : '（样例模式不可编辑）'}</div>
         <textarea className="body" value={body} readOnly={!editable} placeholder={editable ? '想法、职责、验收方式……（存进这个节点的 .md）' : ''}
           onChange={e => setBody(e.target.value)} onBlur={() => { if (editable && body !== (wsNode?.body || '')) onBody(id, body); }} />
-        {file && <div className="filerow"><span className="hint" title={file}>{file}</span>
-          <button onClick={() => onOpenMd(file)} title="右侧看原文（含 frontmatter）">原文</button>
+        {file && tab !== 'raw' && <div className="filerow"><span className="hint" title={file}>{file}</span>
           <button onClick={() => onReveal(file, 'select')} title="在资源管理器中显示">📂</button>
           <button onClick={() => onReveal(file, 'open')} title="用默认程序打开（Obsidian / 编辑器）">↗</button></div>}
-      </div>
+      </div>}
     </aside>
   );
 }
@@ -145,6 +151,26 @@ export function OutlineTree({ graph, selected, scope, renaming, status, onPick, 
           {n.children.length > 0 && renaming !== n.id && <span className="odrill" title="钻进这一层（画布显示它的子节点）" onClick={e => { e.stopPropagation(); onDrill(n.id); }}>→</span>}
         </div>
       ))}
+    </div>
+  );
+}
+
+// >v<🧭导航-快捷键页-? 或 F1 弹出；键位只在这张表里写一次（以后要自定义就从这里长出来）
+export const KEYMAP = [
+  ['选择与查看', [['单击卡片 / 大纲行', '选中，右侧显示概览'], ['I', '属性面板开关'], ['Tab', '左栏开关'], ['? / F1', '这一页']]],
+  ['导航', [['双击卡片 / 大纲行的 →', '钻进去'], ['Alt+↑', '上一层'], ['鼠标侧键 / Alt+← →', '后退 / 前进'], ['大纲树里 ↑↓←→', '上下走 / 折叠展开'], ['▸N / 空格', '卡片里原地展开子级']]],
+  ['编辑', [['Enter', '新建同级'], ['Insert / Ctrl+Enter', '新建子级'], ['F2 / 双击大纲行', '改名'], ['Del', '删除（进 _过期的/）'], ['卡片边缘拖到另一张', '连线'], ['右键', '菜单：状态、属性、原文……']]],
+  ['图片', [['Ctrl+V', '贴进选中的卡；没选中 = 新建图片卡'], ['拖文件 / 网页图', '落在卡片上 = 进那张；空白处 = 新卡'], ['图片右下角拖', '调大小'], ['🖼 / 工具栏', '收起这张 / 全部收起']]],
+];
+export function HelpModal({ onClose }) {
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="help" onClick={e => e.stopPropagation()}>
+        <div className="bar"><b>快捷键</b><span className="hint" style={{ flex: 1 }}>暂不可改；以后要改从这张表接配置</span><button onClick={onClose}>✕</button></div>
+        <div className="helpgrid">{KEYMAP.map(([g, rows]) => (
+          <section key={g}><h4>{g}</h4><table><tbody>{rows.map(([k, v]) => <tr key={k}><td><kbd>{k}</kbd></td><td>{v}</td></tr>)}</tbody></table></section>
+        ))}</div>
+      </div>
     </div>
   );
 }

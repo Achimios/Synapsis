@@ -2,7 +2,7 @@
 // 画布组件（main.jsx，React Flow）只负责「显示 view + 回报用户操作」。
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, autoLayout, lineOf, ROOT } from './outline.js';
-import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree } from './panels.jsx';
+import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal } from './panels.jsx';
 import { SAMPLE } from './sample.js';
 import './shell.css';
 
@@ -38,6 +38,7 @@ export function Shell({ name, Canvas }) {
   // 每个范围各记一份视图（平移+缩放），返回上一级/再钻进来时还原
   const [viewports, setViewports] = useState(() => DEMO ? load('syn.vp.' + name, {}) : {});
   const [leftHidden, setLeftHidden] = useState(() => DEMO ? load('syn.lh', false) : false);
+  const [propsOpen, setPropsOpen] = useState(() => DEMO ? load('syn.po', true) : true);
   // >v<🧭导航-历史-Alt+←/→ 后退前进，Alt+↑ 上一层
   // 导航历史：像浏览器一样 Alt+← / Alt+→
   const hist = useRef({ back: [], fwd: [] });
@@ -83,7 +84,7 @@ export function Shell({ name, Canvas }) {
     api('/ws').then(d => {
       const v = d.view || {};
       lastSaved.current = d.outline; setText(d.outline); setPositions(d.layout || {}); setWsData(d);
-      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setPicFold(v.picFold || {}); setLeftHidden(!!v.leftHidden); if (v.scope) setScope(v.scope);
+      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setPicFold(v.picFold || {}); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); if (v.scope) setScope(v.scope);
       setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
     }).catch(e => { setMode('offline'); setText(load('syn.text', SAMPLE)); setPositions(load('syn.pos.' + name, {})); setSaveState('⚠️ 没连上工作区（' + e.message + '），本地离线模式'); });
   }, []);
@@ -110,14 +111,14 @@ export function Shell({ name, Canvas }) {
   useEffect(() => { if (local) save('syn.text', text); }, [text, local]);
   useEffect(() => { if (local) save('syn.pos.' + name, positions); }, [positions, name, local]);
   useEffect(() => save('syn.img2', localImages), [localImages]);
-  useEffect(() => { if (local) { save('syn.vp.' + name, viewports); save('syn.exp', expanded); save('syn.lh', leftHidden); save('syn.pf', picFold); } }, [viewports, expanded, leftHidden, picFold, name, local]);
+  useEffect(() => { if (local) { save('syn.vp.' + name, viewports); save('syn.exp', expanded); save('syn.lh', leftHidden); save('syn.pf', picFold); save('syn.po', propsOpen); } }, [viewports, expanded, leftHidden, picFold, propsOpen, name, local]);
   useEffect(() => save('syn.pw', localPicw), [localPicw]);
   // 工作区：视图状态停手 0.6s 写进 .synapsis/view.json
   useEffect(() => {
     if (mode !== 'ws') return;
-    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, leftHidden, picFold, scope: realScope }) }).catch(() => {}), 600);
+    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, leftHidden, picFold, propsOpen, scope: realScope }) }).catch(() => {}), 600);
     return () => clearTimeout(t);
-  }, [viewports, expanded, leftHidden, picFold, realScope, mode]);
+  }, [viewports, expanded, leftHidden, picFold, propsOpen, realScope, mode]);
   const onViewport = useCallback((sc, vp) => setViewports(v => ({ ...v, [sc]: vp })), []);
   const go = useCallback(next => {
     if (next === realScope) return;
@@ -179,13 +180,16 @@ export function Shell({ name, Canvas }) {
 
   // >v<🎨画布-右键菜单-动作：删除（工作区里 = 移进 _过期的/）、改状态、改名、属性
   const [menu, setMenu] = useState(null);       // {x, y, id|null}
-  const [propsOpen, setPropsOpen] = useState(false);
+  // >v<🎨画布-属性面板-默认开着（👤：点了节点总要看概览）；「概览 / 原文」两页，看原文不再顶掉属性
+  const [propsTab, setPropsTab] = useState('info'); // info | raw
+  const [rawText, setRawText] = useState(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [leftTab, setLeftTab] = useState('outline'); // outline（树，导航用）| text（原始大纲文本）| files
   // >v<🌳大纲模型-大纲树-点一下 = 画布跳到那一页并选中、右侧显示内容；双击/F2 = 改名；钻进用 ▸
   const pick = id => {
     const n = graph.nodes.get(id); if (!n) return;
     if (n.parent !== realScope) go(n.parent);
-    setSelected(id); setFileView(null); setPropsOpen(true);
+    setSelected(id); setPropsOpen(true);
   };
   const commitRename = (id, label) => {
     setRenaming(null);
@@ -205,7 +209,7 @@ export function Shell({ name, Canvas }) {
   };
   const setStatus = (id, s) => setText(withStatus(graph, id, s));
   const menuActions = {
-    props: id => { setSelected(id); setPropsOpen(true); setFileView(null); },
+    props: id => { setSelected(id); setPropsOpen(true); setPropsTab('info'); },
     rename: id => focusLabel(id),
     status: setStatus,
     addChild: id => { setSelected(id); const r = withNode(graph, id, null); pendingRename.current = r.id; setText(r.text); setExpanded(x => ({ ...x, [id]: true })); },
@@ -213,7 +217,7 @@ export function Shell({ name, Canvas }) {
     addHere: () => { const r = withNode(graph, realScope, null); pendingRename.current = r.id; setText(r.text); setSelected(r.id); },
     toggle: id => toggle(id), drill: id => drill(id), remove,
     hasFile: id => !!nodeFile(id),
-    openMd: id => openFile(nodeFile(id)),
+    openMd: id => { setSelected(id); setPropsOpen(true); setPropsTab('raw'); },
     reveal: id => reveal(nodeFile(id), 'select'),
     pasteHint: id => { setSelected(id); setSaveState('选中了「' + graph.nodes.get(id).label + '」：现在 Ctrl+V 贴图'); },
     up: () => up(), canUp: realScope !== ROOT,
@@ -222,16 +226,21 @@ export function Shell({ name, Canvas }) {
   const onContextMenu = useCallback((id, x, y) => { if (id && !id.startsWith('@portal:')) setSelected(id); setMenu({ id: id && !id.startsWith('@portal:') ? id : null, x, y }); }, []);
   // 文件页：切过去时取文件树；点文件 → 右侧预览
   useEffect(() => { if (leftTab === 'files' && mode === 'ws' && !tree) api('/tree').then(setTree).catch(e => setTree({ tree: [], error: e.message })); }, [leftTab, mode]);
-  const openFile = p => { setPropsOpen(false); setFileView({ path: p }); api('/raw?p=' + encodeURIComponent(p)).then(setFileView).catch(e => setFileView({ path: p, error: e.message })); };
+  const openFile = p => { setFileView({ path: p }); api('/raw?p=' + encodeURIComponent(p)).then(setFileView).catch(e => setFileView({ path: p, error: e.message })); };
   // >v<🗂️外部区-节点md-节点 ⇄ 文件：右键/属性面板「看 md 原文」「在资源管理器显示」「默认程序打开」；文件树点节点 md → 画布跳过去选中
   const nodeFile = id => wsData?.nodes[id]?.file;
   const reveal = (p, how) => api('/reveal', { method: 'POST', body: JSON.stringify({ p, how }) }).catch(e => setSaveState('❌ ' + e.message));
   const fileToNode = useMemo(() => new Map(Object.entries(wsData?.nodes || {}).map(([id, n]) => [n.file, id])), [wsData]);
+  // 文件树：节点 md → 画布跳过去 + 属性面板「原文」页；其它文件 → 旁边开预览（属性面板不动）
   const onTreeOpen = p => {
-    openFile(p);
     const id = fileToNode.get(p);
-    if (id && graph.nodes.has(id)) { const par = graph.nodes.get(id).parent; if (par !== realScope) go(par); setSelected(id); }
+    if (id && graph.nodes.has(id)) { pick(id); setPropsTab('raw'); } else openFile(p);
   };
+  // 「原文」页：选中节点的 md 原文（文件变了跟着刷新）
+  useEffect(() => {
+    if (propsTab !== 'raw' || !sel || !nodeFile(sel)) { setRawText(null); return; }
+    api('/raw?p=' + encodeURIComponent(nodeFile(sel))).then(r => setRawText(r.text ?? r.note)).catch(e => setRawText('读取失败：' + e.message));
+  }, [propsTab, sel, wsData]);
   const saveBody = (id, body) => api('/node', { method: 'PATCH', body: JSON.stringify({ id, body }) }).then(d => { setWsData(d); setSaveState('正文已保存 ' + new Date().toLocaleTimeString()); }).catch(e => setSaveState('❌ 正文保存失败：' + e.message));
 
   const toggle = id => setExpanded(x => ({ ...x, [id]: !x[id] }));
@@ -245,6 +254,7 @@ export function Shell({ name, Canvas }) {
     const onKey = e => {
       const inText = e.target.closest && e.target.closest('textarea, input, [contenteditable="true"]');
       if (inText) return;
+      if (helpOpen && e.key === 'Escape') { setHelpOpen(false); return; }
       if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); setLeftHidden(h => !h); } // 👤 Tab = 侧栏开关
       else if ((e.key === 'Insert' || (e.key === 'Enter' && e.ctrlKey)) && sel) { e.preventDefault(); e.stopPropagation(); addNode(true); }
       else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); addNode(false); }
@@ -255,7 +265,8 @@ export function Shell({ name, Canvas }) {
       else if (e.key === ' ' && sel && !sel.startsWith('@portal:')) { e.preventDefault(); e.stopPropagation(); toggle(sel); }
       else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); e.stopPropagation(); remove(sel); }
       else if (e.key === 'F2' && sel) { e.preventDefault(); focusLabel(sel); }
-      else if ((e.key === 'i' || e.key === 'I') && !e.ctrlKey && !e.altKey) { e.preventDefault(); setFileView(null); setPropsOpen(o => !o); }
+      else if ((e.key === 'i' || e.key === 'I') && !e.ctrlKey && !e.altKey) { e.preventDefault(); setPropsOpen(o => !o); }
+      else if (e.key === '?' || e.key === 'F1') { e.preventDefault(); setHelpOpen(h => !h); }
     };
     // 鼠标侧键：3 = 后退，4 = 前进（拦掉浏览器自己的历史跳转）
     const onMouse = e => {
@@ -386,7 +397,7 @@ export function Shell({ name, Canvas }) {
           {withPics.length > 0 && <button onClick={() => setPicFold(f => { const g = { ...f }; for (const n of withPics) g[n.id] = !allPicsFolded; return g; })} title="当前页所有卡片的图片一起收起 / 显示">{allPicsFolded ? '显示图片' : '收起图片'}</button>}
           <button onClick={() => setExportText(exportForLLM(graph, realScope))}>导出给 LLM</button>
           {local && <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>}
-          <span className="hint keys" title={KEYS}>?</span>
+          <span className="hint keys" title="快捷键（? 或 F1）" onClick={() => setHelpOpen(true)}>?</span>
         </div>
         {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className="canvas" onDragOver={e => e.preventDefault()} onDrop={onDrop}>
           <Canvas key={realScope} view={view} layout={layout} selected={sel} images={images}
@@ -396,9 +407,10 @@ export function Shell({ name, Canvas }) {
       </main>
       {propsOpen && sel && !sel.startsWith('@portal:') && graph.nodes.has(sel) && (
         <PropsPanel id={sel} graph={graph} wsNode={wsData?.nodes[sel]} edges={mode === 'ws' ? (wsData?.edges || []) : graph.edges}
-          editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} file={nodeFile(sel)} onOpenMd={openFile} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)} />
+          editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} file={nodeFile(sel)} tab={propsTab} onTab={setPropsTab} raw={rawText} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)} />
       )}
       {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（I 开关）</div></aside>}
+      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
       {fileView && <FilePanel file={fileView.text !== undefined || fileView.error || fileView.note ? fileView : null} onClose={() => setFileView(null)} />}
       {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), open: !!expanded[menu.id], descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
         actions={{ ...menuActions, allOpen }} onClose={() => setMenu(null)} />}
@@ -416,7 +428,6 @@ export function Shell({ name, Canvas }) {
   );
 }
 
-const KEYS = ['右键 = 菜单', '双击 = 钻进', '▸N / 空格 = 原地展开', 'Del = 删除', 'F2 = 改名', 'I = 属性', 'Enter = 新建同级', 'Insert 或 Ctrl+Enter = 新建子级', 'Tab = 左栏开关', '鼠标侧键 / Alt+← → = 后退 / 前进', 'Alt+↑ = 上一层', '卡片边缘拖 = 连线', 'Ctrl+V / 拖图片（文件或网页图）：落在卡片上 = 进那张卡；落在空白处 = 新建一张图片卡', '图片右下角拖 = 调整大小；🖼 = 收起这张卡的图'].join('\n');
 
 // 两个画布共用的节点外观
 export const STATUS_ICON = { done: '✅', partial: '◐', todo: '○' };
