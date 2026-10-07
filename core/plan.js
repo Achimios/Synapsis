@@ -2,6 +2,7 @@
 // 纯函数，不调模型、不碰文件（core/agent.js 调模型和落盘，自检 core/test/agent.test.js）。
 // 每种动作对应一份说明书 core/skills/*.md（喂给模型）；VALIDATORS 和说明书一一对应（自检核对）。
 import { PALETTE } from './colors.js';
+import { withMoved, ROOT } from './outline.js';
 
 export const KINDS = { '': '', 普通: '', 调节: '调节', 离散: '离散' };
 export const STATUSES = { done: 'done', partial: 'partial', todo: 'todo', dropped: 'dropped', none: null };
@@ -79,6 +80,13 @@ export const VALIDATORS = {
     if (graph.nodes.get(parent).children.some(c => graph.nodes.get(c).label === name)) throw new Error(`「${name}」同级已经有了`);
     const from = a.from == null ? null : one(a.from), to = a.to == null ? null : one(a.to);
     return { parent, label: name, from, to, desc: `新建「${name}」${parent === scope ? '' : '（在 ' + label(parent) + ' 下）'}${from ? '，' + label(from) + ' → 它' : ''}${to ? '，它 → ' + label(to) : ''}` };
+  },
+  move: (a, { many, one, label, graph }) => {
+    const ids = many(a.ids);
+    const parent = a.parent === 'root' || a.parent === '根' ? ROOT : one(a.parent);
+    const r = withMoved(graph, ids, parent);
+    if (r.error) throw new Error(r.error);
+    return { ids, parent, desc: `移进「${parent === ROOT ? '根' : label(parent)}」：` + ids.map(label).join('、') };
   },
   rename: (a, { one, label, graph }) => {
     const id = one(a.id);

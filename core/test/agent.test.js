@@ -82,6 +82,18 @@ try {
   ok(top.indexOf('行动') < top.indexOf('决策'), '大纲排序：行动 挪到 决策 前面 ' + top);
   ok(r.moves['决策'].y === 0 && r.moves['行动'].y === 0 && r.select.join() === '兜底', '对齐的坐标、选中交回前端 ' + JSON.stringify(r));
 
+  // 移动技能：挪进别的节点（别处有同名也认对，属性跟着走）；挪进自己里面 → 校验就拒绝
+  saveOutline(root, '小队\n队长\n  口令\n斥候\n别处\n  队长');
+  (await import('../workspace.js')).setNodeMeta(root, '队长', { rate: '2 Hz' });
+  const w3 = loadWorkspace(root), c3 = pageContext(w3, '', []), G3 = parseOutline(workspaceOutline(w3));
+  const mv = validateAction({ do: 'move', ids: ['n2', 'n3'], parent: 'n1' }, { refs: c3.refs, graph: G3, scope: '' });
+  ok(mv.ok && /移进「小队」：队长、斥候/.test(mv.desc), '移动：校验通过 ' + JSON.stringify(mv));
+  ok(!validateAction({ do: 'move', ids: ['n1'], parent: 'n1' }, { refs: c3.refs, graph: G3, scope: '' }).ok, '挪进自己 → 拒绝');
+  applyPlan(root, [mv, validateAction({ do: 'rename', id: 'n3', label: '侦察兵' }, { refs: c3.refs, graph: G3, scope: '' })]);
+  const G4 = loadWorkspace(root).graph;
+  ok(G4.nodes.get('小队/队长')?.meta.rate === '2 Hz' && G4.nodes.has('小队/队长/口令') && G4.nodes.has('别处/队长'), '执行：队长（带属性、子节点）进了小队，别处的同名队长不受影响');
+  ok(G4.nodes.has('小队/侦察兵') && !G4.nodes.has('斥候'), '同一批里先移动再改名也对');
+
   // 问模型（假服务）：第一次回废话 → 重试；带短记忆；写日志
   let calls = 0, lastMsgs = null;
   srv = createServer((req, res) => { let s = ''; req.on('data', c => s += c); req.on('end', () => {

@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync } from 
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadWorkspace, workspaceOutline, saveOutline, setNodeMeta, setEdgeLabel, parseFrontmatter } from './workspace.js';
-import { parseOutline, withStatus, withEdge, withoutEdge, withNode, withLabel, toOutline, ROOT } from './outline.js';
+import { parseOutline, withStatus, withEdge, withoutEdge, withNode, withLabel, withMoved, toOutline, ROOT } from './outline.js';
 import { validateAction, planMoves, VALIDATORS } from './plan.js';
 import { chat } from './ai.js';
 
@@ -102,7 +102,7 @@ export function applyPlan(root, actions, boxes = {}) {
   const ren = new Map(); // 旧 id → 新 id（改名会改子孙的 id）
   const fix = id => { for (const [o, n] of ren) { if (id === o) return n; if (id.startsWith(o + '/')) return n + id.slice(o.length); } return id; };
   const step = t => { if (t) g = parseOutline(t); };
-  const kinds = [], colors = [];
+  const kinds = [], colors = [], moved = new Set();
   for (const a of actions) {
     if (a.do === 'status') for (const id of a.ids) step(withStatus(g, fix(id), a.status === 'none' ? null : a.status));
     else if (a.do === 'link') { if (!a.exists) step(withEdge(g, fix(a.from), fix(a.to))); if (a.kind || a.label || a.exists) kinds.push(a); }
@@ -118,9 +118,16 @@ export function applyPlan(root, actions, boxes = {}) {
     } else if (a.do === 'rename') {
       const id = fix(a.id), n = g.nodes.get(id), nid = n.parent === ROOT ? a.label : n.parent + '/' + a.label;
       step(withLabel(g, id, a.label)); ren.set(id, nid);
+    } else if (a.do === 'move') {
+      const r = withMoved(g, a.ids.map(fix), fix(a.parent));
+      if (r.error) throw new Error('移动失败：' + r.error);
+      step(r.text);
+      for (const [o, n] of r.map) { for (const [k, v] of ren) if (v === o) ren.set(k, n); if (!ren.has(o)) ren.set(o, n); moved.add(o); }
     } else if (a.do === 'color') colors.push(a);
   }
-  const report = saveOutline(root, toOutline(g));
+  // 挪过的节点：把「最终 id → 原 id」交给 saveOutline，不靠名字猜（同 moveNodes）
+  const orig = new Map(); for (const [o] of ren) if (moved.has(o) || [...moved].some(m => o.startsWith(m + '/'))) orig.set(fix(o), o);
+  const report = saveOutline(root, toOutline(g), orig.size ? orig : null);
   if (!report.ok) throw new Error('执行失败：' + JSON.stringify(report.errors));
   for (const a of kinds) setEdgeLabel(root, fix(a.from), fix(a.to), a.label, a.kind);
   for (const a of colors) for (const id of a.ids) setNodeMeta(root, fix(id), { color: a.color === 'auto' ? null : a.color });

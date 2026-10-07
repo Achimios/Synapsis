@@ -154,7 +154,7 @@ export function AgentBox({ api, scope, selected, onApplied, onPreview, onClose }
       </div>
       {tab === 'chat' ? <>
         <div className="turns" ref={list}>
-          {!turns.length && !plan && <div className="hint pad">在当前页交代要做的事，比如：<br />「把这几个左对齐」「按流程从左到右排开」「观测做完了」「在决策后面加一个执行」「个性调节决策」<br />它只能做：选中 / 对齐 / 排列 / 大纲排序 / 配色 / 状态 / 连线 / 删线 / 新建 / 改名（不能删节点）。每一步都先给你看，Enter 才执行，Ctrl+Z 能撤销。</div>}
+          {!turns.length && !plan && <div className="hint pad">在当前页交代要做的事，比如：<br />「把这几个左对齐」「按流程从左到右排开」「观测做完了」「在决策后面加一个执行」「个性调节决策」<br />它只能做：选中 / 对齐 / 排列 / 大纲排序 / 配色 / 状态 / 连线 / 删线 / 新建 / 改名 / 移进别的节点（不能删节点）。每一步都先给你看，Enter 才执行，Ctrl+Z 能撤销。</div>}
           {turns.map((t, i) => <div key={i} className="turn">
             <div className="u">🙂 {t.user}</div>
             {t.say && <div className="a">🤖 {t.say}</div>}
