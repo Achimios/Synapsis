@@ -55,6 +55,32 @@ try {
   r = run('add', '/', 'A -> B');
   ok(r.code === 1, '名字含 -> 被拒');
   ok(run('check').out.includes('code 指向不存在的文件'), 'check 抓到 code 路径不存在');
+  // —— 2026-10-07 Life Games 的 Claude 黑板反馈 ——
+  r = run('add', '/', '决策');
+  ok(r.code === 1 && r.err.includes('同级已有同名') && !node('决策2'), 'add 撞名报错，不再悄悄生成「名字2」');
+  r = run('add', '/', '决策', '--if-missing');
+  ok(r.code === 0 && r.out === '决策', 'add --if-missing 幂等，返回已有 id');
+  r = run('add', 'C:/Program Files/Git/', '工具');
+  ok(r.out === '工具' && node('工具'), 'Git Bash 把 / 改写成安装目录也认作根 ' + r.err);
+  r = run('add', '.', '自检（tests/run.js）');
+  ok(r.out === '自检（tests/run.js）', 'add . = 根，名字含 /');
+  r = run('set', '自检（tests／run.js）', 'evidence=实测');
+  ok(node('自检（tests/run.js）')?.meta.evidence === '实测', 'id 接受文件名的全角写法 ' + r.err);
+  writeFileSync(join(root, 'eye.js'), 'export function see() {}\n');
+  run('set', '感知/视觉', 'code=eye.js#look');
+  ok(run('check').out.includes('#look'), 'check 抓到 code 的 #符号不存在');
+  run('set', '感知/视觉', 'code=eye.js#see');
+  ok(!run('check').out.includes('#see'), 'check 认得存在的 #符号');
+  const ops = join(root, 'ops.json');
+  writeFileSync(ops, JSON.stringify([['add', '.', '行动'], ['add', '行动', '开火', { ifMissing: true }], ['status', '行动/开火', 'done'], ['body', '行动/开火', '批量写的正文'], ['link', '决策', '行动/开火', { label: '目标' }]]));
+  r = run('batch', ops);
+  const fire = node('行动/开火');
+  ok(r.code === 0 && fire?.status === 'done' && fire.body.includes('批量写的正文') && loadWorkspace(root).graph.edges.some(e => e.to === '行动/开火' && e.label === '目标'), 'batch 一次跑完一批 ' + r.err);
+  writeFileSync(ops, JSON.stringify([['add', '行动', '翻滚'], ['add', '行动', '翻滚']]));
+  r = run('batch', ops);
+  ok(r.code === 1 && r.err.includes('第 2 条') && node('行动/翻滚'), 'batch 遇错停下并报第几条，前面的已写');
+  run('status', '感知/视觉', 'partial');
+  ok(/◐ 感知/.test(run('overview').out), 'overview 分组状态 = 子节点汇总（有 ◐ 就是 ◐）');
   ok(run('manual').out.includes(root.split('\\').join('/')), 'manual 填好了工作区路径');
   // 必须相等的量：仓库根目录的 _AI_Manual.md = 模板渲染结果（改了模板忘了 manual --write 就会挂）
   ok(existsSync(ROOT_MANUAL) && readFileSync(ROOT_MANUAL, 'utf8').replace(/\r\n/g, '\n') === rootManualText(), '_AI_Manual.md 与模板一致（不一致就跑 node core/cli.js manual --write）');

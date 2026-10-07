@@ -154,3 +154,30 @@ pre.raw { margin: 0; white-space: pre-wrap; word-break: break-word; font: var(--
 .loosepic.sel { border-color: var(--sel); box-shadow: 0 0 0 1px var(--sel); }
 .loosepic:hover .picgrip, .loosepic.sel .picgrip { opacity: .8; }
 .loosepic.folded { line-height: 1.2; font-size: 14px; padding: 2px 5px; background: var(--panel2); border: 1px dashed var(--line2); border-radius: 3px; width: auto; }
+
+/* >v<📐空间-外观-投影工具条、坐标轴、卡片小横条、证据标签、映射热力图 */
+:root { --pos: #4d9bff; --neg: #ff6b5e; --warn: #e0b84d; }
+.planebar { position: absolute; z-index: 5; top: 6px; left: 6px; display: flex; gap: 8px; align-items: center; padding: 3px 8px; background: var(--panel); border: 1px solid var(--line2); border-radius: 4px; font-size: 11px; }
+.planebar label { display: flex; gap: 3px; align-items: center; color: var(--dim); }
+.planebar select { background: var(--panel2); color: var(--text); border: 1px solid var(--line2); font-size: 11px; max-width: 120px; }
+.planebar .warn { color: var(--warn); cursor: help; }
+.react-flow__node-axes { pointer-events: none !important; }
+svg.axes { overflow: visible; }
+svg.axes line { stroke: var(--line2); stroke-width: 1; }
+svg.axes circle.unit { fill: none; stroke: var(--line); stroke-dasharray: 3 4; }
+svg.axes text { fill: var(--faint); font-size: 10px; }
+svg.axes text.al { fill: var(--dim); font-size: 12px; }
+.card .ev { display: inline-block; font-size: 9px; padding: 0 3px; margin-right: 4px; border-radius: 2px; border: 1px solid currentColor; line-height: 12px; }
+.card .ev-ok { color: var(--ok); } .card .ev-design { color: var(--accent); } .card .ev-guess { color: var(--warn); } .card .ev-none, .card .ev-x { color: var(--faint); }
+.card .axchips { font-size: 10px; color: var(--accent); margin-top: 2px; }
+.vecbars { margin-top: 3px; display: grid; gap: 1px; }
+.vecbars .vb { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 3px; font-size: 9px; color: var(--dim); }
+.vecbars .vl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vecbars .vt { position: relative; height: 5px; background: var(--panel); border-left: 1px solid transparent; }
+.vecbars .vt::after { content: ''; position: absolute; left: 50%; top: -1px; bottom: -1px; width: 1px; background: var(--line2); }
+.vecbars .vf { position: absolute; top: 0; bottom: 0; background: var(--pos); }
+.vecbars .vf.neg { background: var(--neg); }
+.matwrap { position: absolute; pointer-events: all; }
+.matchip { border-collapse: collapse; background: var(--panel); border: 1px solid var(--line2); font-size: 9px; color: var(--dim); }
+.matchip td { width: 12px; height: 12px; border: 1px solid var(--line); padding: 0; text-align: center; }
+.matchip th { font-weight: normal; padding: 0 2px; white-space: nowrap; }

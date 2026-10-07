@@ -19,3 +19,5 @@
 17. **React 组件里 `useEffect` 的依赖数组在渲染时就求值**：引用了后面才 `useState` 的变量 → `Cannot access … before initialization`，整页白屏（2026-10-08 propsOpen）。状态声明放在所有用到它的 effect 之前。
 18. **全局键盘处理是 if/else 链时，新加的分支要看前面有没有同键先吃掉**（Esc 先被「取消选中」吃了，快捷键页关不掉）。
 
+19. **Git Bash 会改写以 `/` 开头的参数**（MSYS 路径转换）：`cli.js add / 名字` 收到的是 `C:/Program Files/Git/`。CLI 里根节点用 `.`，并把「像 Windows 绝对路径又不是节点」的参数当根。
+20. **Windows 上 Python `open(p, 'w')` 默认写 CRLF，经 heredoc 喂中文也可能乱码** → 改源码只用 Edit 工具；生成物和模板比对前先统一换行（`manualText` 现在读模板就去 `\r`）。

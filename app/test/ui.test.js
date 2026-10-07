@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSy
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { saveOutline } from '../../core/workspace.js';
+import { runBatch } from '../../core/cli.js';
 import { SAMPLE } from '../src/sample.js';
 const BASE = 'http://localhost:5410';
 const SHOTS = process.argv[2] || null;
@@ -319,6 +320,57 @@ for (const kind of ['reactflow']) {
   await page.mouse.click(lb.x + lb.width / 2, lb.y + lb.height / 2); await sleep(200);
   await page.keyboard.press('Delete'); await sleep(1500);
   ok((await page.$$('.loosepic')).length === 0 && readdirSync(looseDir).length === 0, '选中散图 Del → 删掉（文件进 _过期的/）');
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
+// —— 空间节点：投影、换基、拖动改坐标、卡片小横条、边上的热力图 ——
+{
+  console.log('== 空间');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-space-ui-'));
+  saveOutline(ws, '情绪空间 -> 行为空间\n  兴奋\n  激动\n  谨慎\n  愤怒\n  备注\n行为空间');
+  runBatch(ws, [
+    ['set', '情绪空间', 'axes=愉悦, 唤醒, 支配', '映射→行为空间=0.2 0.5 0.8; 0 1 -0.3'],
+    ['set', '情绪空间/兴奋', 'vec=0.6, 0.9, 0.4'], ['set', '情绪空间/激动', 'vec=0.1, 0.95, 0.2'],
+    ['set', '情绪空间/谨慎', 'vec=-0.2, 0.15, -0.4'], ['set', '情绪空间/愤怒', 'vec=-0.8, 0.9, 0.8', 'evidence=估计'],
+    ['set', '行为空间', 'axes=攻击性, 移动速度'],
+  ]);
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = [];
+  page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`);
+  await sleep(1800);
+  const card = async label => { for (const c of await page.$$('.card')) { const t = await c.$eval('.title', e => e.textContent).catch(() => ''); if (t.includes(label)) return c; } };
+  const mid = b => [b.x + b.width / 2, b.y + b.height / 2];
+  ok(await page.$$eval('.matchip tr', rs => rs.length) === 3 && await page.$$eval('.matchip td[title]', ts => ts.length) === 6, '空间→空间的边画成 2×3 热力图');
+  ok((await (await card('情绪空间')).$eval('.axchips', e => e.textContent)).includes('愉悦 · 唤醒 · 支配'), '空间节点卡片列出轴');
+  await page.mouse.dblclick(...mid(await (await card('情绪空间')).boundingBox())); await sleep(1000);
+  ok(!!(await page.$('.planebar')) && (await page.$eval('.planebar', e => e.innerText)).includes('夹角 90°'), '钻进空间 → 投影工具条，轴夹角 90°');
+  // 坐标核对：卡片中心相对坐标轴原点 / 单位长度 = (愉悦, 唤醒)
+  const ax = await (await page.$('svg.axes')).boundingBox(), o = mid(ax), unit = ax.width / 2.5;
+  const coord = async label => { const [x, y] = mid(await (await card(label)).boundingBox()); return [(x - o[0]) / unit, (o[1] - y) / unit]; };
+  let c = await coord('兴奋');
+  ok(Math.abs(c[0] - 0.6) < 0.03 && Math.abs(c[1] - 0.9) < 0.03, '兴奋落在 (0.6, 0.9) ' + c.map(x => x.toFixed(2)));
+  ok(await (await card('兴奋')).$$eval('.vecbars .vb', v => v.length) === 3, '成员卡片有 3 条小横条');
+  ok((await (await card('愤怒')).$eval('.ev', e => e.textContent)) === '估计', '证据标签显示在卡片上');
+  const sels = await page.$$('.planebar select');
+  await sels[0].selectOption('情绪空间/兴奋'); await sels[1].selectOption('情绪空间/激动'); await sleep(500);
+  ok(/夹角 (\d+)°/.test(await page.$eval('.planebar', e => e.innerText)) && !!(await page.$('.planebar .warn')), '换成两个情绪词当基 → 夹角不是 90°，标黄');
+  await sels[0].selectOption('#0'); await sels[1].selectOption('#1'); await sleep(500);
+  // 拖动 谨慎 往右 0.5 个单位 → vec 第 1 维变、第 3 维不动；坐标不写进 _layout.json
+  const [x0, y0] = mid(await (await card('谨慎')).boundingBox());
+  await page.mouse.move(x0, y0); await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(x0 + unit * 0.5 * i / 10, y0);
+  await page.mouse.up(); await sleep(1500);
+  const md = readFileSync(join(ws, '__synapsis', '情绪空间', '谨慎.md'), 'utf8');
+  const v = (md.match(/vec: (.*)/) || [])[1]?.split(',').map(Number) || [];
+  ok(Math.abs(v[0] - 0.3) < 0.08 && Math.abs(v[1] - 0.15) < 0.05 && v[2] === -0.4, '拖动改写 vec（只动投影的两维） ' + v);
+  ok(!Object.keys(JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'))).includes('情绪空间/谨慎'), '空间成员的位置不写进 _layout.json');
+  c = await coord('谨慎');
+  ok(Math.abs(c[0] - v[0]) < 0.03, '松手后卡片停在新坐标 ' + c.map(x => x.toFixed(2)) + ' vec ' + v);
+  await sleep(800);
+  const view = JSON.parse(readFileSync(join(ws, '.synapsis', 'view.json'), 'utf8'));
+  ok(view.spaceAxes?.['情绪空间']?.join() === '#0,#1', '投影方向记进 view.json');
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });

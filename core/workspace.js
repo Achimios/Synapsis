@@ -17,6 +17,7 @@
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, unlinkSync, rmdirSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { parseOutline, toOutline, resolveLabel, shortRef, ROOT } from './outline.js';
+import { checkSpaces } from './space.js';
 
 export const DIR = '__synapsis';
 const NODE_FILE = '_node.md';
@@ -336,11 +337,30 @@ export function checkWorkspace(ws) {
     if (n.id === ROOT) continue;
     if (!n.status && !n.children.length) issues.push({ level: 'warn', where: n.id, msg: '没有 status' }); // 分组的状态由子节点汇总
     if (n.meta.code && n.meta.code !== 'null') {
-      const f = n.meta.code.split('#')[0];
-      if (!existsSync(join(ws.root, f))) issues.push({ level: 'error', where: n.id, msg: 'code 指向不存在的文件：' + f });
+      const [f, sym] = n.meta.code.split('#');
+      const p = join(ws.root, f);
+      if (!existsSync(p)) issues.push({ level: 'error', where: n.id, msg: 'code 指向不存在的文件：' + f });
+      else if (sym && statSync(p).isFile() && !new RegExp('(^|[^\\w$])' + sym.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^\\w$])').test(readFileSync(p, 'utf8')))
+        issues.push({ level: 'error', where: n.id, msg: `code 的符号 #${sym} 在 ${f} 里找不到` });
     } else if (n.status === 'done' && !n.isGroup) issues.push({ level: 'info', where: n.id, msg: '标了 done 但没写 code' });
+    if (n.children.length && n.status) {
+      const agg = groupStatus(ws.graph, n.id);
+      if (agg && agg !== n.status) issues.push({ level: 'info', where: n.id, msg: `分组自己标的是 ${n.status}，子节点汇总是 ${agg}` });
+    }
   }
+  const g = ws.graph;
+  issues.push(...checkSpaces(g, id => g.nodes.get(id)?.meta, (from, ref) => resolveLabel(g.nodes, from, ref) || (g.nodes.has(ref) ? ref : null)));
   return issues;
+}
+
+// >v<💾工作区-分组状态汇总-看所有叶子：全 done = done，全 todo/未标 = todo，其余 partial（分组自己标的状态不算数，只做对照）
+export function groupStatus(g, id) {
+  const c = { done: 0, partial: 0, todo: 0 };
+  const walk = x => { for (const k of g.nodes.get(x).children) { const n = g.nodes.get(k); if (n.children.length) walk(k); else c[n.status || 'todo']++; } };
+  walk(id);
+  const total = c.done + c.partial + c.todo;
+  if (!total) return null;
+  return c.done === total ? 'done' : c.done + c.partial ? 'partial' : 'todo';
 }
 
 // >v<💾工作区-说明文件-每个 __synapsis/ 放一份 _synapsis.md = AI 接入手册（填好本工作区路径）。生成物：带标记就按最新手册刷新，人改过（去掉标记）就不动

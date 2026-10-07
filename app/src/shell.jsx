@@ -1,7 +1,8 @@
 // 外壳：左大纲（真源）、面包屑、导出、快捷键、贴图、工作区读写。
 // 画布组件（main.jsx，React Flow）只负责「显示 view + 回报用户操作」。
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, autoLayout, lineOf, ROOT } from './outline.js';
+import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, autoLayout, lineOf, resolveLabel, ROOT } from './outline.js';
+import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
 import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal } from './panels.jsx';
 import { SAMPLE } from './sample.js';
 import './shell.css';
@@ -53,21 +54,46 @@ export function Shell({ name, Canvas }) {
 
   const graph = useMemo(() => parseOutline(text), [text]);
   const realScope = graph.nodes.has(scope) ? scope : ROOT;
+  // >v<📐空间-界面-当前页是空间节点（有 axes:）→ 成员按 vec 投影到两根方向上（轴或成员方向 = 换基），拖动 = 改坐标
+  const [spaceAxes, setSpaceAxes] = useState({}); // scope -> [x方向, y方向]（'#0' = 第 0 根轴，或成员 id）
+  const getMeta = useCallback(id => wsData?.nodes[id]?.meta, [wsData]);
+  const space = useMemo(() => graph.nodes.has(realScope) ? spaceInfo(graph, realScope, getMeta) : null, [graph, realScope, getMeta]);
+  const plane = useMemo(() => {
+    if (!space) return null;
+    const keys = (spaceAxes[realScope] || ['#0', '#1']).map(k => k.startsWith('#') || space.members.some(m => m.id === k) ? k : '#0');
+    const u = direction(space, keys[0]), v = direction(space, keys[1] ?? '#1');
+    const pts = space.members.map(m => ({ id: m.id, x: dot(m.vec, u), y: dot(m.vec, v) }));
+    const S = 260 / Math.max(1, ...pts.map(p => Math.max(Math.abs(p.x), Math.abs(p.y)))); // 1 个单位多少像素：坐标都在 ±1 内就固定 260
+    return { keys, u, v, S, pts, angle: angleDeg(u, v), labels: keys.map(k => directionLabel(space, k)) };
+  }, [space, spaceAxes, realScope]);
   // 边标签 / 节点副标题来自工作区文件（大纲里没有）
   const view = useMemo(() => {
     const v = projectView(graph, realScope);
     const lab = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.label]));
+    const pAxes = space ? space.axes : null; // 在空间页里，成员卡片的小横条用这一页的轴名
+    // 空间 → 空间的边：源空间写了 映射→目标 就带上矩阵（画成热力图）
+    const matOf = e => {
+      if (e.count > 1) return null;
+      const [from, to] = e.raw[0].split('->');
+      const fm = getMeta(from), tm = getMeta(to);
+      if (!isSpace(fm) || !isSpace(tm)) return null;
+      const mp = mapsOf(fm).find(m => (resolveLabel(graph.nodes, from, m.ref) || m.ref) === to);
+      return mp ? { W: mp.W, rows: parseAxes(tm.axes), cols: parseAxes(fm.axes) } : null;
+    };
     return {
       ...v,
       nodes: v.nodes.map(n => ({
         ...n, sub: wsData?.nodes[n.id]?.meta?.rate || '',
+        evidence: wsData?.nodes[n.id]?.meta?.evidence || '',
+        vec: getMeta(n.id)?.vec ? parseVec(getMeta(n.id).vec) : null, vecAxes: pAxes,
+        spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
         picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id],
         open: !!expanded[n.id] && n.children.length > 0,
         kids: n.children.map(c => { const k = graph.nodes.get(c); return { id: c, label: k.label, status: k.status, n: k.children.length }; }),
       })),
-      edges: v.edges.map(e => ({ ...e, text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '' })),
+      edges: v.edges.map(e => ({ ...e, text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e) })),
     };
-  }, [graph, realScope, wsData, expanded, picFold, localPicw]);
+  }, [graph, realScope, wsData, expanded, picFold, localPicw, space, getMeta]);
   // >v<🖼️图片-卡片显示-节点的 _pics_名字/ 里所有图（旧版 frontmatter img: 也认）
   const images = useMemo(() => {
     if (local) return localImages;
@@ -90,7 +116,7 @@ export function Shell({ name, Canvas }) {
     api('/ws').then(d => {
       const v = d.view || {};
       lastSaved.current = d.outline; setText(d.outline); setPositions(d.layout || {}); setWsData(d);
-      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setPicFold(v.picFold || {}); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); if (v.scope) setScope(v.scope);
+      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setPicFold(v.picFold || {}); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
       setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
     }).catch(e => { setMode('offline'); setText(load('syn.text', SAMPLE)); setPositions(load('syn.pos.' + name, {})); setSaveState('⚠️ 没连上工作区（' + e.message + '），本地离线模式'); });
   }, []);
@@ -111,11 +137,17 @@ export function Shell({ name, Canvas }) {
     // 散图没坐标时排在节点右边一列
     const maxX = Math.max(0, ...Object.values(l).map(p => p.x));
     loosePics.forEach((p, i) => { l[p.id] = positions[p.id] || { x: maxX + 320, y: i * 240 }; });
+    // 空间页：成员的位置 = 坐标投影（卡片中心对准那个点），不用存的坐标；没坐标的旁注排在左边
+    if (plane) {
+      for (const p of plane.pts) l[p.id] = { x: p.x * plane.S, y: -p.y * plane.S };
+      space.loose.forEach((id, i) => { l[id] = positions[id] || { x: -plane.S - 420, y: -plane.S + i * 110 }; });
+    }
     return l;
-  }, [view, positions, loosePics]);
-  // 自动排出来的位置立刻固定（存起来），之后加节点别的节点不会跟着跳
+  }, [view, positions, loosePics, plane, space]);
+  const inPlane = id => !!plane && plane.pts.some(p => p.id === id);
+  // 自动排出来的位置立刻固定（存起来），之后加节点别的节点不会跟着跳（空间成员的位置由坐标决定，不存）
   useEffect(() => {
-    const missing = Object.fromEntries(Object.entries(layout).filter(([id]) => !positions[id]));
+    const missing = Object.fromEntries(Object.entries(layout).filter(([id]) => !positions[id] && !inPlane(id)));
     if (Object.keys(missing).length) move(missing);
   }, [layout]);
   const sel = selected && (view.nodes.some(n => n.id === selected) || view.portals.some(p => p.id === selected) || loosePics.some(p => p.id === selected)) ? selected : null;
@@ -129,9 +161,9 @@ export function Shell({ name, Canvas }) {
   // 工作区：视图状态停手 0.6s 写进 .synapsis/view.json
   useEffect(() => {
     if (mode !== 'ws') return;
-    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, leftHidden, picFold, propsOpen, scope: realScope }) }).catch(() => {}), 600);
+    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, leftHidden, picFold, propsOpen, spaceAxes, scope: realScope }) }).catch(() => {}), 600);
     return () => clearTimeout(t);
-  }, [viewports, expanded, leftHidden, picFold, propsOpen, realScope, mode]);
+  }, [viewports, expanded, leftHidden, picFold, propsOpen, spaceAxes, realScope, mode]);
   const onViewport = useCallback((sc, vp) => setViewports(v => ({ ...v, [sc]: vp })), []);
   const go = useCallback(next => {
     if (next === realScope) return;
@@ -155,9 +187,25 @@ export function Shell({ name, Canvas }) {
     if (t) setText(t);
   }, [graph]);
   const move = useCallback(changes => {
+    // 空间页里拖成员 = 改它的 vec（只改投影的那两个方向上的分量），乐观更新后写回 frontmatter
+    if (plane) {
+      const vecs = {};
+      for (const [id, pos] of Object.entries(changes)) {
+        const m = space.members.find(x => x.id === id);
+        if (m && pos.x !== undefined) vecs[id] = fmtVec(moveInPlane(m.vec, plane.u, plane.v, pos.x / plane.S, -pos.y / plane.S));
+      }
+      if (Object.keys(vecs).length) {
+        setWsData(d => ({ ...d, nodes: { ...d.nodes, ...Object.fromEntries(Object.entries(vecs).map(([id, vec]) => [id, { ...d.nodes[id], meta: { ...d.nodes[id].meta, vec } }])) } }));
+        Promise.all(Object.entries(vecs).map(([id, vec]) => api('/node', { method: 'PATCH', body: JSON.stringify({ id, meta: { vec } }) })))
+          .then(r => { setWsData(r[r.length - 1]); setSaveState('坐标已改 ' + Object.entries(vecs).map(([id, v]) => graph.nodes.get(id)?.label + ' = (' + v + ')').join('；')); })
+          .catch(e => setSaveState('❌ 坐标保存失败：' + e.message));
+        changes = Object.fromEntries(Object.entries(changes).filter(([id]) => !vecs[id]));
+        if (!Object.keys(changes).length) return;
+      }
+    }
     setPositions(p => { const q = { ...p }; for (const [k, v] of Object.entries(changes)) q[k] = { ...p[k], ...v }; return q; }); // 按键合并：散图的 w 和 x/y 分开更新
     if (mode === 'ws') api('/layout', { method: 'PUT', body: JSON.stringify({ positions: changes }) }).catch(e => setSaveState('❌ 坐标保存失败：' + e.message));
-  }, [mode]);
+  }, [mode, plane, space, graph]);
   // >v<🌳大纲模型-新建节点-Enter 同级 / Tab 子级（父节点原地展开）/ 工具栏＋；建完光标跳到大纲那一行、名字选中，直接打字改名
   const pendingRename = useRef(null);
   const addNode = asChild => {
@@ -427,7 +475,18 @@ export function Shell({ name, Canvas }) {
           <span className="hint keys" title="快捷键（? 或 F1）" onClick={() => setHelpOpen(true)}>?</span>
         </div>
         {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className="canvas" onDragOver={e => e.preventDefault()} onDrop={onDrop}>
+          {plane && <div className="planebar" title="投影方向可以是轴，也可以是某个成员的方向（= 换一组基看同一批点）。拖动卡片 = 改它在这两个方向上的坐标">
+            <b>空间</b>
+            {['X', 'Y'].map((a, i) => <label key={a}>{a}<select value={plane.keys[i]} onChange={e => setSpaceAxes(m => { const k = [...plane.keys]; k[i] = e.target.value; return { ...m, [realScope]: k }; })}>
+              <optgroup label="轴">{space.axes.map((x, j) => <option key={j} value={'#' + j}>{x}</option>)}</optgroup>
+              {space.members.length > 0 && <optgroup label="成员方向（换基）">{space.members.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}</optgroup>}
+            </select></label>)}
+            <span className={Math.abs(plane.angle - 90) > 1 ? 'warn' : 'hint'} title="两根投影方向的夹角；不是 90° = 这组基不正交，图上的距离被拉歪了">夹角 {plane.angle.toFixed(0)}°</span>
+            {space.members.length < 2 ? <span className="hint">子节点写 vec: 才会出现在这里</span> :
+              <span className="hint" title="成员两两余弦，|cos| 最大的一对：这两个其实差不多是一回事">最像：{(p => `${p.a}·${p.b} ${p.cos.toFixed(2)}`)(closestPairs(space, 1)[0])}</span>}
+          </div>}
           <Canvas key={realScope} view={view} layout={layout} selected={sel} images={images}
+            plane={plane && { S: plane.S, labels: plane.labels, ids: plane.pts.map(p => p.id) }}
             pics={loosePics.map(p => ({ ...p, w: positions[p.id]?.w || 0, folded: !!picFold[p.id] }))}
             onSelect={setSelected} onDrill={drill} onConnect={connect} onMove={move} onContextMenu={onContextMenu}
             viewport={viewports[realScope]} onViewport={vp => onViewport(realScope, vp)} />
@@ -495,7 +554,9 @@ export function NodeCard({ node, img, dim, isSel }) {
           onClick={e => { e.stopPropagation(); cardActions.foldPics(node.id); }}>🖼{img.length > 1 ? img.length : ''}</span>}
         {node.children.length > 0 && <span className="kids" title="展开/收起子级（空格）；双击卡片钻进" onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.toggle(node.id); }}>{node.open ? '▾' : '▸'} {node.children.length}</span>}</div>
-      {node.sub && <div className="sub">{node.sub}</div>}
+      {(node.sub || node.evidence) && <div className="sub">{node.evidence && <span className={'ev ev-' + (EVIDENCE[node.evidence] || 'x')} title="证据等级（evidence:）">{node.evidence}</span>}{node.sub}</div>}
+      {node.spaceAxes && <div className="axchips" title="空间节点：双击进去看成员的坐标投影">⊹ {node.spaceAxes.join(' · ')}</div>}
+      {node.vec && <VecBars vec={node.vec} axes={node.vecAxes} />}
       {node.open && node.kids && <ul className="kidlist">{node.kids.map(k => (
         <li key={k.id} title="双击跳进去" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
           <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span>{k.label}{k.n > 0 && <span className="kn">▸{k.n}</span>}
@@ -503,6 +564,43 @@ export function NodeCard({ node, img, dim, isSel }) {
       {showPics && <div className={'pics n' + Math.min(img.length, 3)}>{img.map(u => <img key={u} src={u} draggable={false} />)}
         <span className="picgrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} /></div>}
     </div>
+  );
+}
+// >v<📐空间-卡片小横条-vec 每一维一条，0 在中间（负值往左）；超过 8 维只给维数
+const EVIDENCE = { 实测: 'ok', 设计: 'design', 估计: 'guess', 未验: 'none' };
+function VecBars({ vec, axes }) {
+  if (vec.length > 8) return <div className="vecbars hint">{vec.length} 维向量</div>;
+  const m = Math.max(1, ...vec.map(x => Math.abs(x) || 0));
+  return (
+    <div className="vecbars">{vec.map((x, i) => (
+      <div key={i} className="vb" title={(axes?.[i] ?? '#' + i) + ' = ' + x}>
+        <span className="vl">{axes?.[i] ?? i}</span>
+        <span className="vt"><span className={'vf' + (x < 0 ? ' neg' : '')} style={{ width: (Math.abs(x) / m * 50 || 0) + '%', [x < 0 ? 'right' : 'left']: '50%' }} /></span>
+      </div>))}</div>
+  );
+}
+// >v<📐空间-映射热力图-边上画矩阵 W（行 = 目标轴，列 = 源轴），蓝正红负
+export function MatrixChip({ mat }) {
+  const m = Math.max(1e-9, ...mat.W.flat().map(x => Math.abs(x) || 0));
+  return (
+    <table className="matchip" title={'y = W·x\n行 = ' + mat.rows.join('、') + '\n列 = ' + mat.cols.join('、')}><tbody>
+      <tr><td />{mat.cols.map((c, j) => <th key={j}>{c.slice(0, 2)}</th>)}</tr>
+      {mat.W.map((r, i) => <tr key={i}><th>{(mat.rows[i] || '?').slice(0, 3)}</th>{r.map((x, j) => (
+        <td key={j} title={`${mat.rows[i]} ← ${mat.cols[j]}：${x}`} style={{ background: `color-mix(in srgb, ${x < 0 ? 'var(--neg)' : 'var(--pos)'} ${Math.round(Math.abs(x) / m * 100) || 0}%, transparent)` }}>{Number.isNaN(x) ? '?' : ''}</td>))}</tr>)}
+    </tbody></table>
+  );
+}
+// 空间页的坐标轴（画在节点层最底下，不挡点击）
+export function AxesCard({ S, labels }) {
+  const R = S * 1.25;
+  return (
+    <svg className="axes" width={2 * R} height={2 * R} viewBox={`${-R} ${-R} ${2 * R} ${2 * R}`}>
+      <circle r={S} className="unit" />
+      <line x1={-R} y1={0} x2={R} y2={0} /><line x1={0} y1={R} x2={0} y2={-R} />
+      {[-1, 1].map(t => <g key={t}><text x={t * S} y={14} textAnchor="middle">{t}</text><text x={6} y={-t * S + 4}>{t}</text></g>)}
+      <text className="al" x={R - 4} y={-8} textAnchor="end">{labels[0]} →</text>
+      <text className="al" x={8} y={-R + 14}>↑ {labels[1]}</text>
+    </svg>
   );
 }
 // 散图：没有卡片框，图就是本体（PureRef 式）；收起时是一个小签

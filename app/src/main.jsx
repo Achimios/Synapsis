@@ -1,8 +1,8 @@
 import { createRoot } from 'react-dom/client';
 import { useEffect, useState, useCallback } from 'react';
-import { ReactFlow, Background, Controls, MiniMap, Handle, Position, applyNodeChanges, MarkerType } from '@xyflow/react';
+import { ReactFlow, Background, Controls, MiniMap, Handle, Position, applyNodeChanges, MarkerType, BaseEdge, EdgeLabelRenderer, getBezierPath } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Shell, NodeCard, PortalCard, PicCard, edgeLook, nodeDim } from './shell.jsx';
+import { Shell, NodeCard, PortalCard, PicCard, AxesCard, MatrixChip, edgeLook, nodeDim } from './shell.jsx';
 
 function SNode({ data }) {
   return (
@@ -14,12 +14,24 @@ function SNode({ data }) {
   );
 }
 const PNode = ({ data }) => <PicCard pic={data.pic} isSel={data.isSel} />;
-const nodeTypes = { s: SNode, pic: PNode };
+const ANode = ({ data }) => <AxesCard S={data.S} labels={data.labels} />;
+const nodeTypes = { s: SNode, pic: PNode, axes: ANode };
+// 空间 → 空间的边：线照常画，标签位置放映射矩阵的热力图
+function MatEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, markerEnd, data }) {
+  const [path, lx, ly] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
+  return (<>
+    <BaseEdge id={id} path={path} style={style} markerEnd={markerEnd} />
+    <EdgeLabelRenderer><div className="matwrap nodrag nopan" style={{ transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)`, opacity: style.opacity }}><MatrixChip mat={data.mat} /></div></EdgeLabelRenderer>
+  </>);
+}
+const edgeTypes = { mat: MatEdge };
 
 // >v<🎨画布-ReactFlow-显示 view + 回报选择/拖动/连线/视图
-function RFCanvas({ view, layout, selected, images, pics = [], onSelect, onDrill, onConnect, onMove, onContextMenu, viewport, onViewport }) {
+function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, onDrill, onConnect, onMove, onContextMenu, viewport, onViewport }) {
+  const centered = new Set(plane?.ids || []); // 空间成员：卡片中心对准坐标点
   const build = () => [
-    ...view.nodes.map(n => ({ id: n.id, type: 's', position: layout[n.id], data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: n.id === selected }, selected: n.id === selected })),
+    ...(plane ? [{ id: '@axes', type: 'axes', position: { x: -plane.S * 1.25, y: -plane.S * 1.25 }, data: plane, draggable: false, selectable: false, focusable: false, zIndex: -1, style: { pointerEvents: 'none' } }] : []),
+    ...view.nodes.map(n => ({ id: n.id, type: 's', position: layout[n.id], ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: n.id === selected }, selected: n.id === selected })),
     ...view.portals.map(p => ({ id: p.id, type: 's', position: layout[p.id], data: { portal: p, dim: nodeDim(p.id, view, selected) }, selected: p.id === selected })),
     ...pics.map(p => ({ id: p.id, type: 'pic', position: layout[p.id] || { x: 0, y: 0 }, data: { pic: p, isSel: p.id === selected }, selected: p.id === selected })),
   ];
@@ -31,13 +43,13 @@ function RFCanvas({ view, layout, selected, images, pics = [], onSelect, onDrill
       // 坐标以外壳的 layout 为准；只有正在拖的节点用本地坐标（否则旧坐标会和自动布局打架，新节点压住老节点）
       return build().map(n => { const o = old.get(n.id); return o ? { ...o, ...n, position: o.dragging ? o.position : n.position } : n; });
     });
-  }, [view, layout, selected, images, pics]);
+  }, [view, layout, selected, images, pics, plane]);
 
   const edges = view.edges.map(e => {
     const l = edgeLook(e, selected);
     return {
       id: e.id, source: e.from, target: e.to,
-      label: e.text || undefined,
+      ...(e.mat ? { type: 'mat', data: { mat: e.mat } } : { label: e.text || undefined }),
       style: { stroke: l.color, strokeWidth: l.width, opacity: l.opacity },
       labelStyle: { fill: l.color, opacity: l.opacity }, labelBgStyle: { opacity: l.opacity * 0.8 },
       markerEnd: { type: MarkerType.ArrowClosed, color: l.color },
@@ -47,7 +59,7 @@ function RFCanvas({ view, layout, selected, images, pics = [], onSelect, onDrill
 
   const onNodesChange = useCallback(ch => setNodes(ns => applyNodeChanges(ch.filter(c => c.type !== 'select'), ns)), []);
   return (
-    <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange}
+    <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChange}
       onNodeClick={(_, n) => onSelect(n.id === selected ? null : n.id)}
       onPaneClick={() => onSelect(null)}
       onNodeContextMenu={(e, n) => { e.preventDefault(); onContextMenu(n.id, e.clientX, e.clientY); }}
