@@ -140,6 +140,19 @@ try {
     ok(g3.edges.some(e => e.from === '组' && e.to === '别处'), '撤销删除：边回来了');
   } finally { rmSync(r3, { recursive: true, force: true }); }
 
+  // 跨父移动：大纲里把 队长（带正文、属性、子节点）挪进 小队 → 不丢东西、不进 _过期的/
+  const r5 = mkdtempSync(join(tmpdir(), 'syn-move-'));
+  try {
+    saveOutline(r5, '小队\n  步枪兵\n队长 -> 步枪兵\n  口令\n精英');
+    setNodeMeta(r5, '队长', { rate: '1 Hz' });
+    writeFileSync(join(r5, DIR, '队长', '_node.md'), readFileSync(join(r5, DIR, '队长', '_node.md'), 'utf8') + '\n队长的正文\n');
+    const rep5 = saveOutline(r5, '小队\n  步枪兵\n  队长 -> 步枪兵\n    口令\n精英');
+    const g5 = loadWorkspace(r5).graph, cap = g5.nodes.get('小队/队长');
+    ok(cap && cap.meta.rate === '1 Hz' && cap.body.includes('队长的正文') && g5.nodes.has('小队/队长/口令'), '跨父移动：正文、属性、子节点跟着走');
+    ok(!rep5.removed.length && !g5.nodes.has('队长'), '跨父移动：没有东西进 _过期的/ ' + rep5.removed);
+    ok(g5.edges.some(e => e.from === '小队/队长' && e.to === '小队/步枪兵'), '跨父移动：边还在');
+  } finally { rmSync(r5, { recursive: true, force: true }); }
+
   // 项目骨架：检测已有 / 同类，只写勾上且不存在的
   const r4 = mkdtempSync(join(tmpdir(), 'syn-scaffold-'));
   try {

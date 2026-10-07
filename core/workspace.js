@@ -141,6 +141,20 @@ function matchNodes(cur, next) {
     for (const nk of newKids) visit(nk);
   };
   visit(ROOT);
+  // 跨父移动（👤 2026-10-08 要把 队长 / 斥候 挪进 小队）：同父下没对上的新节点，若全图只有一个同名的旧节点也没被用上 → 认作搬家
+  // （以前这里会当成「删旧建新」：正文、属性进 _过期的/，新位置是空节点）
+  const order = [];
+  const dfs = id => { for (const c of next.nodes.get(id).children) { order.push(c); dfs(c); } };
+  dfs(ROOT);
+  for (const nk of order) {
+    if (map.get(nk) !== null) continue;
+    const label = next.nodes.get(nk).label;
+    const cands = [...cur.nodes.keys()].filter(ck => ck !== ROOT && !used.has(ck) && cur.nodes.get(ck).label === label);
+    const twins = order.filter(x => map.get(x) === null && next.nodes.get(x).label === label);
+    if (cands.length !== 1 || twins.length !== 1) continue;
+    map.set(nk, cands[0]); used.add(cands[0]);
+    visit(nk); // 它的子节点跟着重新对
+  }
   return { map, used };
 }
 

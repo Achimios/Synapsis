@@ -1,11 +1,11 @@
 # 开发进度（只写现状；流水账在 `_过期的/_DevProgress.md`）
 
 > 规矩见 `_ProjectRules.md` §2：修好的小 bug、技术过程当轮就剪去过期；机理进 `_LEARNINGS.md`。
-> 最近一次全量自检（2026-10-08）：workspace 44、cli 31、space 18、arrange 11、outline 22、ui 116、desktop 9 —— 全过。
+> 最近一次全量自检（2026-10-08）：workspace 47、cli 31、space 18、arrange 11、outline 22、ui 116、desktop 9 —— 全过。
 
 | 模块 | 状态 | ⚠️ 还没验到 |
 |---|---|---|
-| **core/ 工作区读写** | ✅ `__synapsis/` 一节点一 md（文件夹 = 层级、frontmatter、正文不动）；改名搬文件、删除进 `_过期的/`；图片 `_pics_名字/` 跟着走；视图 `.synapsis/view.json` | 稳定 id（跨父移动 + 改名会断关联） |
+| **core/ 工作区读写** | ✅ `__synapsis/` 一节点一 md（文件夹 = 层级、frontmatter、正文不动）；改名搬文件、删除进 `_过期的/`；图片 `_pics_名字/` 跟着走；视图 `.synapsis/view.json` | 跨父移动已保留正文（全图同名唯一时）；同名多处 + 移动仍会断，需稳定 id |
 | **CLI**（LLM 接口）`core/cli.js` | ✅ 读：overview / outline / export / get / find / check；写：add（撞名报错，`--if-missing` 幂等）/ rename / status / link（带标签）/ unlink / body / set / rm / batch（一进程一批）/ apply；check 查 `#符号`；overview 分组按子节点汇总 | 包成 MCP（见 TODO） |
 | **AI 接入手册** | ✅ 源头 `core/templates/AI_Manual.md` → 根目录 `_AI_Manual.md`（通用）+ 每个工作区 `__synapsis/_synapsis.md`（填好路径，打开工作区 / init 时自动刷新）；工具问题写 Synapsis 的 `_Blackboard.md`，**项目讨论**写各工作区 `__synapsis/_Blackboard.md`（init 建）| 第一次被另一个 Claude 真用（Life Games，2026-10-08） |
 | **空间节点** `core/space.js` | ✅ `axes:` 的节点 = 空间，子节点 `vec:` = 坐标，`映射→目标:` = 矩阵；进空间页 = 散点投影（轴或成员方向当基，夹角 ≠ 90° 标黄），拖动改 vec；卡片小横条；空间之间的边 = 热力图；check 查维数 / 矩阵形状 | 非正交基时坐标轴仍画成直角（只标黄提醒）；样例模式没有空间；手感需人眼 |
