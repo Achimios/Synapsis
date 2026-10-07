@@ -1,5 +1,5 @@
 // 右键菜单、属性面板、文件树（外部区）、文件预览。外壳把状态和动作传进来，这里只管显示。
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const STATUS = [['done', '✅'], ['partial', '◐'], ['todo', '○']];
 
@@ -108,5 +108,43 @@ export function FilePanel({ file, onClose }) {
         {!file ? <div className="hint">加载中…</div> : file.error ? <div className="errs">{file.error}</div> : file.text === null ? <div className="hint">{file.note}</div> : <pre className="raw">{file.text}</pre>}
       </div>
     </aside>
+  );
+}
+
+// >v<🌳大纲模型-大纲树-左栏默认页：点一下 = 导航 + 看内容（不进编辑）；双击 / F2 = 原地改名；▸ 折叠；→ 钻进；↑↓←→ 键盘走
+export function OutlineTree({ graph, selected, scope, renaming, status, onPick, onDrill, onRename, onCommit, onCancel }) {
+  const [open, setOpen] = useState({});
+  const box = useRef(null);
+  // 默认：前两层展开；当前页和选中节点的祖先一律展开（大纲里永远看得到「我在哪」）
+  const focus = new Set();
+  for (const f of [scope, selected]) for (let c = f; c && graph.nodes.has(c); c = graph.nodes.get(c).parent) focus.add(c);
+  const isOpen = (id, depth) => open[id] ?? (depth < 2 || focus.has(id));
+  const rows = [];
+  const walk = (id, depth) => { for (const c of graph.nodes.get(id).children) { const n = graph.nodes.get(c); rows.push({ n, depth }); if (n.children.length && isOpen(c, depth)) walk(c, depth + 1); } };
+  walk('', 0);
+  useEffect(() => { box.current?.querySelector('.orow.sel')?.scrollIntoView({ block: 'nearest' }); }, [selected]);
+  const onKey = e => {
+    if (renaming) return;
+    const i = rows.findIndex(r => r.n.id === selected), r = rows[i];
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const j = Math.max(0, Math.min(rows.length - 1, i < 0 ? 0 : i + (e.key === 'ArrowDown' ? 1 : -1))); onPick(rows[j].n.id); }
+    else if (e.key === 'ArrowRight' && r?.n.children.length) { e.preventDefault(); setOpen(o => ({ ...o, [r.n.id]: true })); }
+    else if (e.key === 'ArrowLeft' && r) { e.preventDefault(); if (r.n.children.length && isOpen(r.n.id, r.depth)) setOpen(o => ({ ...o, [r.n.id]: false })); else if (r.n.parent) onPick(r.n.parent); }
+  };
+  return (
+    <div className="otree" ref={box} tabIndex={0} onKeyDown={onKey}>
+      {rows.map(({ n, depth }) => (
+        <div key={n.id} className={'orow' + (n.id === selected ? ' sel' : '') + (n.id === scope && scope ? ' scope' : '')} style={{ paddingLeft: 4 + depth * 12 }}
+          onClick={() => { if (renaming !== n.id) onPick(n.id); }} onDoubleClick={() => onRename(n.id)} title={n.id}>
+          <span className="ocaret" onClick={e => { e.stopPropagation(); if (n.children.length) setOpen(o => ({ ...o, [n.id]: !isOpen(n.id, depth) })); }}>{n.children.length ? (isOpen(n.id, depth) ? '▾' : '▸') : ''}</span>
+          <span className="ost">{n.status ? status[n.status] : '·'}</span>
+          {renaming === n.id
+            ? <input autoFocus defaultValue={n.label} onFocus={e => e.target.select()} onClick={e => e.stopPropagation()}
+                onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') { e.target.dataset.done = 1; onCommit(n.id, e.target.value); } else if (e.key === 'Escape') { e.target.dataset.done = 1; onCancel(); } }}
+                onBlur={e => { if (!e.target.dataset.done) onCommit(n.id, e.target.value); }} />
+            : <span className="olab">{n.label}</span>}
+          {n.children.length > 0 && renaming !== n.id && <span className="odrill" title="钻进这一层（画布显示它的子节点）" onClick={e => { e.stopPropagation(); onDrill(n.id); }}>→</span>}
+        </div>
+      ))}
+    </div>
   );
 }

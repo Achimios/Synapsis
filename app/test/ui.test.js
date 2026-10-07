@@ -112,10 +112,41 @@ for (const kind of ['reactflow']) {
   await page.keyboard.press('Enter'); await sleep(400);
   ok((await cards()).some(t => t.includes('新节点')), 'Enter 新建同级节点');
   // 建完光标在大纲里、名字选中 → 直接打字就是改名
-  const selTxt = () => page.evaluate(() => { const a = document.activeElement; return a.tagName === 'TEXTAREA' ? a.value.slice(a.selectionStart, a.selectionEnd) : '(焦点不在大纲：' + a.tagName + ')'; });
-  ok((await selTxt()) === '新节点', '新建后大纲选中名字 ' + await selTxt());
-  await page.keyboard.type('效用表'); await sleep(400);
-  ok((await cards()).some(t => t.includes('效用表')), '直接打字改名 → 画布同步');
+  // 改名在大纲树里原地出输入框（👤：点大纲不该直接进编辑；改名 = 新建后 / F2 / 双击）
+  const selTxt = () => page.evaluate(() => { const a = document.activeElement; return a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' ? a.value.slice(a.selectionStart, a.selectionEnd) : '(焦点不在改名框：' + a.tagName + ')'; });
+  ok((await selTxt()) === '新节点', '新建后大纲树里出改名框、名字选中 ' + await selTxt());
+  await page.keyboard.type('效用表'); await page.keyboard.press('Enter'); await sleep(400);
+  ok((await cards()).some(t => t.includes('效用表')), '直接打字 + 回车改名 → 画布同步');
+  ok((await page.$$eval('.card.sel', cs => cs.map(c => c.innerText))).some(t => t.includes('效用表')), '改名后仍选中它');
+  // Insert = 新建子级（Tab 改给左栏开关了）
+  await page.keyboard.press('Insert'); await sleep(400);
+  ok((await selTxt()) === '新节点', 'Insert 新建子级 → 改名框 ' + await selTxt());
+  await page.keyboard.press('Escape'); await sleep(200);
+  ok(/效用表\n\s+\S*\s*新节点/.test(await outline()), 'Insert 建在选中节点下面 ' + JSON.stringify((await outline()).split('\n').filter(l => l.includes('新节点') || l.includes('效用表'))));
+  // Tab = 左栏开关；鼠标侧键 = 后退 / 前进
+  await page.mouse.click(1000, 780); await sleep(200);
+  await page.keyboard.press('Tab'); await sleep(200);
+  ok(await page.$eval('aside.outline', a => getComputedStyle(a).display) === 'none', 'Tab 收起左栏');
+  await page.keyboard.press('Tab'); await sleep(200);
+  ok(await page.$eval('aside.outline', a => getComputedStyle(a).display) !== 'none', '再按 Tab 展开左栏');
+  const crumbNow = () => page.$eval('.crumbs', e => e.innerText);
+  const side = btn => page.evaluate(b => { for (const t of ['mousedown', 'mouseup']) window.dispatchEvent(new MouseEvent(t, { button: b, bubbles: true })); }, btn);
+  await side(3); await sleep(600);
+  ok((await crumbNow()) === '根', '鼠标后退键 → 回到根 ' + await crumbNow());
+  await side(4); await sleep(600);
+  ok((await crumbNow()).includes('游戏AI'), '鼠标前进键 → 回到游戏AI ' + await crumbNow());
+  // 大纲树：点一下 = 导航 + 属性面板显示内容，不进编辑
+  await page.click('.orow:has-text("短期记忆")'); await sleep(600);
+  ok((await crumbNow()).includes('记忆与人格'), '点大纲树 → 画布跳到那一页 ' + await crumbNow());
+  ok((await page.$eval('.side h3', e => e.innerText).catch(() => '')) === '短期记忆', '点大纲树 → 右侧显示它的内容');
+  ok(await page.evaluate(() => document.activeElement.tagName) !== 'INPUT', '点大纲树不进改名');
+  await page.keyboard.press('ArrowDown'); await sleep(300);
+  ok((await page.$eval('.orow.sel', e => e.innerText)).includes('个性空间'), '大纲树 ↓ 走到下一个');
+  await page.dblclick('.orow:has-text("个性空间")'); await sleep(300);
+  ok((await selTxt()) === '个性空间', '双击大纲树 → 改名框');
+  await page.keyboard.press('Escape'); await sleep(200);
+  await page.click('.side .bar button'); // 关掉属性面板
+  await page.keyboard.press('Alt+ArrowLeft'); await sleep(600);
   await page.mouse.click(1000, 780); await sleep(200);
   await page.click('button:has-text("＋ 节点")'); await sleep(400);
   ok((await selTxt()).startsWith('新节点'), '工具栏 ＋节点 → 大纲选中名字 ' + await selTxt());
@@ -236,6 +267,34 @@ for (const kind of ['reactflow']) {
   ok((await page.$eval('.crumbs', e => e.innerText)).includes('游戏AI'), '刷新后还在上次那一页 ' + await page.$eval('.crumbs', e => e.innerText));
   ok(await page.$eval('.react-flow__viewport', v => v.style.transform) === camBefore, '刷新后视图还原 ' + camBefore);
   ok((await page.$$('.card .pics img')).length === 1, '刷新后卡片显示 _pics_ 里的图');
+  // 收起 / 显示：卡片上的 🖼；工具栏全局按钮
+  await page.click('.card .picbadge'); await sleep(400);
+  ok((await page.$$('.card .pics img')).length === 0, '点 🖼 收起这张卡的图');
+  await page.click('button:has-text("显示图片")'); await sleep(400);
+  ok((await page.$$('.card .pics img')).length === 1, '全局「显示图片」');
+  await page.click('button:has-text("收起图片")'); await sleep(400);
+  ok((await page.$$('.card .pics img')).length === 0, '全局「收起图片」');
+  await page.click('button:has-text("显示图片")'); await sleep(400);
+  // 右下角拖 → 宽度写进节点 frontmatter picw
+  await page.hover('.card.hasimg'); await sleep(200);
+  const g = await (await page.$('.card .picgrip')).boundingBox();
+  const w0 = (await (await page.$('.card.hasimg')).boundingBox()).width;
+  await page.mouse.move(g.x + 5, g.y + 5); await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(g.x + 5 + i * 15, g.y + 5 + i * 5);
+  await page.mouse.up(); await sleep(1200);
+  ok((await (await page.$('.card.hasimg')).boundingBox()).width > w0 + 60, '拖图片右下角 → 卡片变宽');
+  ok(/picw: \d+/.test(readFileSync(join(ws, '__synapsis', '游戏AI', '决策', '_node.md'), 'utf8')), '宽度写进 _node.md 的 picw');
+  // 图片拖到空白处 → 新建一张图片卡（文件名当名字），图存进它的 _pics_
+  const nBefore = (await page.$$('.card')).length;
+  await page.evaluate(png => {
+    const bin = atob(png.split(',')[1]), u8 = Uint8Array.from(bin, c => c.charCodeAt(0));
+    const dt = new DataTransfer(); dt.items.add(new File([u8], '参考图.png', { type: 'image/png' }));
+    const c = document.querySelector('.canvas'), r = c.getBoundingClientRect();
+    c.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: r.left + 80, clientY: r.bottom - 80 }));
+  }, PNG);
+  await sleep(2500);
+  ok((await page.$$('.card')).length === nBefore + 1 && (await page.$$eval('.card .title', ts => ts.map(t => t.textContent))).some(t => t.includes('参考图')), '拖图到空白处 → 新卡「参考图」');
+  ok(existsSync(join(ws, '__synapsis', '游戏AI', '_pics_参考图')) && readdirSync(join(ws, '__synapsis', '游戏AI', '_pics_参考图')).length === 1, '图存进 游戏AI/_pics_参考图/');
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });

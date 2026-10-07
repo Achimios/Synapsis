@@ -68,7 +68,20 @@ function workspaceApi() {
           if (url.pathname === '/tree' && req.method === 'GET') return send(200, listTree(root));
           if (url.pathname === '/raw' && req.method === 'GET') return send(200, readProjectFile(root, url.searchParams.get('p') || ''));
           if (url.pathname === '/layout' && req.method === 'PUT') { saveLayout(root, (await body(req)).positions); return send(200, { ok: true }); }
-          if (url.pathname === '/asset' && req.method === 'POST') { const b = await body(req); return send(200, { path: saveAsset(root, b.id, b.dataUrl) }); }
+          if (url.pathname === '/asset' && req.method === 'POST') {
+            const b = await body(req);
+            // 从浏览器拖来的网页图：页面跨域拿不到，由本机服务代下（只收图片、30MB 封顶）
+            if (b.url && !b.dataUrl) {
+              if (!/^https?:\/\//.test(b.url)) return send(400, { error: '只支持 http(s) 图片地址' });
+              const r = await fetch(b.url, { signal: AbortSignal.timeout(20000) });
+              const ct = (r.headers.get('content-type') || '').split(';')[0].trim();
+              if (!r.ok || !ct.startsWith('image/')) return send(400, { error: `拿不到图片（${r.status} ${ct || '未知类型'}）` });
+              const buf = Buffer.from(await r.arrayBuffer());
+              if (buf.length > 30e6) return send(400, { error: '图片超过 30MB' });
+              b.dataUrl = `data:${ct};base64,${buf.toString('base64')}`;
+            }
+            return send(200, { path: saveAsset(root, b.id, b.dataUrl) });
+          }
           if (url.pathname === '/file' && req.method === 'GET') {
             const base = join(root, DIR);
             const f = normalize(join(base, url.searchParams.get('p') || ''));

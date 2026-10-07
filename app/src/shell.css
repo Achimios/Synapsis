@@ -116,3 +116,25 @@ pre.raw { margin: 0; white-space: pre-wrap; word-break: break-word; font: var(--
 .fi { padding: 1px 6px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.5; }
 .fi:hover { background: var(--hover); }
 .fi.cur { background: #2f4f7a; }
+/* 图片：收起徽标 + 右下角拖动调大小 */
+.card .lab { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.card .picbadge { margin-left: auto; font-size: 10px; cursor: pointer; opacity: .6; user-select: none; padding: 0 2px; border-radius: 3px; }
+.card .picbadge:hover { opacity: 1; background: #444; }
+.card .picbadge + .kids { margin-left: 2px; }
+.card .pics { position: relative; }
+.card .picgrip { position: absolute; right: -4px; bottom: -4px; width: 12px; height: 12px; cursor: nwse-resize; border-right: 2px solid var(--dim); border-bottom: 2px solid var(--dim); opacity: 0; transition: opacity .1s; }
+.card:hover .picgrip, .card.sel .picgrip { opacity: .8; }
+/* 大纲树 */
+.otree { flex: 1; overflow: auto; padding: 2px 0; outline: none; }
+.orow { display: flex; align-items: center; gap: 3px; padding: 0 6px 0 0; line-height: 20px; cursor: pointer; white-space: nowrap; }
+.orow:hover { background: var(--hover); }
+.orow.sel { background: #2f4f7a; color: #fff; }
+.orow.scope > .olab { color: var(--accent); font-weight: 600; }
+.orow .ocaret { width: 14px; flex: none; text-align: center; color: var(--dim); font-size: 11px; }
+.orow .ocaret:hover { color: var(--text); }
+.orow .ost { font-size: 9px; width: 12px; flex: none; text-align: center; }
+.orow .olab { overflow: hidden; text-overflow: ellipsis; }
+.orow .odrill { margin-left: auto; color: var(--faint); font-size: 10px; padding: 0 4px; border-radius: 3px; visibility: hidden; }
+.orow:hover .odrill { visibility: visible; }
+.orow .odrill:hover { background: #444; color: #fff; }
+.orow input { flex: 1; min-width: 0; font: inherit; background: var(--panel2); color: #fff; border: 1px solid var(--accent); border-radius: 2px; padding: 0 3px; outline: none; }

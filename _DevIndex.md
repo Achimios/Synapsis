@@ -21,7 +21,7 @@ grep -rn ">v<💾工作区" core app bootstrap --include=*.js --include=*.jsx
 
 | 标记 | 涉及范围 | 说明 |
 |---|---|---|
-| `>v<🌳大纲模型` | `core/outline.js` | 大纲文本 ⇄ 图；画布编辑（加边/加节点）后回写大纲 |
+| `>v<🌳大纲模型` | `core/outline.js` `app/src/panels.jsx`(OutlineTree) `app/src/shell.jsx` | 大纲文本 ⇄ 图；画布编辑后回写大纲；左栏大纲树（导航 / 原地改名） |
 | `>v<🔭视图投影` | `core/outline.js` | 范围投影（跨层边聚合、portal）、自动布局 |
 | `>v<📤LLM导出` | `core/outline.js` | 节点卡格式的结构化文本 |
 | `>v<💾工作区` | `core/workspace.js` `app/vite.config.js` `app/src/shell.jsx` `core/tools/` | `__synapsis/` 文件夹 ⇄ 图、HTTP 接口、界面自动保存、导入空间图 |
