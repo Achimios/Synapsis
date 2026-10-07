@@ -7,6 +7,6 @@
 - `tools/import_spacegraph.js`：一次性导入记录（空间图.html → 研究工作区）
 
 规矩：
-- 一切改动先过 `node core/test/workspace.test.js` 和 `node spikes/test/outline.test.js`；⭐往返逐字相等是这里的「必须相等的量」
+- 一切改动先过 `node core/test/workspace.test.js` 和 `node app/test/outline.test.js`；⭐往返逐字相等是这里的「必须相等的量」
 - 不删用户写的东西：节点消失 → 文件移进 `_过期的/`；正文 Synapsis 永远不改
 - 含反斜杠的代码别用 Git Bash heredoc 写（见 `../_LEARNINGS.md` #9–#11）

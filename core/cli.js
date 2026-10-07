@@ -63,7 +63,11 @@ export function init(root) {
   mkdirSync(join(root, DIR), { recursive: true });
   if (ensureWorkspaceReadme(root, join(HOME, 'core', 'cli.js').split('\\').join('/'))) made.push(DIR + '/_synapsis.md');
   put('.synapsis/.gitignore', '# 本机状态（视图、缓存），不进 git\n*\n');
-  put('Synapsis.vbs', readFileSync(join(HOME, 'core', 'templates', 'Synapsis.vbs'), 'utf8').split('{{SYNAPSIS_HOME}}').join(HOME));
+  // 启动器是生成物：内容和最新模板不同就刷新（Synapsis 搬家/改目录后重跑 init 即可修好旧项目）
+  const vbs = join(root, 'Synapsis.vbs');
+  const fresh = readFileSync(join(HOME, 'core', 'templates', 'Synapsis.vbs'), 'utf8').split('{{SYNAPSIS_HOME}}').join(HOME);
+  if (!existsSync(vbs)) { writeFileSync(vbs, fresh); made.push('Synapsis.vbs'); }
+  else if (readFileSync(vbs, 'utf8') !== fresh) { writeFileSync(vbs, fresh); made.push('Synapsis.vbs（按新模板刷新）'); }
   console.log(made.length ? '已创建：\n  ' + made.join('\n  ') : '都已存在，没动');
   console.log('双击 ' + join(root, 'Synapsis.vbs') + ' 打开');
 }

@@ -64,4 +64,4 @@
 2. 跟用户**用一两句话**确认：这是什么、精度定位、当前专注 → 写进 `AGENTS.md` 的对应格子。**别一次问一堆**，问不清的先写「待定」。
 3. 写 `_where_continue.md` 第一版；第一个提交 `chore: 项目骨架（Synapsis bootstrap）`。
 4. 之后边做边长：子目录出现明确职责时再加分布式 AGENTS.md，不要预先建空壳。
-5. 被 Synapsis 规划时：项目根建 `__synapsis/`（图数据，进 git）与 `.synapsis/`（本机状态，gitignore）。
+5. 要用 Synapsis 规划：把项目文件夹拖到 `<Synapsis>/Synapsis_init.bat` 上（或 `node <Synapsis>/core/cli.js init <目录>`）→ 生成 `__synapsis/`（图数据，进 git）、`.synapsis/`（本机状态，自带 gitignore）、根目录 `Synapsis.vbs` 启动器。

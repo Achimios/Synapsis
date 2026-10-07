@@ -54,7 +54,8 @@ export function serializeNode(meta, body) {
     else if (v !== undefined && v !== null && v !== '') lines.push(`${k}: ${v}`);
   }
   lines.push('---', '');
-  return lines.join('\n') + (body ? body.replace(/\s+$/, '') + '\n' : '');
+  // frontmatter 与正文之间固定空一行（读的时候去掉开头空行）→ 人手写的、导入的、Synapsis 写的格式一致，往返不抖动
+  return lines.join('\n') + (body ? '\n' + body.replace(/\s+$/, '') + '\n' : '');
 }
 
 const parseEdge = s => { const [to, label = '', kind = ''] = s.split('|').map(x => x.trim()); return { to, label, kind }; };
@@ -129,6 +130,8 @@ function matchNodes(cur, next) {
   return { map, used };
 }
 
+// Windows 上 git checkout 会把文件转成 CRLF → 按字节比会把没改的文件全重写一遍（2026-10-07 自身工作区 apply 抓到）
+const sameText = (a, b) => a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n');
 const stamp = () => new Date().toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '_');
 
 // >v<💾工作区-写回-大纲 → 文件：保留正文/其余属性/边标签；改名=搬文件；删除=移进 _过期的/（不真删）
@@ -178,7 +181,7 @@ export function saveOutline(root, text) {
   // 2) 写新内容（只写变了的）
   for (const [file, { content, old }] of writes) {
     const prev = existsSync(file) ? readFileSync(file, 'utf8') : null;
-    if (prev === content) continue;
+    if (prev !== null && sameText(prev, content)) continue;
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, content);
     report.written.push(relative(base, file));
@@ -210,7 +213,7 @@ function writeLayout(base, layout) {
   mkdirSync(base, { recursive: true });
   const file = join(base, '_layout.json');
   const content = JSON.stringify(sorted, null, 1) + '\n';
-  if (!existsSync(file) || readFileSync(file, 'utf8') !== content) writeFileSync(file, content);
+  if (!existsSync(file) || !sameText(readFileSync(file, 'utf8'), content)) writeFileSync(file, content);
 }
 
 export function saveLayout(root, positions) {

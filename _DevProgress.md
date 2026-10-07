@@ -20,3 +20,5 @@
 - ✅ **init + 启动器**：研究与 Synapsis 各有 `Synapsis.vbs` + `.synapsis/`（自带 `*` gitignore）。【实测】VBS 的 UTF-8 编码与 encodeURIComponent 逐字相等；【未验】双击 VBS 全流程（用户不在，没弹浏览器）
 - 🐛 修：新节点压住老节点（自动布局不避让 + RF 保留旧本地坐标）→ 找空槽 + 自动位置立即固定 + RF 只在拖动中用本地坐标；断环改按大纲顺序（DFS 顺序把「内在」甩到最右）
 - ✅ 新建节点可发现：工具栏「＋ 节点」、Enter/Tab 建完光标跳到大纲选中名字直接改名；原地展开子级（▸N/空格/全部展开，双击子项跳进去）。【实测】test:ui 72/72
+- ✅ **画布定为 React Flow**（👤 问该定了，Claude 给证据：胶水代码/坑/体积/许可/未来矩阵与基变换需求）。`spikes/` → `app/`，tldraw 版进 `_过期的/tldraw_spike/`，卸 tldraw（打包 1.7MB → 416kB）。决定记录 `_Design/Decision_Canvas.md`。【实测】outline 18、workspace 19、ui 36、Synapsis 自身 check 0 错
+- ✅ `Synapsis_init.bat`：拖项目文件夹上去 = init；init 重跑会按新模板刷新启动器（研究与 Synapsis 的启动器已刷新到 `app`）。【实测】中文路径（初始化测试）通过

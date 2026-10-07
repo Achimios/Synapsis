@@ -34,4 +34,4 @@
 与服务共用 `core/`。
 
 ## 5. 画布库
-React Flow（MIT）vs tldraw（自有许可，待核实）—— 同一需求各做一版原型，用户亲手试后定。见 `spikes/`。
+React Flow（MIT）vs tldraw（自有许可，待核实）—— 同一需求各做一版原型，用户亲手试后定。见 `app/`。

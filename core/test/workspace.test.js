@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSy
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, DIR } from '../workspace.js';
-import { SAMPLE } from '../../spikes/src/sample.js';
+import { SAMPLE } from '../../app/src/sample.js';
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { c ? pass++ : (fail++, console.log('✗', m)); };
@@ -59,6 +59,12 @@ try {
   saveOutline(root, workspaceOutline(loadWorkspace(root)).replace(/^\s+○ 地图分区\n?/m, ''));
   ok(!existsSync(B('游戏设计规划/地图分区.md')), '删除的节点不在原处');
   ok(readdirSync(B('_过期的')).some(n => n.includes('地图分区')), '删除的节点进了 _过期的/');
+
+  // CRLF（git checkout 后）不算改动，不重写
+  const crlfFile = B('游戏AI/决策/_node.md');
+  writeFileSync(crlfFile, readFileSync(crlfFile, 'utf8').replace(/\n/g, '\r\n'));
+  const r0 = saveOutline(root, workspaceOutline(loadWorkspace(root)));
+  ok(r0.written.length === 0, '原样写回 = 0 个文件变动（CRLF 也不算）' + JSON.stringify(r0.written));
 
   // 大纲有错就不写
   const r = saveOutline(root, 'A -> 不存在');

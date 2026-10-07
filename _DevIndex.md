@@ -8,7 +8,7 @@
 **怎么用**：想改哪块功能，先在本表找到大标题，再全局搜那个大标题字符串，所有相关位置一次列全。
 
 ```bash
-grep -rn ">v<💾工作区" core spikes bootstrap --include=*.js --include=*.jsx
+grep -rn ">v<💾工作区" core app bootstrap --include=*.js --include=*.jsx
 ```
 
 > ⚠️ 在本文件里写标记一律包反引号：行首的 `>` 会被 Markdown 当成引用块。
@@ -24,12 +24,12 @@ grep -rn ">v<💾工作区" core spikes bootstrap --include=*.js --include=*.jsx
 | `>v<🌳大纲模型` | `core/outline.js` | 大纲文本 ⇄ 图；画布编辑（加边/加节点）后回写大纲 |
 | `>v<🔭视图投影` | `core/outline.js` | 范围投影（跨层边聚合、portal）、自动布局 |
 | `>v<📤LLM导出` | `core/outline.js` | 节点卡格式的结构化文本 |
-| `>v<💾工作区` | `core/workspace.js` `spikes/vite.config.js` `spikes/src/shell.jsx` `core/tools/` | `__synapsis/` 文件夹 ⇄ 图、HTTP 接口、界面自动保存、导入空间图 |
+| `>v<💾工作区` | `core/workspace.js` `app/vite.config.js` `app/src/shell.jsx` `core/tools/` | `__synapsis/` 文件夹 ⇄ 图、HTTP 接口、界面自动保存、导入空间图 |
 | `>v<🤖LLM接口` | `core/cli.js` | overview / outline / export / get / check / apply / init |
-| `>v<🧭导航` | `spikes/src/shell.jsx` | 钻进/退出、后退前进、视图记忆、快捷键 |
-| `>v<🎨画布` | `spikes/src/rf.jsx` `spikes/src/td.jsx` `spikes/src/shell.jsx` | 两个画布实现、贴图 |
-| `>v<🚀启停` | `spikes/vite.config.js` `spikes/src/shell.jsx` `core/cli.js`(init) + `core/templates/Synapsis.vbs` `Synapsis_stop.bat` | 无窗口启动、按端口停止、心跳自动退出 |
-| `>v<✅自检` | `spikes/test/` `core/test/` `core/workspace.js`(checkWorkspace) | 纯 Node 核心自检 + 无头 Edge 界面自检 |
+| `>v<🧭导航` | `app/src/shell.jsx` | 钻进/退出、后退前进、视图记忆、快捷键 |
+| `>v<🎨画布` | `app/src/main.jsx` `app/src/td.jsx` `app/src/shell.jsx` | 两个画布实现、贴图 |
+| `>v<🚀启停` | `app/vite.config.js` `app/src/shell.jsx` `core/cli.js`(init) + `core/templates/Synapsis.vbs` `Synapsis_stop.bat` `Synapsis_init.bat` | 无窗口启动、按端口停止、心跳自动退出 |
+| `>v<✅自检` | `app/test/` `core/test/` `core/workspace.js`(checkWorkspace) | 纯 Node 核心自检 + 无头 Edge 界面自检 |
 | `>v<🏗️构建引导` | `bootstrap/bootstrap.js` `bootstrap/template/` | 给新项目铺骨架，已有文件跳过 |
 
 ---
@@ -49,7 +49,7 @@ grep -rn ">v<💾工作区" core spikes bootstrap --include=*.js --include=*.jsx
 小标题：
 
 - **范围投影** —— `projectView`：只显示当前范围的直接子节点；子孙之间的边提升到可见祖先上并聚合（`count`，画成 ×N）；端点在范围外 → `@portal:<id>` 节点，双击跳过去。
-- **原地展开** —— 卡片 `▸N` 点一下或选中后空格：子节点列在卡片里（状态 + 孙辈数）；双击子项 = 跳进去并选中；「全部展开/收起」。展开状态存 localStorage `syn.exp`。⚠️卡片里可点的元素要拦 `pointerdown`，否则 tldraw/RF 当成选中或拖动；tldraw 形状高度要跟着展开行数变。
+- **原地展开** —— 卡片 `▸N` 点一下或选中后空格：子节点列在卡片里（状态 + 孙辈数）；双击子项 = 跳进去并选中；「全部展开/收起」。展开状态存 localStorage `syn.exp`。⚠️卡片里可点的元素要拦 `pointerdown`，否则 React Flow 当成选中或拖动。
 - **自动布局** —— `autoLayout`：最长路径分层（左→右）；⭐**大纲顺序 = 流向提示**：指向前面兄弟的边算回边（↺）忽略（DFS 断环曾把「内在」甩到最右）；奇数层下错 70px；没坐标的节点在自己那列找**空槽**，不压已有节点（新节点压住「兜底」导致拖错）。界面会把自动位置立即固定存盘。
 
 ## `>v<📤LLM导出`
@@ -75,23 +75,21 @@ grep -rn ">v<💾工作区" core spikes bootstrap --include=*.js --include=*.jsx
 小标题：
 
 - **CLI** —— `node core/cli.js` 无参数看用法。LLM 先 `overview`（省 token）→ `get <id>` / `export <id>` → 改结构用 `apply` → `check`。
-- **init** —— 给项目挂上 Synapsis：`__synapsis/` + `_synapsis.md`、`.synapsis/`（自带 `*` gitignore，不碰项目原有 .gitignore）、`Synapsis.vbs`（VBScript 的 Escape 给 %uXXXX 浏览器不认 → 手写 UTF-8 编码，已与 encodeURIComponent 对过）。
+- **init** —— 拖文件夹到 `Synapsis_init.bat`，或 `cli.js init <目录>`。给项目挂上 Synapsis（重跑安全：已有文件不动，只刷新生成的启动器）：`__synapsis/` + `_synapsis.md`、`.synapsis/`（自带 `*` gitignore，不碰项目原有 .gitignore）、`Synapsis.vbs`（VBScript 的 Escape 给 %uXXXX 浏览器不认 → 手写 UTF-8 编码，已与 encodeURIComponent 对过）。
 
 ## `>v<🧭导航`
 
 小标题：
 
-- **视图记忆** —— `viewports[scope]` 存平移+缩放，localStorage 持久化；画布组件按 scope 重挂载时读回（RF `defaultViewport`，tldraw `setCamera`）。没有记录才 fitView。
+- **视图记忆** —— `viewports[scope]` 存平移+缩放，localStorage 持久化；画布组件按 scope 重挂载时读回（RF `defaultViewport`）。没有记录才 fitView。
 - **历史** —— `go()` 统一入口压栈；Alt+← / Alt+→ 后退前进，Alt+↑ 上一层（并选中刚才所在的节点）。
-- **快捷键** —— 捕获阶段监听 window，焦点在大纲/输入框里时不触发；Enter 同级、Tab 子级要 `stopPropagation`，否则 tldraw 也会响应。
+- **快捷键** —— 捕获阶段监听 window，焦点在大纲/输入框里时不触发；Enter 同级、Tab 子级、空格展开要 `stopPropagation`。
 
 ## `>v<🎨画布`
 
 小标题：
 
 - **ReactFlow** —— 本地 nodes 状态 + 外部数据变时重建；⚠️重建要保留旧对象的 `measured`，否则节点被隐藏到重新测量完。
-- **tldraw节点形状** —— 自定义 `snode`：⚠️必须 `getIndicatorPath`（tldraw 5）、`getGeometry` 要 `isFilled: true`（否则只有边框可点）。
-- **tldraw** —— 边 = 受管箭头（锁定、带 `meta.managed`）；用户画的箭头在 pointer_up 时翻译成连线再删掉；⚠️双击自己按坐标找（tldraw 的 `onDoubleClick` 在已选中时不触发）。
 - **贴图** —— 选中节点时 Ctrl+V 图片 → dataURL 存 localStorage（原型；正式版存 `__synapsis/` 文件）。**没自动化测。**
 
 ## `>v<🚀启停`
@@ -105,8 +103,8 @@ grep -rn ">v<💾工作区" core spikes bootstrap --include=*.js --include=*.jsx
 
 小标题：
 
-- **核心** —— `npm test`（spikes/），纯 Node，18 项；`node core/test/workspace.test.js`，临时目录 19 项。
-- **界面** —— `npm run test:ui`（需先起 dev），playwright-core + 本机 Edge 无头：样例模式两画布各 29 项（含原地展开、空格、双击子项、新建后改名）+ 工作区模式各 7 项（临时目录，不碰真文件）。`test/shot.mjs` 给真实工作区截图。
+- **核心** —— `npm test`（app/），纯 Node，18 项；`node core/test/workspace.test.js`，临时目录 19 项。
+- **界面** —— `npm run test:ui`（需先起 dev），playwright-core + 本机 Edge 无头：样例模式 29 项（含原地展开、空格、双击子项、新建后改名）+ 工作区模式 7 项（临时目录，不碰真文件）。`test/shot.mjs` 给真实工作区截图。
 - **graph check** —— `checkWorkspace`：悬空边、叶子没 status、code 指向不存在的文件、done 却没 code（提示）。
 
 ## `>v<🏗️构建引导`

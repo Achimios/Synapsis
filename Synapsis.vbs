@@ -16,12 +16,12 @@ If Err.Number = 0 Then If http.Status = 200 Then running = True
 On Error GoTo 0
 
 If Not running Then
-  If Not fso.FolderExists(syn & "\spikes") Then
+  If Not fso.FolderExists(syn & "\app") Then
     MsgBox "Synapsis not found at " & syn & vbCrLf & "Moved? Re-run: node core/cli.js init <this folder>", 48, "Synapsis"
     WScript.Quit
   End If
-  sh.CurrentDirectory = syn & "\spikes"
-  If Not fso.FolderExists(syn & "\spikes\node_modules") Then sh.Run "cmd /c npm install", 0, True
+  sh.CurrentDirectory = syn & "\app"
+  If Not fso.FolderExists(syn & "\app\node_modules") Then sh.Run "cmd /c npm install", 0, True
   sh.Run "cmd /c npm run dev", 0, False
   WScript.Sleep 2500
 End If

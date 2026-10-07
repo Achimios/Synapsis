@@ -1,5 +1,5 @@
-// 两个画布原型共用的外壳：左大纲（真源）、面包屑、导出、快捷键、贴图。
-// 画布组件只负责「显示 view + 回报用户操作」，对比的是画布手感，不是外壳。
+// 外壳：左大纲（真源）、面包屑、导出、快捷键、贴图、工作区读写。
+// 画布组件（main.jsx，React Flow）只负责「显示 view + 回报用户操作」。
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, autoLayout, lineOf, ROOT } from './outline.js';
 import { SAMPLE } from './sample.js';
@@ -218,13 +218,12 @@ export function Shell({ name, Canvas }) {
       <main>
         <div className="bar top">
           <span className="crumbs">{crumbs.map((c, i) => <span key={c.id}>{i > 0 && ' › '}<a onClick={() => { go(c.id); setSelected(null); }}>{c.label}</a></span>)}</span>
-          <span className="hint">双击=钻进 ▸N或空格=原地展开　Alt+↑=上一层 Alt+←/→=后退/前进　Enter=同级　Tab=子级　选中+Ctrl+V=贴图　{name === 'tldraw' ? 'A=箭头工具连线 V=选择' : '从节点边缘拖=连线'}</span>
+          <span className="hint">双击=钻进 ▸N或空格=原地展开　Alt+↑=上一层 Alt+←/→=后退/前进　Enter=同级　Tab=子级　选中+Ctrl+V=贴图　从节点边缘拖=连线</span>
           <button onClick={() => addNode(false)} title="在当前层新建（选中节点时建在它后面）；建完直接打字改名">＋ 节点</button>
           <button onClick={() => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; })}>{allOpen ? '全部收起' : '全部展开'}</button>
           <button onClick={() => setExportText(exportForLLM(graph, realScope))}>导出给 LLM</button>
           {local && <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>}
           <span className={'save' + (saveState.startsWith('❌') || saveState.startsWith('⚠') ? ' bad' : '')} title={wsData?.root || ''}>{mode === 'ws' ? '📁 ' + (wsData?.root || '').split(/[\/]/).slice(-2).join('/') + '　' : mode === 'demo' ? '🧪 样例　' : ''}{saveState}</span>
-          <a className="switch" href={name === 'tldraw' ? './reactflow.html' : './tldraw.html'}>换 {name === 'tldraw' ? 'React Flow' : 'tldraw'} →</a>
         </div>
         {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className="canvas">
           <Canvas key={realScope} view={view} layout={layout} selected={sel} images={images}
@@ -262,7 +261,7 @@ export function nodeDim(id, view, selected) {
 }
 // 卡片上的交互回调（外壳每次渲染时填好；画布组件不用逐层传）
 export const cardActions = { toggle: () => {}, openChild: () => {} };
-// pointerdown 也要拦住，否则 tldraw / React Flow 会把它当成选中或拖动的开始
+// pointerdown 也要拦住，否则 React Flow 会把它当成选中或拖动的开始
 const stop = e => e.stopPropagation();
 export function NodeCard({ node, img, dim, isSel }) {
   return (

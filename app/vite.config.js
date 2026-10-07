@@ -65,5 +65,4 @@ function workspaceApi() {
 export default defineConfig({
   plugins: [react(), heartbeat(), workspaceApi()],
   server: { fs: { allow: [resolve('..')] } }, // 浏览器要 import ../core/outline.js
-  build: { rollupOptions: { input: { index: resolve('index.html'), reactflow: resolve('reactflow.html'), tldraw: resolve('tldraw.html') } } },
 });

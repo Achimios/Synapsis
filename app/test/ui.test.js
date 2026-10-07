@@ -1,4 +1,5 @@
 // >v<✅自检-界面-无头 Edge 跑两个画布同一套交互
+// 界面验收（React Flow；tldraw 对比版已退役，见 _过期的/tldraw_spike）
 // 两个画布原型的同一套交互验收（无头 Edge）。先 npm run dev，再 node test/ui.test.js [截图目录]
 import { chromium } from 'playwright-core';
 import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
@@ -14,13 +15,13 @@ const sleep = t => new Promise(r => setTimeout(r, t));
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 
-for (const kind of ['reactflow', 'tldraw']) {
+for (const kind of ['reactflow']) {
   console.log('==', kind);
   const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
   page.on('console', m => { if (m.type() === 'error' && !m.text().includes('404')) errs.push(m.text()); });
-  await page.goto(`${BASE}/${kind}.html?demo`);
+  await page.goto(`${BASE}/?demo`);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await sleep(1500);
@@ -34,16 +35,9 @@ for (const kind of ['reactflow', 'tldraw']) {
   };
   const center = b => [b.x + b.width / 2, b.y + b.height / 2];
   const outline = () => page.$eval('textarea', t => t.value);
-  // 边：RF 用 DOM，tldraw 用 editor（受管箭头）
-  const edges = () => kind === 'reactflow'
-    ? page.$$eval('.react-flow__edge', es => es.map(e => { const p = e.querySelector('.react-flow__edge-path'); return { id: e.dataset.id, color: p.style.stroke, op: +p.style.opacity }; }))
-    : page.evaluate(() => window.__ed.getCurrentPageShapes().filter(s => s.type === 'arrow' && s.meta.managed).map(s => {
-        const bs = window.__ed.getBindingsFromShape(s, 'arrow');
-        const nid = t => window.__ed.getShape(bs.find(b => b.props.terminal === t).toId).props.nid;
-        return { id: nid('start') + '=>' + nid('end'), color: s.props.color, op: s.opacity };
-      }));
-  const isIn = c => c === 'rgb(43, 123, 255)' || c === '#2b7bff' || c === 'blue';
-  const isOut = c => c === 'rgb(255, 138, 31)' || c === '#ff8a1f' || c === 'orange';
+  const edges = () => page.$$eval('.react-flow__edge', es => es.map(e => { const p = e.querySelector('.react-flow__edge-path'); return { id: e.dataset.id, color: p.style.stroke, op: +p.style.opacity }; }));
+  const isIn = c => c === 'rgb(43, 123, 255)' || c === '#2b7bff';
+  const isOut = c => c === 'rgb(255, 138, 31)' || c === '#ff8a1f';
 
   let c = await cards();
   ok(c.length === 3, '顶层 3 个节点, got ' + c.length);
@@ -104,25 +98,15 @@ for (const kind of ['reactflow', 'tldraw']) {
 
   // 连线：兜底 → 记忆与人格
   const from = await cardBox('兜底'), to = await cardBox('记忆与人格');
-  if (kind === 'reactflow') {
-    const h = await page.$('.react-flow__node[data-id="游戏AI/兜底"] .react-flow__handle.source');
-    const hb = await h.boundingBox();
-    await page.mouse.move(...center(hb)); await page.mouse.down();
-    for (let i = 1; i <= 10; i++) await page.mouse.move(hb.x + (to.x + 10 - hb.x) * i / 10, hb.y + (to.y + to.height / 2 - hb.y) * i / 10);
-    await page.mouse.up();
-  } else {
-    await page.mouse.click(1000, 780); // 画布空白处拿焦点（别点到左边大纲，否则 a 会打进文本）
-    await page.keyboard.press('a');
-    await page.mouse.move(...center(from)); await page.mouse.down();
-    const [tx, ty] = center(to);
-    for (let i = 1; i <= 10; i++) await page.mouse.move(from.x + from.width / 2 + (tx - from.x - from.width / 2) * i / 10, from.y + from.height / 2 + (ty - from.y - from.height / 2) * i / 10);
-    await page.mouse.up();
-  }
+  const h = await page.$('.react-flow__node[data-id="游戏AI/兜底"] .react-flow__handle.source');
+  const hb = await h.boundingBox();
+  await page.mouse.move(...center(hb)); await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(hb.x + (to.x + 10 - hb.x) * i / 10, hb.y + (to.y + to.height / 2 - hb.y) * i / 10);
+  await page.mouse.up();
   await sleep(600);
   ok(/兜底 -> .*记忆与人格/.test(await outline()), '画布连线 → 大纲出现 -> 记忆与人格');
 
   // 键盘：选中 决策，Enter = 同级新节点
-  if (kind === 'tldraw') await page.keyboard.press('v');
   b = await cardBox('决策');
   await page.mouse.click(...center(b)); await sleep(300);
   await page.keyboard.press('Enter'); await sleep(400);
@@ -144,9 +128,7 @@ for (const kind of ['reactflow', 'tldraw']) {
   await page.click('.modal button:has-text("关闭")');
 
   // 视图记忆：缩放平移后返回上一级、再钻回来 → 视图还原；Alt+← / Alt+→ 历史
-  const cam = () => kind === 'reactflow'
-    ? page.$eval('.react-flow__viewport', v => v.style.transform)
-    : page.evaluate(() => { const c = window.__ed.getCamera(); return `${c.x.toFixed(1)},${c.y.toFixed(1)},${c.z.toFixed(3)}`; });
+  const cam = () => page.$eval('.react-flow__viewport', v => v.style.transform);
   const camFit = await cam();
   await page.mouse.move(900, 600);
   await page.mouse.wheel(0, -400); await sleep(300);
@@ -175,14 +157,14 @@ for (const kind of ['reactflow', 'tldraw']) {
   await page.close();
 }
 // —— 工作区模式：临时目录，画布编辑 → 文件真的写进去 ——
-for (const kind of ['reactflow', 'tldraw']) {
+for (const kind of ['reactflow']) {
   console.log('== 工作区', kind);
   const ws = mkdtempSync(join(tmpdir(), 'syn-ui-'));
   saveOutline(ws, SAMPLE);
   const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
-  await page.goto(`${BASE}/${kind}.html?ws=${encodeURIComponent(ws)}`);
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`);
   await sleep(1800);
   const saveTxt = () => page.$eval('.save', e => e.innerText);
   ok((await saveTxt()).includes('已加载'), '工作区加载 ' + await saveTxt());

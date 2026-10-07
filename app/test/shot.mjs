@@ -2,9 +2,9 @@
 import { chromium } from 'playwright-core';
 const [out, ...path] = process.argv.slice(2);
 const b = await chromium.launch({ channel: 'msedge', headless: true });
-for (const kind of ['reactflow', 'tldraw']) {
+for (const kind of ['reactflow']) {
   const p = await b.newPage({ viewport: { width: 1500, height: 900 } });
-  await p.goto(`http://localhost:5410/${kind}.html`);
+  await p.goto('http://localhost:5410/');
   await new Promise(r => setTimeout(r, 2000));
   for (const label of path) {
     for (const c of await p.$$('.card')) if ((await c.innerText()).split('\n')[0].includes(label)) { const bb = await c.boundingBox(); await p.mouse.dblclick(bb.x + bb.width / 2, bb.y + bb.height / 2); break; }

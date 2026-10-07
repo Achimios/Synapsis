@@ -1,7 +1,7 @@
 # 待办（v1 之后）
 
 ## 下一步
-- [ ] 用户试两个画布 → 选库（React Flow 倾向，见 `_DevProgress.md` 2026-10-07 对比）
+- [x] 画布选型 → React Flow（`_Design/Decision_Canvas.md`）
 - [x] 写 `core/`：`__synapsis/` 一节点一 .md 读写 + check + 导出；测试工作区 = `Life Games/研究`（👤）
 - [ ] 视图记忆从浏览器 localStorage 搬进工作区 `.synapsis/`
 - [ ] 稳定 id：跨父移动 + 改名时保住正文关联（现在会进 _过期的，不丢内容但断了关联）

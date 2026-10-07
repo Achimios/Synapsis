@@ -11,3 +11,5 @@
 9. sed 替换文本里含 Windows 路径时，`\U` `\a` `\L` 等会被当成转义/大小写指令，路径被吃掉 → 含反斜杠的内容用 Edit 工具或 node 写。
 10. Git Bash 的 heredoc（即使 `<<'EOF'`）写进 JS 时 `\` 仍可能被吃成 `\` → 含反斜杠的代码一律用 Edit/Write 工具写。
 11. `String.replace(a, b)` 的 b 里 `$$` `$&` `$1` 是替换模式（`$$` 变 `$`，playwright 的 `page.$$` 被吃）→ 用 `s.replace(a, () => b)` 或 split/join。
+12. Windows 上 git checkout 把文件转成 CRLF → 「内容没变就不写」必须先统一换行再比（`sameText`），否则一次 apply 重写全部文件。
+13. frontmatter 与正文之间固定空一行：不固定的话，人写的/导入的/工具写的格式不一致，往返会抖动（删掉空行也算改了正文）。
