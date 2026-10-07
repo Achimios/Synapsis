@@ -469,7 +469,7 @@ export function moveNodes(root, ids, parent) {
   const hint = new Map(r.map.map(([o, n]) => [n, o]));
   const report = saveOutline(root, r.text, hint);
   if (!report.ok) throw new Error('移动失败：' + JSON.stringify(report.errors));
-  return { ...report, roots: r.roots, outline: workspaceOutline(loadWorkspace(root)) };
+  return { ...report, roots: r.roots, moveMap: r.map, outline: workspaceOutline(loadWorkspace(root)) }; // moveMap 给撤销 / 重做用（同样不靠名字猜）
 }
 
 // >v<🎨画布-改接连线-Alt 拖连线的一端到别的节点：删旧边、连新边，标签和类型跟过去（👤 2026-10-08）

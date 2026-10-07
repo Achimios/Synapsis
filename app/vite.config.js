@@ -62,7 +62,7 @@ function workspaceApi() {
             return send(200, { ok: true });
           }
           if (url.pathname === '/outline' && req.method === 'PUT') {
-            const r = saveOutline(root, (await body(req)).outline);
+            const b = await body(req), r = saveOutline(root, b.outline, Array.isArray(b.hint) ? new Map(b.hint) : null); // hint = 撤销 / 重做移动时的 [新id, 旧id]
             return send(r.ok ? 200 : 400, { report: r, ...(r.ok ? payload(root) : {}) });
           }
           if (url.pathname === '/node' && req.method === 'PATCH') {

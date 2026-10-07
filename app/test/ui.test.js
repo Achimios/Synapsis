@@ -843,6 +843,11 @@ for (const kind of ['reactflow']) {
   const moved = existsSync(join(ws, '__synapsis', '情绪反应', '咕噜人.md')) ? readFileSync(join(ws, '__synapsis', '情绪反应', '咕噜人.md'), 'utf8') : '';
   ok(/血量: 120/.test(moved) && !existsSync(join(ws, '__synapsis', '咕噜人.md')), '松手 → 咕噜人 进了 情绪反应 里（属性跟着走）');
   ok(!(await lab('咕噜人')), '根页上不再有 咕噜人');
+  const gIn = join(ws, '__synapsis', '情绪反应', '咕噜人.md'), gOut = join(ws, '__synapsis', '咕噜人.md');
+  await page.mouse.click(700, 760); await sleep(200); await page.keyboard.press('Control+z'); await sleep(2000);
+  ok(existsSync(gOut) && !existsSync(gIn) && /血量: 120/.test(readFileSync(gOut, 'utf8')), 'Ctrl+Z → 咕噜人 回到根（属性跟着回来）');
+  await page.keyboard.press('Control+y'); await sleep(2000);
+  ok(existsSync(gIn) && !existsSync(gOut) && /血量: 120/.test(readFileSync(gIn, 'utf8')), 'Ctrl+Y → 又放回 情绪反应 里');
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.mouse.dblclick(...mid(await (await lab('情绪反应')).boundingBox())); await sleep(1200);
   await page.mouse.click(...mid(await (await lab('咕噜人')).boundingBox())); await sleep(300);

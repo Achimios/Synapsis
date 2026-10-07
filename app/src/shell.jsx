@@ -161,7 +161,8 @@ export function Shell({ name, Canvas }) {
     if (graph.errors.length) { setSaveState('大纲有错，暂不保存'); return; }
     const t = setTimeout(() => {
       setSaveState('保存中…');
-      api('/outline', { method: 'PUT', body: JSON.stringify({ outline: text }) })
+      const hint = saveHint.current; saveHint.current = null;
+      api('/outline', { method: 'PUT', body: JSON.stringify({ outline: text, ...(hint ? { hint } : {}) }) })
         .then(d => { lastSaved.current = text; setWsData(d); recordSave(text, d.report); setPositions(p => ({ ...p, ...Object.fromEntries(Object.entries(d.layout || {}).filter(([k]) => k.startsWith('@pic:'))) })); /* 分组改名后散图坐标键会变 */ const r = d.report; setSaveState('已保存 ' + new Date().toLocaleTimeString() + (r.removed.length ? '（' + r.removed.length + ' 个节点移进 _过期的/）' : '')); })
         .catch(e => setSaveState('❌ 保存失败：' + e.message));
     }, 700);
@@ -271,7 +272,7 @@ export function Shell({ name, Canvas }) {
     const h = hist2.current, c = h.committed;
     if (!c) return;
     if (h.applying) { h.applying = false; if (report.restore?.length && h.undo.length) h.undo.at(-1).restore = report.restore; } // 重做了一次删除：撤销它要搬回的是这次的文件
-    else if (c.text !== t) { h.undo.push({ text: c.text, positions: c.positions, restore: report.restore?.length ? report.restore : null }); h.redo = []; }
+    else if (c.text !== t) { h.undo.push({ text: c.text, positions: c.positions, restore: report.restore?.length ? report.restore : null, hint: report.moveMap?.length ? report.moveMap : null }); h.redo = []; }
     h.committed = { text: t, positions: c.positions };
     persistHist();
   };
@@ -284,8 +285,12 @@ export function Shell({ name, Canvas }) {
     h.committed = { text: c.text, positions: p };
     persistHist();
   };
+  // 撤销 / 重做「移动节点」：把新旧 id 的对应带给服务端（hint = [要写成的 id, 现在的 id]…），不靠名字猜
+  const saveHint = useRef(null);
+  const flip = hint => hint ? hint.map(([a, b]) => [b, a]) : null;
   const applyHist = async e => {
     const h = hist2.current, c = h.committed;
+    saveHint.current = e.hint || null;
     if (e.restore?.length) await api('/restore', { method: 'POST', body: JSON.stringify({ pairs: e.restore }) }).catch(err => setSaveState('❌ 撤销删除失败：' + err.message));
     h.applying = e.text !== lastSaved.current;
     setText(e.text);
@@ -301,14 +306,14 @@ export function Shell({ name, Canvas }) {
     const h = hist2.current;
     if (mode !== 'ws' || !h.committed) return setSaveState('撤销只在工作区模式');
     const e = h.undo.pop(); if (!e) return setSaveState('没有可撤销的');
-    h.redo.push({ text: h.committed.text, positions: h.committed.positions });
+    h.redo.push({ text: h.committed.text, positions: h.committed.positions, hint: flip(e.hint) });
     applyHist(e).then(() => setSaveState('已撤销' + (e.restore ? '（删掉的节点从 _过期的/ 搬回来了）' : '') + ' · 还能撤 ' + h.undo.length + ' 步'));
   };
   const redo = () => {
     const h = hist2.current;
     if (mode !== 'ws' || !h.committed) return;
     const e = h.redo.pop(); if (!e) return setSaveState('没有可重做的');
-    h.undo.push({ text: h.committed.text, positions: h.committed.positions, restore: null });
+    h.undo.push({ text: h.committed.text, positions: h.committed.positions, restore: null, hint: flip(e.hint) });
     applyHist(e).then(() => setSaveState('已重做'));
   };
   // >v<🌳大纲模型-新建节点-Enter 同级 / Tab 子级（父节点原地展开）/ 工具栏＋；建完光标跳到大纲那一行、名字选中，直接打字改名
