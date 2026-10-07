@@ -260,7 +260,8 @@ export function saveOutline(root, text) {
   if (existsSync(base)) prune(base);
   // 5) 布局跟着改名走
   const layout = {};
-  for (const [nid, cid] of map) if (cid !== null && ws.layout[cid]) layout[nid] = ws.layout[cid];
+  // 新节点（cid = null）：前端可能先写了坐标（右键「在这里新建」），留着
+  for (const [nid, cid] of map) if (cid !== null && ws.layout[cid]) layout[nid] = ws.layout[cid]; else if (cid === null && ws.layout[nid]) layout[nid] = ws.layout[nid];
   for (const k of Object.keys(ws.layout)) if (k.startsWith('@portal:')) layout[k] = ws.layout[k];
   for (const k of Object.keys(ws.layout)) if (k.startsWith('@pic:')) {
     const p = k.slice(5), hit = Object.keys(picKeys).find(o => p.startsWith(o));

@@ -2,7 +2,8 @@
 // 界面验收（React Flow；tldraw 对比版已退役，见 _过期的/tldraw_spike）
 // 两个画布原型的同一套交互验收（无头 Edge）。先 npm run dev，再 node test/ui.test.js [截图目录]
 import { chromium } from 'playwright-core';
-import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { saveOutline } from '../../core/workspace.js';
@@ -14,6 +15,8 @@ const SHOTS = process.argv[2] || null;
 let pass = 0, fail = 0;
 const ok = (c, m) => { c ? pass++ : (fail++, console.log('  ✗', m)); };
 const sleep = t => new Promise(r => setTimeout(r, t));
+// 临时工作区不碰真的 LM Studio：工作区级 .synapsis/ai.json 指到一个没人听的端口（AI 那段自检另起假服务）
+const noAi = (ws, url = 'http://127.0.0.1:9/v1') => { mkdirSync(join(ws, '.synapsis'), { recursive: true }); writeFileSync(join(ws, '.synapsis', 'ai.json'), JSON.stringify({ url })); };
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 
@@ -230,7 +233,7 @@ for (const kind of ['reactflow']) {
 // —— 工作区模式：临时目录，画布编辑 → 文件真的写进去 ——
 for (const kind of ['reactflow']) {
   console.log('== 工作区', kind);
-  const ws = mkdtempSync(join(tmpdir(), 'syn-ui-'));
+  const ws = mkdtempSync(join(tmpdir(), 'syn-ui-')); noAi(ws);
   saveOutline(ws, SAMPLE);
   runBatch(ws, [['link', '游戏AI/行动/动作状态机', '游戏AI/感知/自身传感器', { label: '触发', kind: '离散' }]]);
   writeFileSync(join(ws, '__synapsis', '_配色.md'), '- 绿: 行动\n- 黄: 兜底\n'); // 工作区词表：兜底改黄、观测词没了
@@ -391,7 +394,7 @@ for (const kind of ['reactflow']) {
 // —— 空间节点：投影、换基、拖动改坐标、卡片小横条、边上的热力图 ——
 {
   console.log('== 空间');
-  const ws = mkdtempSync(join(tmpdir(), 'syn-space-ui-'));
+  const ws = mkdtempSync(join(tmpdir(), 'syn-space-ui-')); noAi(ws);
   saveOutline(ws, '情绪空间 -> 行为空间\n  兴奋\n  激动\n  谨慎\n  愤怒\n  备注\n行为空间');
   runBatch(ws, [
     ['set', '情绪空间', 'axes=愉悦, 唤醒, 支配', '映射→行为空间=0.2 0.5 0.8; 0 1 -0.3'],
@@ -467,7 +470,7 @@ for (const kind of ['reactflow']) {
 // —— 撤销重做、框选缩放排列、项目文档骨架（👤 2026-10-08）——
 {
   console.log('== 撤销 / 框选 / 项目文档');
-  const ws = mkdtempSync(join(tmpdir(), 'syn-undo-ui-'));
+  const ws = mkdtempSync(join(tmpdir(), 'syn-undo-ui-')); noAi(ws);
   saveOutline(ws, '甲 -> 乙\n乙\n丙\n丁');
   writeFileSync(join(ws, '__synapsis', '甲.md'), readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8') + '\n甲的正文，人写的。\n');
   writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 甲: { x: 0, y: 0 }, 乙: { x: 400, y: 0 }, 丙: { x: 800, y: 0 }, 丁: { x: 400, y: 300 } }));
@@ -585,7 +588,7 @@ for (const kind of ['reactflow']) {
 // —— 调节连线（👤 2026-10-08：观察属性不是流进观察空间的数据）——
 {
   console.log('== 调节线');
-  const ws = mkdtempSync(join(tmpdir(), 'syn-mod-ui-'));
+  const ws = mkdtempSync(join(tmpdir(), 'syn-mod-ui-')); noAi(ws);
   saveOutline(ws, '敌方 -> 观察空间\n观察空间\n观察属性');
   writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 敌方: { x: 0, y: 200 }, 观察空间: { x: 300, y: 200 }, 观察属性: { x: 300, y: 0 } }));
   const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
@@ -663,7 +666,7 @@ for (const kind of ['reactflow']) {
 // —— 分组原地展开成框（👤 2026-10-08）——
 {
   console.log('== 展开成框');
-  const ws = mkdtempSync(join(tmpdir(), 'syn-frame-ui-'));
+  const ws = mkdtempSync(join(tmpdir(), 'syn-frame-ui-')); noAi(ws);
   saveOutline(ws, '组 -> 外\n  甲 -> 乙\n  乙\n外');
   writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 组: { x: 0, y: 0 }, 外: { x: 220, y: 0 }, '组/甲': { x: 0, y: 0 }, '组/乙': { x: 300, y: 0 } }));
   const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
@@ -706,6 +709,71 @@ for (const kind of ['reactflow']) {
   await page.close();
   rmSync(ws, { recursive: true, force: true });
 }
+// >v<✅自检-AI辅助-假的 LM Studio（字符袋嵌入；归类：含「惊慌」→ 第 2 行；精排固定打分）：状态 / 语义配色 / 潜在关联 + 精排 / 连线 / 生成词表写入；右键「在这里新建」落在鼠标处
+{
+  console.log('== AI 辅助');
+  const bag = t => { const v = new Array(97).fill(0); for (const ch of t) v[ch.codePointAt(0) % 97] += 1; return v; };
+  let words = '- 紫: 惊慌, 恐惧\n- 蓝: 观测\n';
+  const srv = createServer((req, res) => {
+    let s = ''; req.on('data', c => s += c); req.on('end', () => {
+      const j = s ? JSON.parse(s) : {}, send = o => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(o)); };
+      if (req.url === '/api/v0/models') return send({ data: [{ id: 'emb-x', type: 'embeddings' }, { id: 'chat-x', type: 'llm' }] });
+      if (req.url === '/v1/embeddings') return send({ data: j.input.map((t, index) => ({ index, embedding: bag(t) })) });
+      const sys = j.messages?.[0]?.content || '', user = j.messages?.[1]?.content || '';
+      const lines = user.split(/\r?\n/).map(l => l.match(/^(\d+)\. (.*)$/)).filter(Boolean);
+      let out = '';
+      if (/归类配色/.test(sys)) out = lines.map(m => `${m[1]}: ${/吓/.test(m[2]) ? 1 : 0}`).join('\n');
+      else if (/值得连起来的关系/.test(sys)) out = lines.map(m => `${m[1]}. x | ${/情绪/.test(m[2]) ? 3 : 0} | ${/情绪/.test(m[2]) ? '都讲情绪' : '无关'}`).join('\n');
+      else if (/配色/.test(sys)) out = words;
+      else out = '它们都和情绪有关。';
+      send({ choices: [{ message: { content: out } }] });
+    });
+  });
+  await new Promise(r => srv.listen(0, '127.0.0.1', r));
+  const ws = mkdtempSync(join(tmpdir(), 'syn-ai-ui-')); noAi(ws, `http://127.0.0.1:${srv.address().port}/v1`);
+  saveOutline(ws, '惊慌失措\n情绪恐惧\n情绪反应\n传感器\n咕噜人\n吓坏了');
+  writeFileSync(join(ws, '__synapsis', '_配色.md'), words);
+  writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 惊慌失措: { x: 0, y: 0 }, 情绪恐惧: { x: 260, y: 0 }, 情绪反应: { x: 520, y: 0 }, 传感器: { x: 0, y: 160 }, 咕噜人: { x: 260, y: 160 }, 吓坏了: { x: 520, y: 160 } }));
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(3000);
+  const lab = async l => { for (const t of await page.$$('.card .lab')) if ((await t.textContent()) === l) return t; };
+  const mid = b => [b.x + b.width / 2, b.y + b.height / 2];
+  const col = label => page.$$eval('.card', (cs, l) => { const c = cs.find(x => x.querySelector('.title')?.textContent.includes(l)); return c && c.style.getPropertyValue('--c'); }, label);
+  ok(await page.$('button.aibtn.on'), '顶栏 🤖 AI 亮（连上了）');
+  ok(await col('惊慌失措') === PALETTE.紫, '词表里有「惊慌」→ 紫（词表）');
+  ok(await col('吓坏了') === PALETTE.紫 && await col('咕噜人') !== PALETTE.紫, '语义配色：吓坏了 词表没命中、模型归到紫那行 → 紫；咕噜人 归「无」→ 不是紫');
+  // 潜在关联：选 情绪恐惧 → 右边小签 → 点开 → 精排后 情绪反应 第一（理由），咕噜人 变淡
+  await page.mouse.click(...mid(await (await lab('情绪恐惧')).boundingBox())); await sleep(400);
+  ok(!!(await page.$('.reldock.tab')), '选中节点 → 右边出现「🔗 潜在关联」小签');
+  await page.click('.reldock.tab'); await sleep(2500);
+  const rows = await page.$$eval('.reldock li', ls => ls.map(l => ({ t: l.querySelector('.relrow a').textContent, weak: l.classList.contains('weak'), why: l.querySelector('.why')?.textContent || '' })));
+  ok(rows[0]?.t === '情绪反应' && rows[0].why === '都讲情绪' && rows.find(r => r.t === '咕噜人')?.weak, '点开 → 精排：情绪反应 第一带理由，咕噜人 变淡 ' + JSON.stringify(rows));
+  await page.click('.reldock li:first-child button:has-text("?")'); await sleep(1200);
+  ok((await page.$eval('.reldock li:first-child', l => l.textContent)).includes('它们都和情绪有关'), '「?」→ 一句话说明');
+  await page.click('.reldock li:first-child button:has-text("连")'); await sleep(1800);
+  ok(/情绪反应/.test(readFileSync(join(ws, '__synapsis', '情绪恐惧.md'), 'utf8')), '「连」→ 连上线（写进 情绪恐惧.md）');
+  // 生成词表 → 写入（旧的备份进 _过期的）
+  words = '- 粉: 情绪, 惊慌\n- 蓝: 传感\n';
+  await page.click('button.aibtn'); await sleep(800);
+  ok((await page.$eval('.aistat', e => e.textContent)).includes('已连上'), 'AI 面板：已连上');
+  await page.click('.aipanel button:has-text("生成词表")'); await sleep(1500);
+  ok((await page.$eval('.aipanel textarea', e => e.value)).includes('- 粉: 情绪, 惊慌'), '生成词表 → 草稿出现在文本框');
+  await page.click('.aipanel button:has-text("写入")'); await sleep(1500);
+  ok(readFileSync(join(ws, '__synapsis', '_配色.md'), 'utf8').includes('- 粉: 情绪, 惊慌') && readdirSync(join(ws, '__synapsis', '_过期的')).some(f => f.startsWith('_配色_')), '写入 _配色.md，旧的备份进 _过期的/');
+  await page.click('.aipanel .bar button'); await sleep(1500);
+  ok(await col('惊慌失措') === PALETTE.粉, '新词表生效：惊慌失措 → 粉');
+  // 右键空白「在这里新建」→ 新卡片在鼠标处
+  await page.mouse.click(700, 600); await sleep(200);
+  await page.mouse.click(700, 600, { button: 'right' }); await sleep(300);
+  await page.click('.ctx .mi:has-text("在这里新建")'); await sleep(600);
+  await page.keyboard.type('鼠标这里'); await page.keyboard.press('Enter'); await sleep(1800);
+  const nb = await (await lab('鼠标这里'))?.boundingBox();
+  ok(nb && Math.abs(nb.x - 700) < 60 && Math.abs(nb.y - 600) < 40, '右键「在这里新建」→ 卡片落在鼠标位置 ' + JSON.stringify(nb));
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close(); srv.close();
+  rmSync(ws, { recursive: true, force: true });
+}
 await browser.close();
-console.log(`ui: ${pass} 过 / ${fail} 挂`);
+console.log(`ui:${pass} 过 / ${fail} 挂`);
 process.exit(fail ? 1 : 0);

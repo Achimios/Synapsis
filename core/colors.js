@@ -52,27 +52,30 @@ export const wordColor = (label, rules = DEFAULT_RULES) => {
 };
 
 // graph = parseOutline 的结果（nodes: Map id → {label, parent, children}），getMeta(id) → frontmatter 或 undefined；
-// words = 词表 md 文本（undefined / null → 默认词表）
-export function colorMap(graph, getMeta = () => undefined, words = null) {
+// words = 词表 md 文本（undefined / null → 默认词表）；sem = {id: 颜色}（LM Studio 语义配色，core/ai.js semColors）—— 词表没命中时当命中用
+export function colorMap(graph, getMeta = () => undefined, words = null, sem = null) {
   const rules = words == null ? DEFAULT_RULES : parseColorWords(words).rules;
   const ROOT = '', out = new Map();
   // 顶层分组轮色：词表占的色先让出来
   const top = graph.nodes.get(ROOT)?.children || [];
-  const taken = new Set(top.map(id => wordColor(graph.nodes.get(id).label, rules)).filter(Boolean));
+  const word = id => wordColor(graph.nodes.get(id).label, rules);
+  const hit = id => word(id) || sem?.[id] || null;
+  const taken = new Set(top.map(hit).filter(Boolean));
   const free = CYCLE.filter(c => !taken.has(c)), cyc = free.length ? free : CYCLE;
   const topHue = new Map();
   let k = 0;
-  for (const id of top) topHue.set(id, wordColor(graph.nodes.get(id).label, rules) || cyc[k++ % cyc.length]);
+  for (const id of top) topHue.set(id, hit(id) || cyc[k++ % cyc.length]);
   const of = id => {
     if (out.has(id)) return out.get(id);
-    let explicit = null, kw = null, topId = id;
+    let explicit = null, kw = null, sk = null, topId = id;
     for (let x = id; x != null && x !== ROOT; x = graph.nodes.get(x)?.parent) {
       if (!explicit) explicit = parseColor(getMeta(x)?.color);
-      const h = wordColor(graph.nodes.get(x).label, rules);
+      const h = word(x), s = sem?.[x];
       if (h) kw = h; // 一路覆盖 → 留下最上层的
+      if (s) sk = s; // 语义配色同理，但排在词表命中之后（不然一个顶层分组被 AI 染色，下面按词表分好的颜色全被盖掉）
       topId = x;
     }
-    const c = explicit || kw || topHue.get(topId) || PALETTE.灰;
+    const c = explicit || kw || sk || topHue.get(topId) || PALETTE.灰;
     out.set(id, c);
     return c;
   };

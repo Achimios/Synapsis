@@ -178,8 +178,8 @@ export function runBatch(root, ops) {
   return out.join('\n');
 }
 
-// 工作区的讨论黑板：叫 _Blackboard.md（👤 2026-10-08：TODO / PLAN / Blackboard / LEARNINGS 用英文）；当天短暂用过中文名 _Blackboard.md，已有的就继续用它
-export const blackboardName = root => root && existsSync(join(root, DIR, '_Blackboard.md')) && !existsSync(join(root, DIR, '_Blackboard.md')) ? '_Blackboard.md' : '_Blackboard.md';
+// 工作区的讨论黑板：叫 _Blackboard.md（👤 2026-10-08：TODO / PLAN / Blackboard / LEARNINGS 用英文）；当天短暂用过中文名 _黑板.md，已有的就继续用它
+export const blackboardName = root => root && existsSync(join(root, DIR, '_黑板.md')) && !existsSync(join(root, DIR, '_Blackboard.md')) ? '_黑板.md' : '_Blackboard.md';
 export function manualText(root) {
   const cli = join(HOME, 'core', 'cli.js').split('\\').join('/');
   const ws = root ? root.split('\\').join('/') : '<被规划项目根目录>';

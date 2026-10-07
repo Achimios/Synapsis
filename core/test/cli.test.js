@@ -18,7 +18,7 @@ const node = id => loadWorkspace(root).graph.nodes.get(id);
 try {
   spawnSync(process.execPath, [CLI, 'init', root], { encoding: 'utf8' });
   ok(existsSync(join(root, DIR, '_synapsis.md')) && readFileSync(join(root, DIR, '_synapsis.md'), 'utf8').includes('AI 接入手册'), 'init 写入 AI 接入手册（_synapsis.md）');
-  ok(existsSync(join(root, DIR, '_Blackboard.md')) && !existsSync(join(root, DIR, '_Blackboard.md')), 'init 建的讨论黑板叫 _Blackboard.md');
+  ok(existsSync(join(root, DIR, '_Blackboard.md')) && !existsSync(join(root, DIR, '_黑板.md')), 'init 建的讨论黑板叫 _Blackboard.md');
   ok(existsSync(join(root, DIR, '_配色.md')), 'init 建配色词表 _配色.md');
 
   let r = run('add', '/', '感知');

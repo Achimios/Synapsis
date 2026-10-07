@@ -5,6 +5,7 @@ import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode
 import { colorMap } from './colors.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
 import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal, ScaffoldModal, SearchModal } from './panels.jsx';
+import { AiPanel, RelatedDock } from './ai.jsx';
 import { SAMPLE } from './sample.js';
 import './shell.css';
 
@@ -73,7 +74,16 @@ export function Shell({ name, Canvas }) {
     const S = 260 / Math.max(1, ...pts.map(p => Math.max(Math.abs(p.x), Math.abs(p.y)))); // 1 个单位多少像素：坐标都在 ±1 内就固定 260
     return { keys, u, v, S, pts, angle: angleDeg(u, v), labels: keys.map(k => directionLabel(space, k)) };
   }, [space, spaceAxes, realScope]);
-  const colors = useMemo(() => colorMap(graph, getMeta, wsData?.colorWords), [graph, getMeta, wsData?.colorWords]);
+  // >v<🤖AI辅助-接入-LM Studio 状态 / 语义配色（core/ai.js）：连不上就当没有，什么都不挡
+  const [aiStatus, setAiStatus] = useState(null), [aiOpen, setAiOpen] = useState(false), [semCols, setSemCols] = useState(null);
+  const aiCheck = () => mode === 'ws' && api('/ai/status').then(setAiStatus).catch(() => setAiStatus({ ok: false, error: 'Synapsis 服务没回应' }));
+  useEffect(() => { aiCheck(); }, [mode]);
+  useEffect(() => {
+    if (mode !== 'ws' || !aiStatus?.ok || !aiStatus.cfg?.semColors) { setSemCols(null); return; }
+    const t = setTimeout(() => api('/ai/colors').then(d => setSemCols(d.colors)).catch(() => {}), 1200); // 改大纲时别每个字都问
+    return () => clearTimeout(t);
+  }, [mode, aiStatus, wsData?.outline, wsData?.colorWords]);
+  const colors = useMemo(() => colorMap(graph, getMeta, wsData?.colorWords, semCols), [graph, getMeta, wsData?.colorWords, semCols]);
   // 边标签 / 节点副标题来自工作区文件（大纲里没有）
   const view = useMemo(() => {
     const v = projectView(graph, realScope, space ? null : new Set(Object.keys(framed).filter(k => framed[k] && graph.nodes.get(k)?.children.length)));
@@ -375,7 +385,12 @@ export function Shell({ name, Canvas }) {
   const commitRename = (id, label) => {
     setRenaming(null); setCanvasRename(null);
     const t = withLabel(graph, id, label);
-    if (t) { setText(t); const p = graph.nodes.get(id).parent; setSelected(p === ROOT ? label.trim() : p + '/' + label.trim()); }
+    if (!t) return;
+    setText(t);
+    const p = graph.nodes.get(id).parent, nid = p === ROOT ? label.trim() : p + '/' + label.trim();
+    setSelected(nid);
+    // 还没存盘就改名的新节点：坐标是按临时 id 记的，带到新 id 上（否则落回自动布局的空槽）
+    if (positions[id] && !positions[nid]) move({ [nid]: { x: positions[id].x, y: positions[id].y } }, { silent: true });
   };
   const [tree, setTree] = useState(null);
   const [fileView, setFileView] = useState(null); // {path, text|null, note, error}
@@ -401,7 +416,12 @@ export function Shell({ name, Canvas }) {
     status: setStatus,
     addChild: id => { setSelected(id); const r = withNode(graph, id, null); pendingRename.current = r.id; setText(r.text); setExpanded(x => ({ ...x, [id]: true })); },
     addSibling: id => { const r = withNode(graph, graph.nodes.get(id).parent, id); pendingRename.current = r.id; setText(r.text); setSelected(r.id); },
-    addHere: () => { const r = withNode(graph, realScope, null); pendingRename.current = r.id; setText(r.text); setSelected(r.id); },
+    addHere: () => {
+      const r = withNode(graph, realScope, null); pendingRename.current = r.id; setText(r.text); setSelected(r.id);
+      // 放在右键点的位置（👤 2026-10-08：以前落到自动布局的空槽里）
+      const p = menu && cardActions.toFlow ? cardActions.toFlow({ x: menu.x, y: menu.y }) : null;
+      if (p) move({ [r.id]: { x: Math.round(p.x), y: Math.round(p.y) } }, { silent: true });
+    },
     toggle: id => toggle(id), drill: id => drill(id), remove, frame: id => toggleFrame(id), isFramed: id => !!framed[id],
     hasFile: id => !!nodeFile(id),
     openMd: id => { setSelected(id); setPropsOpen(true); setPropsTab('raw'); },
@@ -668,9 +688,10 @@ export function Shell({ name, Canvas }) {
           <button onClick={() => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; })}>{allOpen ? '全部收起' : '全部展开'}</button>
           {withPics.length > 0 && <button onClick={() => setPicFold(f => { const g = { ...f }; for (const n of withPics) g[n.id] = !allPicsFolded; return g; })} title="当前页所有卡片的图片一起收起 / 显示">{allPicsFolded ? '显示图片' : '收起图片'}</button>}
           <button onClick={() => setExportText(exportForLLM(graph, realScope))}>导出给 LLM</button>
-          {mode === 'ws' && <button className="ghost" title="给这个项目补开发进度 / 待办 / 规矩那套文档（先检测，已有的不覆盖）" onClick={() => api('/scaffold').then(d => setScaffold(d.items)).catch(e => setSaveState('❌ ' + e.message))}>项目文档…</button>}
+          {mode === 'ws' && <button className={'aibtn ' + (aiStatus?.ok ? 'on' : 'off')} title={aiStatus?.ok ? 'LM Studio 已连上：语义配色 / 潜在关联 / 生成词表' : 'AI 辅助（LM Studio）：' + (aiStatus?.error || '检查中')} onClick={() => { setAiOpen(true); aiCheck(); }}>🤖 AI</button>}
+          {mode === 'ws' && <button title="给这个项目补开发进度 / 待办 / 规矩那套文档（先检测，已有的不覆盖）" onClick={() => api('/scaffold').then(d => setScaffold(d.items)).catch(e => setSaveState('❌ ' + e.message))}>📄 项目文档…</button>}
           {local && <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>}
-          <span className="hint keys" title="快捷键（? 或 F1）" onClick={() => setHelpOpen(true)}>?</span>
+          <button className="keysbtn" title="快捷键一览（? 或 F1）" onClick={() => setHelpOpen(true)}>⌨ 快捷键</button>
         </div>
         {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className="canvas" onDragOver={e => e.preventDefault()} onDrop={onDrop}>
           {plane && <div className="planebar" title="投影方向可以是轴，也可以是某个成员的方向（= 换一组基看同一批点）。拖动卡片 = 改它在这两个方向上的坐标">
@@ -688,6 +709,8 @@ export function Shell({ name, Canvas }) {
             pics={loosePics.map(p => ({ ...p, w: positions[p.id]?.w || 0, folded: !!picFold[p.id] }))}
             onSelect={setSelected} onDrill={drill} onConnect={connect} onMove={move} onContextMenu={onContextMenu} onEdgeMenu={onEdgeMenu} onRewire={rewire} onRemoveEdges={removeEdges}
             viewport={viewports[realScope]} onViewport={vp => onViewport(realScope, vp)} />
+          {mode === 'ws' && aiStatus?.ok && sel && !sel.startsWith('@') && graph.nodes.has(sel) &&
+            <RelatedDock api={api} id={sel} label={graph.nodes.get(sel).label} onJump={jumpTo} onOpenFile={openFile} onLink={to => connect(sel, to)} />}
         </div>}
       </main>
       {propsOpen && <div className="resizer right" title="拖动调宽度" onPointerDown={e => dragPanel(e, 'right')} />}
@@ -698,6 +721,7 @@ export function Shell({ name, Canvas }) {
       )}
       {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（I 开关）</div></aside>}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+      {aiOpen && <AiPanel api={api} status={aiStatus} onStatus={setAiStatus} onClose={() => setAiOpen(false)} onWordsApplied={d => { setWsData(d); setSaveState('配色词表已更新：' + d.file); }} />}
       {finder && <SearchModal title={finder.mode === 'link' ? '连线：「' + graph.nodes.get(finder.from)?.label + '」→ 哪个节点？' : '跳到节点（Ctrl+F）'} items={searchItems} exclude={finder.from}
         onClose={() => setFinder(null)} onPick={id => finder.mode === 'link' ? connect(finder.from, id) : jumpTo(id)} />}
       {scaffold && <ScaffoldModal items={scaffold} root={wsData?.root || ''} onClose={() => setScaffold(null)}

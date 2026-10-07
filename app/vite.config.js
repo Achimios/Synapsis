@@ -6,6 +6,9 @@ import { readFileSync, existsSync } from 'node:fs';
 import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, restoreRemoved, pasteNodes, ensureColorWords, linkNodes, setEdgeLabel, rewireEdge, DIR } from '../core/workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText } from '../core/cli.js';
+import { aiConfig, saveAiConfig, aiStatus, related, rerank, explainRelation, semColors, suggestWords, applyWords } from '../core/ai.js';
+import { fileURLToPath } from 'node:url';
+const SYN_HOME = resolve(fileURLToPath(new URL('.', import.meta.url)), '..'); // AI 设置是本机的：<Synapsis>/.synapsis/ai.json
 
 // >v<🚀启停-心跳-3 分钟没人 ping 就退出（SYN_IDLE_MS 可调）
 // 页面每 20s ping 一次；见过 ping 之后若 3 分钟没人 ping（网页全关了）→ 服务自动退出。
@@ -80,6 +83,20 @@ function workspaceApi() {
           // 项目骨架（_开发进度.md 那套）：GET = 检测清单，POST = 只写勾上且不存在的
           if (url.pathname === '/scaffold' && req.method === 'GET') return send(200, { items: scaffoldPlan(root).map(({ rel, exists, alike }) => ({ rel, exists, alike })) });
           if (url.pathname === '/scaffold' && req.method === 'POST') { if (!existsSync(join(root, DIR))) return send(404, { error: '不是 Synapsis 工作区' }); return send(200, { made: scaffoldWrite(root, (await body(req)).files) }); }
+          // >v<🤖AI辅助-接口-LM Studio（core/ai.js）：连不上回 503，前端安静降级
+          if (url.pathname.startsWith('/ai/')) {
+            const cfg = aiConfig(SYN_HOME, root);
+            if (url.pathname === '/ai/status') return send(200, await aiStatus(cfg));
+            if (url.pathname === '/ai/config' && req.method === 'PUT') return send(200, await aiStatus(saveAiConfig(SYN_HOME, await body(req))));
+            try {
+              if (url.pathname === '/ai/related') return send(200, { items: await related(root, url.searchParams.get('id') || '', cfg) });
+              if (url.pathname === '/ai/rerank' && req.method === 'POST') { const b = await body(req); return send(200, { items: await rerank(root, b.id, b.items, cfg) }); }
+              if (url.pathname === '/ai/explain' && req.method === 'POST') { const b = await body(req); return send(200, { text: await explainRelation(root, b.id, b.other, cfg) }); }
+              if (url.pathname === '/ai/colors') return send(200, { colors: cfg.semColors ? await semColors(root, cfg) : {} });
+              if (url.pathname === '/ai/words' && req.method === 'POST') return send(200, await suggestWords(root, cfg));
+              if (url.pathname === '/ai/words/apply' && req.method === 'POST') { const f = applyWords(root, (await body(req)).text); return send(200, { file: relative(root, f).split('\\').join('/'), ...payload(root) }); }
+            } catch (e) { return send(503, { error: e.cause?.code === 'ECONNREFUSED' ? 'LM Studio 没开本机服务（' + cfg.url + '）' : e.message }); }
+          }
           if (url.pathname === '/tree' && req.method === 'GET') return send(200, listTree(root));
           if (url.pathname === '/raw' && req.method === 'GET') return send(200, readProjectFile(root, url.searchParams.get('p') || ''));
           if (url.pathname === '/layout' && req.method === 'PUT') { saveLayout(root, (await body(req)).positions); return send(200, { ok: true }); }
