@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, linkNodes, DIR } from '../workspace.js';
+import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, linkNodes, moveNodes, DIR } from '../workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../scaffold.js';
 import { SAMPLE } from '../../app/src/sample.js';
 
@@ -212,6 +212,28 @@ try {
     const made = scaffoldWrite(r4, ['_TODO.md', '_LEARNINGS.md']);
     ok(made.join() === '_LEARNINGS.md' && readFileSync(join(r4, '_TODO.md'), 'utf8') === '我自己的待办' && !existsSync(join(r4, '_开发进度.md')), '骨架只写勾上且不存在的，不覆盖');
   } finally { rmSync(r4, { recursive: true, force: true }); }
+
+  // 移动节点（拖进节点 / 剪切粘贴）：别处有同名「备注」也不丢正文；子孙、连线、坐标跟着走；不能挪进自己里面；目标重名拒绝
+  const r6 = mkdtempSync(join(tmpdir(), 'syn-mv-'));
+  try {
+    saveOutline(r6, '甲\n  备注 -> 乙\n  子\n乙\n  备注\n丙');
+    setNodeBody(r6, '甲/备注', '甲的备注正文');
+    setNodeMeta(r6, '甲/备注', { rate: '3 Hz' });
+    saveLayout(r6, { '甲/备注': { x: 11, y: 22 } });
+    let threw = '';
+    try { moveNodes(r6, ['甲/备注'], '乙'); } catch (e) { threw = e.message; }
+    ok(/已经有「备注」/.test(threw), '目标里重名 → 拒绝 ' + threw);
+    try { moveNodes(r6, ['甲'], '甲/子'); } catch (e) { threw = e.message; }
+    ok(/自己里面/.test(threw), '挪进自己的子孙 → 拒绝');
+    const mv = moveNodes(r6, ['甲/备注'], '丙');
+    const w6 = loadWorkspace(r6), n6 = w6.graph.nodes.get('丙/备注');
+    ok(n6 && n6.body.includes('甲的备注正文') && n6.meta.rate === '3 Hz' && !mv.removed.length, '别处有同名「备注」也认对：正文、属性跟着走，没东西进 _过期的/ ' + JSON.stringify(mv.removed));
+    ok(w6.graph.nodes.get('乙/备注') && !w6.graph.nodes.has('甲/备注'), '另一个同名的 乙/备注 不受影响');
+    ok(w6.graph.edges.some(e => e.from === '丙/备注' && e.to === '乙'), '连线跟着走');
+    ok(w6.layout['丙/备注']?.x === 11 && mv.roots.join() === '丙/备注', '坐标跟着走，返回新 id');
+    moveNodes(r6, ['甲'], '丙');
+    ok(loadWorkspace(r6).graph.nodes.has('丙/甲/子'), '分组连同子孙一起挪');
+  } finally { rmSync(r6, { recursive: true, force: true }); }
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

@@ -833,6 +833,23 @@ for (const kind of ['reactflow']) {
   await page.mouse.up(); await page.keyboard.up('Shift'); await sleep(1200);
   const L2 = JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'))['吓坏了'];
   ok(L2.y === y0 && L2.x < 520 - 40, 'Shift + 斜着拖 → 只横移（y 不变） ' + JSON.stringify(L2) + ' y0=' + y0);
+  // 拖卡片到另一张卡上 = 放进去（目标高亮）；Ctrl+X → 回到根 Ctrl+V = 剪出来
+  await page.mouse.click(700, 760); await sleep(200);
+  const gb = mid(await (await lab('咕噜人')).boundingBox()), tgt = mid(await (await lab('情绪反应')).boundingBox());
+  await page.mouse.move(...gb); await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(gb[0] + (tgt[0] - gb[0]) * i / 10, gb[1] + (tgt[1] - gb[1]) * i / 10);
+  ok(await page.$eval('.react-flow__node[data-id="情绪反应"]', e => e.classList.contains('droptarget')), '拖到 情绪反应 上 → 它高亮（要放进去了）');
+  await page.mouse.up(); await sleep(2000);
+  const moved = existsSync(join(ws, '__synapsis', '情绪反应', '咕噜人.md')) ? readFileSync(join(ws, '__synapsis', '情绪反应', '咕噜人.md'), 'utf8') : '';
+  ok(/血量: 120/.test(moved) && !existsSync(join(ws, '__synapsis', '咕噜人.md')), '松手 → 咕噜人 进了 情绪反应 里（属性跟着走）');
+  ok(!(await lab('咕噜人')), '根页上不再有 咕噜人');
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.mouse.dblclick(...mid(await (await lab('情绪反应')).boundingBox())); await sleep(1200);
+  await page.mouse.click(...mid(await (await lab('咕噜人')).boundingBox())); await sleep(300);
+  await page.keyboard.press('Control+x'); await sleep(300);
+  await page.keyboard.press('Alt+ArrowUp'); await sleep(1200);
+  await page.mouse.move(700, 650); await page.keyboard.press('Control+v'); await sleep(2000);
+  ok(existsSync(join(ws, '__synapsis', '咕噜人.md')) && /血量: 120/.test(readFileSync(join(ws, '__synapsis', '咕噜人.md'), 'utf8')) && !existsSync(join(ws, '__synapsis', '情绪反应', '咕噜人.md')), 'Ctrl+X → 回到根 Ctrl+V = 剪出来（属性还在）');
   // 右键空白「在这里新建」→ 新卡片在鼠标处
   await page.mouse.click(700, 600); await sleep(200);
   await page.mouse.click(700, 600, { button: 'right' }); await sleep(300);

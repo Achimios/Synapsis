@@ -200,6 +200,21 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
 
   // >v<🎨画布-锁轴拖动-拖卡片时按住 Shift = 只横移或只竖移（看从起点算哪个方向挪得多；👤 2026-10-08）
   const dragStart = useRef(null), shiftDown = useRef(false);
+  // 拖动时鼠标下面那张（不算被拖的）= 放进目标，高亮它
+  const dropRef = useRef(null);
+  const setDropAt = (e, ids) => {
+    let t = null;
+    if (e) for (const el of document.elementsFromPoint(e.clientX, e.clientY)) {
+      const nd = el.closest?.('.react-flow__node'); const id = nd?.dataset.id;
+      if (!id || ids.includes(id)) continue;
+      if (id.startsWith('@pic:') || id === '@axes') break;
+      t = id; break;
+    }
+    if (t === dropRef.current) return;
+    document.querySelectorAll('.react-flow__node.droptarget').forEach(x => x.classList.remove('droptarget'));
+    dropRef.current = t;
+    if (t) document.querySelector(`.react-flow__node[data-id="${CSS.escape(t)}"]`)?.classList.add('droptarget');
+  };
   useEffect(() => {
     const k = e => { shiftDown.current = e.shiftKey; }, b = () => { shiftDown.current = false; };
     window.addEventListener('keydown', k); window.addEventListener('keyup', k); window.addEventListener('blur', b);
@@ -280,7 +295,13 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
       className={alt ? 'altdown' : ''}
       onNodeDoubleClick={(_, n) => onDrill(n.id)}
       onNodeDragStart={(_, n, dragged) => { dragStart.current = { pos: Object.fromEntries((dragged || [n]).map(d => [d.id, { ...d.position }])) }; }}
-      onNodeDragStop={(_, n, dragged) => { dragStart.current = null; const cur = id => nodesRef.current.find(x => x.id === id)?.position; /* 用画布上的（锁轴后的）坐标 */ onMove(Object.fromEntries((dragged || [n]).map(d => [d.id, toLayout(d.id, cur(d.id) || d.position)]))); }}
+      onNodeDrag={(e, n, dragged) => setDropAt(e, (dragged || [n]).map(d => d.id))}
+      onNodeDragStop={(e, n, dragged) => { dragStart.current = null;
+        // 放到别的卡片上 = 放进它里面；框里的卡拖出框 = 拿出来放到当前页（👤 2026-10-08）
+        const ids = (dragged || [n]).map(d => d.id), t = dropRef.current; setDropAt(null);
+        const framedKids = ids.filter(id => nodesRef.current.find(x => x.id === id)?.parentId);
+        if (t && !ids.every(id => view.parentOf?.get(id) === t || nodesRef.current.find(x => x.id === id)?.parentId === t)) { cardActions.moveInto?.(ids, t.startsWith('@portal:') ? t.slice(8) : t); return; }
+        if (!t && framedKids.length === ids.length && cardActions.toFlow) { cardActions.moveInto?.(ids, null, cardActions.toFlow({ x: e.clientX, y: e.clientY })); return; } const cur = id => nodesRef.current.find(x => x.id === id)?.position; /* 用画布上的（锁轴后的）坐标 */ onMove(Object.fromEntries((dragged || [n]).map(d => [d.id, toLayout(d.id, cur(d.id) || d.position)]))); }}
       onConnect={c => onConnect(c.source, c.target, c.sourceHandle === 'mo' || c.targetHandle === 'mi')}
       zoomOnDoubleClick={false} deleteKeyCode={null} minZoom={0.1} colorMode={theme === 'light' ? 'light' : 'dark'}
       // 记住的视图优先；第一次进这个范围才 fitView

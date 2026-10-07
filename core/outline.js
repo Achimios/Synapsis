@@ -178,6 +178,36 @@ function cloneGraph(g) {
   return { nodes, edges: g.edges.map(e => ({ ...e })), errors: [] };
 }
 
+// >v<🌳大纲模型-移动节点-把 ids（连同子孙）挪到 parent 下（👤 2026-10-08：拖进节点 / Ctrl+X 剪切粘贴）。
+//   返回 {text, map: [[旧id, 新id]…]（含子孙）} 或 {error}。不能挪进自己的子孙；目标下已有同名 → 拒绝（不偷偷改名）
+export function withMoved(g, ids, parent) {
+  if (!g.nodes.has(parent)) return { error: '目标不存在' };
+  const set = new Set(ids.filter(id => g.nodes.has(id) && id !== ROOT));
+  const under = (id, anc) => { for (let x = g.nodes.get(id)?.parent; x != null; x = g.nodes.get(x)?.parent) if (x === anc) return true; return false; };
+  const roots = [...set].filter(id => ![...set].some(o => o !== id && under(id, o)) && g.nodes.get(id).parent !== parent);
+  if (!roots.length) return { error: '已经在这里了' };
+  for (const id of roots) if (id === parent || under(parent, id)) return { error: `不能把「${g.nodes.get(id).label}」挪进它自己里面` };
+  const taken = new Set(g.nodes.get(parent).children.map(c => g.nodes.get(c).label));
+  for (const id of roots) { const l = g.nodes.get(id).label; if (taken.has(l)) return { error: `目标里已经有「${l}」了` }; taken.add(l); }
+  const h = cloneGraph(g);
+  for (const id of roots) {
+    const n = h.nodes.get(id), op = h.nodes.get(n.parent);
+    op.children = op.children.filter(c => c !== id);
+    h.nodes.get(parent).children.push(id); n.parent = parent;
+  }
+  // 重新算 id（= 祖先名字路径），边跟着换
+  const re = new Map([[ROOT, ROOT]]), nodes = new Map();
+  const walk = (old, nid) => {
+    const n = h.nodes.get(old); re.set(old, nid);
+    const kids = n.children.map(c => { const cid = nid === ROOT ? h.nodes.get(c).label : nid + '/' + h.nodes.get(c).label; walk(c, cid); return cid; });
+    nodes.set(nid, { ...n, id: nid, parent: n.parent == null ? null : re.get(n.parent), children: kids });
+  };
+  walk(ROOT, ROOT);
+  const edges = h.edges.map(e => ({ ...e, from: re.get(e.from), to: re.get(e.to), id: re.get(e.from) + '->' + re.get(e.to) }));
+  const map = [...re].filter(([o, n]) => o !== ROOT && o !== n);
+  return { text: toOutline({ nodes, edges, errors: [] }), map, roots: roots.map(r => re.get(r)) };
+}
+
 // >v<🌳大纲模型-画布编辑-加边/加节点后重新生成大纲
 export function withEdge(g, from, to) {
   if (from === to || g.edges.some(e => e.from === from && e.to === to)) return null;

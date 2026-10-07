@@ -16,7 +16,7 @@
 //   正文（人写的，Synapsis 不动）
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, unlinkSync, rmdirSync, cpSync } from 'node:fs';
 import { join, dirname, relative, isAbsolute } from 'node:path';
-import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, withCopies, withEdge, withoutEdge, ROOT } from './outline.js';
+import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, withCopies, withEdge, withoutEdge, withMoved, ROOT } from './outline.js';
 import { checkSpaces } from './space.js';
 import { WORDS_FILE, DEFAULT_WORDS, parseColorWords } from './colors.js';
 
@@ -125,15 +125,19 @@ export function loadWorkspace(root) {
 export const workspaceOutline = ws => toOutline(ws.graph);
 
 // 把新图的每个节点对到旧节点（同 id，或同父下 1:1 的改名），自顶向下，父改名时子节点跟着走
-function matchNodes(cur, next) {
+// hint = Map(新 id → 旧 id)：调用方确切知道的对应（移动节点时），先认这些，不靠名字猜
+function matchNodes(cur, next, hint = null) {
   const map = new Map([[ROOT, ROOT]]); // newId -> curId | null
   const used = new Set([ROOT]);
+  const pre = new Set();
+  if (hint) for (const [nid, cid] of hint) if (next.nodes.has(nid) && cur.nodes.has(cid) && !used.has(cid)) { map.set(nid, cid); used.add(cid); pre.add(nid); }
   const visit = newParent => {
     const curParent = map.get(newParent);
     const newKids = next.nodes.get(newParent).children;
     const curKids = curParent !== null && cur.nodes.has(curParent) ? cur.nodes.get(curParent).children : [];
     const unmatchedNew = [];
     for (const nk of newKids) {
+      if (pre.has(nk)) continue;
       const label = next.nodes.get(nk).label;
       const hit = curKids.find(ck => cur.nodes.get(ck).label === label && !used.has(ck));
       if (hit) { map.set(nk, hit); used.add(hit); } else unmatchedNew.push(nk);
@@ -166,12 +170,12 @@ const sameText = (a, b) => a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n')
 const stamp = () => new Date().toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '_');
 
 // >v<💾工作区-写回-大纲 → 文件：保留正文/其余属性/边标签；改名=搬文件；删除=移进 _过期的/（不真删）
-export function saveOutline(root, text) {
+export function saveOutline(root, text, hint = null) {
   const next = parseOutline(text);
   if (next.errors.length) return { ok: false, errors: next.errors };
   const ws = loadWorkspace(root);
   const cur = ws.graph, base = ws.base;
-  const { map, used } = matchNodes(cur, next);
+  const { map, used } = matchNodes(cur, next, hint);
   const curEdge = new Map(cur.edges.map(e => [e.from + '->' + e.to, e]));
   const report = { ok: true, written: [], moved: [], removed: [], restore: [] }; // restore = [[过期的里的路径, 原路径]…]（相对 base），给撤销用
 
@@ -454,6 +458,18 @@ export function linkNodes(root, from, to, label = '', kind = '') {
   }
   if (label || kind) setEdgeLabel(root, from, to, label, kind);
   return { ...report, outline: workspaceOutline(loadWorkspace(root)) };
+}
+
+// >v<💾工作区-移动节点-拖进节点 / 剪切粘贴（👤 2026-10-08）：大纲里挪过去，并把「新 id ↔ 旧 id」明确告诉 saveOutline
+//   → 正文、属性、图片、坐标、连线都跟着走，不靠「全图唯一同名」去猜（重名的节点以前会被当成删旧建新）
+export function moveNodes(root, ids, parent) {
+  const ws = loadWorkspace(root);
+  const r = withMoved(parseOutline(workspaceOutline(ws)), ids, parent);
+  if (r.error) throw new Error(r.error);
+  const hint = new Map(r.map.map(([o, n]) => [n, o]));
+  const report = saveOutline(root, r.text, hint);
+  if (!report.ok) throw new Error('移动失败：' + JSON.stringify(report.errors));
+  return { ...report, roots: r.roots, outline: workspaceOutline(loadWorkspace(root)) };
 }
 
 // >v<🎨画布-改接连线-Alt 拖连线的一端到别的节点：删旧边、连新边，标签和类型跟过去（👤 2026-10-08）

@@ -560,7 +560,21 @@ export function Shell({ name, Canvas }) {
   };
   // >v<🌳大纲模型-复制粘贴节点-Ctrl+C 复制选中的卡（含框选 / Ctrl 多选）连同子孙、属性、正文、图片、它们之间的边；
   // Ctrl+V 粘到当前页、落在鼠标处，同名加「 2」，能撤销（👤 2026-10-08）。剪贴板里写一行带标记的文本；不是节点才当图片贴
-  const CLIP = 'synapsis-nodes:';
+  const CLIP = 'synapsis-nodes:', CUT = 'synapsis-cut:';
+  // >v<🌳大纲模型-移动节点-拖进节点 / Ctrl+X 剪切 → 到目标页 Ctrl+V（👤 2026-10-08）：core/workspace.js moveNodes，正文 / 属性 / 图片 / 连线 / 坐标跟着走
+  const moveInto = async (ids, parent, at = null) => {
+    ids = ids.filter(id => !id.startsWith('@') && graph.nodes.has(id));
+    if (!ids.length || mode !== 'ws') return false;
+    if (parent == null) parent = realScope;
+    try {
+      const d = await api('/move', { method: 'POST', body: JSON.stringify({ ids, parent }) });
+      lastSaved.current = d.report.outline; setText(d.report.outline); setWsData(d); recordSave(d.report.outline, d.report);
+      if (at) move(Object.fromEntries(d.report.roots.map((id, i) => [id, { x: Math.round(at.x), y: Math.round(at.y + i * 50) }])), { silent: true });
+      setSaveState('已移到「' + (parent === ROOT ? '根' : graph.nodes.get(parent)?.label) + '」：' + ids.map(id => graph.nodes.get(id)?.label).join('、') + '（Ctrl+Z 撤销）');
+      return true;
+    } catch (e) { setSaveState('❌ 移动失败：' + e.message); return false; }
+  };
+  cardActions.moveInto = moveInto;
   const mouse = useRef(null);
   useEffect(() => { const m = e => { mouse.current = { x: e.clientX, y: e.clientY }; }; window.addEventListener('pointermove', m); return () => window.removeEventListener('pointermove', m); }, []);
   const pasteNodes = async ids => {
@@ -588,12 +602,27 @@ export function Shell({ name, Canvas }) {
       e.clipboardData.setData('text/plain', CLIP + JSON.stringify({ ids }));
       setSaveState('已复制 ' + ids.length + ' 个节点（连同子孙）· 到目标页 Ctrl+V');
     };
-    window.addEventListener('copy', onCopy);
-    return () => window.removeEventListener('copy', onCopy);
+    const onCut = e => {
+      if (e.target.closest?.('textarea, input, [contenteditable="true"]') || window.getSelection()?.toString()) return;
+      const ids = (cardActions.multi?.length ? cardActions.multi : sel ? [sel] : []).filter(id => !id.startsWith('@'));
+      if (!ids.length || mode !== 'ws') return;
+      e.preventDefault();
+      e.clipboardData.setData('text/plain', CUT + JSON.stringify({ ids }));
+      setSaveState('已剪切 ' + ids.length + ' 个节点 · 到目标页（或钻进目标节点）Ctrl+V = 移过去（原位置不留）');
+    };
+    window.addEventListener('copy', onCopy); window.addEventListener('cut', onCut);
+    return () => { window.removeEventListener('copy', onCopy); window.removeEventListener('cut', onCut); };
   });
   useEffect(() => {
     const onPaste = e => {
       const txt = e.clipboardData?.getData('text/plain') || '';
+      if (txt.startsWith(CUT) && !e.target.closest?.('textarea, input, [contenteditable="true"]')) {
+        e.preventDefault(); e.stopPropagation();
+        let ids = []; try { ids = JSON.parse(txt.slice(CUT.length)).ids; } catch { return setSaveState('❌ 剪贴板内容坏了'); }
+        const at = mouse.current && cardActions.toFlow ? cardActions.toFlow(mouse.current) : null;
+        moveInto(ids, realScope, at).then(okd => { if (okd) navigator.clipboard?.writeText('').catch(() => {}); }); // 剪切只能粘一次
+        return;
+      }
       if (txt.startsWith(CLIP) && !e.target.closest?.('textarea, input, [contenteditable="true"]')) {
         e.preventDefault(); e.stopPropagation();
         try { pasteNodes(JSON.parse(txt.slice(CLIP.length)).ids); } catch { setSaveState('❌ 剪贴板内容坏了'); }
