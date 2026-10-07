@@ -334,7 +334,7 @@ export function Shell({ name, Canvas }) {
   const [propsTab, setPropsTab] = useState('info'); // info | raw
   const [rawText, setRawText] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
-  // >v<🔎搜索-接入-Ctrl+K 跳过去（换页 + 选中 + 居中）；L / 右键「连线到…」= 选目标连线（可以连到别的页，那头会变成传送门）
+  // >v<🔎搜索-接入-Ctrl+F 跳过去（换页 + 选中 + 居中）；L / 右键「连线到…」= 选目标连线（可以连到别的页，那头会变成传送门）
   const [finder, setFinder] = useState(null); // {mode: 'go' | 'link', from?}
   const searchItems = useMemo(() => [...graph.nodes.values()].filter(n => n.id !== ROOT).map(n => ({ id: n.id, label: n.label, path: n.id, meta: wsData?.nodes[n.id]?.meta, body: wsData?.nodes[n.id]?.body })), [graph, wsData]);
   const jumpTo = id => {
@@ -464,7 +464,7 @@ export function Shell({ name, Canvas }) {
   // 画布快捷键（焦点在输入框里时不触发）
   useEffect(() => {
     const onKey = e => {
-      if (e.ctrlKey && !e.altKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); e.stopPropagation(); setFinder({ mode: 'go' }); return; } // 在输入框里也能用
+      if (e.ctrlKey && !e.altKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); e.stopPropagation(); setFinder({ mode: 'go' }); return; } // 在输入框里也能用
       const inText = e.target.closest && e.target.closest('textarea, input, [contenteditable="true"]');
       if (inText) return;
       if (helpOpen && e.key === 'Escape') { setHelpOpen(false); return; }
@@ -694,11 +694,11 @@ export function Shell({ name, Canvas }) {
       {propsOpen && sel && !sel.startsWith('@') && graph.nodes.has(sel) && (
         <PropsPanel id={sel} graph={graph} wsNode={wsData?.nodes[sel]} edges={mode === 'ws' ? (wsData?.edges || []) : graph.edges}
           editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} onMeta={saveMeta} metaHints={mode === 'ws' ? metaHints(sel) : []} file={nodeFile(sel)} tab={propsTab} onTab={setPropsTab} raw={rawText} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)}
-          onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} onEdgeRemove={(from, to) => removeEdges([[from, to]])} color={colors.get(sel)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} />
+          onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} onEdgeRemove={(from, to) => removeEdges([[from, to]])} color={colors.get(sel)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} onColorWords={menuActions.colorWords} />
       )}
       {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（I 开关）</div></aside>}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
-      {finder && <SearchModal title={finder.mode === 'link' ? '连线：「' + graph.nodes.get(finder.from)?.label + '」→ 哪个节点？' : '跳到节点（Ctrl+K）'} items={searchItems} exclude={finder.from}
+      {finder && <SearchModal title={finder.mode === 'link' ? '连线：「' + graph.nodes.get(finder.from)?.label + '」→ 哪个节点？' : '跳到节点（Ctrl+F）'} items={searchItems} exclude={finder.from}
         onClose={() => setFinder(null)} onPick={id => finder.mode === 'link' ? connect(finder.from, id) : jumpTo(id)} />}
       {scaffold && <ScaffoldModal items={scaffold} root={wsData?.root || ''} onClose={() => setScaffold(null)}
         onCreate={files => api('/scaffold', { method: 'POST', body: JSON.stringify({ files }) }).then(d => { setScaffold(null); setTree(null); setSaveState(d.made.length ? '已创建 ' + d.made.join('、') : '没有新建（都已存在）'); }).catch(e => setSaveState('❌ ' + e.message))} />}

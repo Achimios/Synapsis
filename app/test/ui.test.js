@@ -610,9 +610,9 @@ for (const kind of ['reactflow']) {
   ok(await kb() === '调节', '属性面板显示边的类型');
   await page.click('.side .edges li:has-text("观察属性") button.ek'); await sleep(1500);
   ok(/观察空间\s*\|\s*\|\s*离散/.test(md('观察属性.md')) && await kb() === '离散', '点一下 → 离散');
-  // Ctrl+K 搜索 → 跳过去选中（👤 2026-10-08）
-  await page.mouse.click(700, 760); await page.keyboard.press('Control+k'); await sleep(300);
-  ok(!!(await page.$('.finder input')), 'Ctrl+K 打开搜索框');
+  // Ctrl+F 搜索 → 跳过去选中（👤 2026-10-08）
+  await page.mouse.click(700, 760); await page.keyboard.press('Control+f'); await sleep(300);
+  ok(!!(await page.$('.finder input')), 'Ctrl+F 打开搜索框');
   await page.keyboard.type('观察属'); await sleep(200);
   ok((await page.$$eval('.finder li', ls => ls.map(l => l.innerText.split('\n')[0])))[0] === '观察属性', '搜索结果第一个 = 观察属性');
   await page.keyboard.press('Enter'); await sleep(800);
@@ -637,8 +637,9 @@ for (const kind of ['reactflow']) {
   await page.mouse.click(700, 760); await sleep(200);
   const altDrag = async (edgeId, end, to, opts = {}) => {
     await page.keyboard.down('Alt'); await sleep(150);
-    const a = await (await page.$(`.react-flow__edge[data-id="${edgeId}"] .react-flow__edgeupdater-${end}`)).boundingBox();
-    const s = [a.x + a.width / 2, a.y + a.height / 2];
+    // 在线身上（离要拿的那端 1/4 处）按下，不是端点
+    const pt = await page.$eval(`.react-flow__edge[data-id="${edgeId}"] .react-flow__edge-path`, (p, end) => { const L = p.getTotalLength(), q = p.getPointAtLength(end === 'source' ? L * 0.25 : L * 0.75), s = new DOMPoint(q.x, q.y).matrixTransform(p.getScreenCTM()); return [s.x, s.y]; }, end);
+    const s = pt;
     await page.mouse.move(...s); await page.mouse.down();
     for (let i = 1; i <= 10; i++) { await page.mouse.move(s[0] + (to[0] - s[0]) * i / 10, s[1] + (to[1] - s[1]) * i / 10); if (opts.cancelAt === i) { await page.mouse.down({ button: 'right' }); await page.mouse.up({ button: 'right' }); } }
     await page.mouse.up(); await page.keyboard.up('Alt'); await sleep(1800);

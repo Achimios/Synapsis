@@ -48,9 +48,23 @@ const wins = new Map(); // dir -> BrowserWindow
 let launcher = null, tray = null;
 const winOpts = (w, h) => ({ width: w, height: h, show: !HIDDEN, autoHideMenuBar: true, icon: trayIcon(), backgroundColor: '#1c1c1c', webPreferences: { preload: join(APP, 'electron', 'preload.cjs'), contextIsolation: true } });
 
+// 界面缩放：Electron 自带菜单的「放大」只认 Ctrl+Shift+=，Ctrl+= 没反应（👤 2026-10-08「只能 ctrl - 不能 ctrl +」）
+function zoomKeys(w) {
+  w.webContents.on('before-input-event', (e, i) => {
+    if (i.type !== 'keyDown' || !(i.control || i.meta) || i.alt) return;
+    const z = w.webContents.getZoomLevel();
+    if (i.key === '=' || i.key === '+' || i.code === 'NumpadAdd') w.webContents.setZoomLevel(Math.min(z + 0.5, 5));
+    else if (i.key === '-' || i.key === '_' || i.code === 'NumpadSubtract') w.webContents.setZoomLevel(Math.max(z - 0.5, -5));
+    else if (i.key === '0' || i.code === 'Numpad0') w.webContents.setZoomLevel(0);
+    else return;
+    e.preventDefault();
+  });
+  return w;
+}
+
 function showLauncher() {
   if (launcher && !launcher.isDestroyed()) { launcher.show(); launcher.focus(); return launcher; }
-  launcher = new BrowserWindow({ ...winOpts(560, 640), title: 'Synapsis' });
+  launcher = zoomKeys(new BrowserWindow({ ...winOpts(560, 640), title: 'Synapsis' }));
   launcher.loadURL(`${BASE}/launcher.html`);
   return launcher;
 }
@@ -70,7 +84,7 @@ async function openWorkspace(dir) {
   const wfile = join(dir, '.synapsis', 'window.json');
   let saved = null; try { saved = JSON.parse(readFileSync(wfile, 'utf8')); } catch { /* 第一次 */ }
   const fits = b => b && screen.getAllDisplays().some(d => { const a = d.workArea; return b.x >= a.x - 50 && b.y >= a.y - 50 && b.x + 200 <= a.x + a.width && b.y + 100 <= a.y + a.height; });
-  const w = new BrowserWindow({ ...winOpts(1500, 950), ...(fits(saved) ? { x: saved.x, y: saved.y, width: saved.width, height: saved.height } : {}), title: 'Synapsis — ' + basename(dir) });
+  const w = zoomKeys(new BrowserWindow({ ...winOpts(1500, 950), ...(fits(saved) ? { x: saved.x, y: saved.y, width: saved.width, height: saved.height } : {}), title: 'Synapsis — ' + basename(dir) }));
   if (saved?.maximized && !HIDDEN) w.maximize();
   const keep = () => { try { mkdirSync(dirname(wfile), { recursive: true }); writeFileSync(wfile, JSON.stringify({ ...w.getNormalBounds(), maximized: w.isMaximized() })); } catch { /* 只读目录就算了 */ } };
   let kt = null; const keepSoon = () => { clearTimeout(kt); kt = setTimeout(keep, 500); };

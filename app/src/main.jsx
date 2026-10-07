@@ -107,18 +107,55 @@ function FlowBridge() {
 
 // >v<🎨画布-ReactFlow-显示 view + 回报选择/拖动/连线/视图
 function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, onDrill, onConnect, onMove, onContextMenu, onEdgeMenu, onRewire, onRemoveEdges, viewport, onViewport }) {
-  // 按住 Alt：连线两端变成可拖（离哪端近拿哪端）
+  // >v<🎨画布-改接连线-按住 Alt 在连线身上任意处按下 = 拿起离鼠标近的那一端（👤 2026-10-08：端点处常叠着好几条线，只能从线身上挑）
+  //   放到别的节点 = 改接（标签 / 类型跟过去），放到画布空白 = 删除，拖着时右键 / Esc = 取消，放到画布外（面板上）= 取消
   const [alt, setAlt] = useState(false);
   useEffect(() => {
     const k = e => setAlt(e.altKey), b = () => setAlt(false);
     window.addEventListener('keydown', k); window.addEventListener('keyup', k); window.addEventListener('blur', b);
     return () => { window.removeEventListener('keydown', k); window.removeEventListener('keyup', k); window.removeEventListener('blur', b); };
   }, []);
-  const rw = useRef({ done: false, cancel: false });
+  const [rw, setRw] = useState(null); // 正在拖的线端：{ id, end: 'source' | 'target', fixed: [x, y], cur: [x, y] }（屏幕坐标）
+  const rwRef = useRef(null); rwRef.current = rw;
+  const live = useRef(); live.current = { view, onRewire, onRemoveEdges };
   useEffect(() => {
-    const cancel = e => { if (!rw.current.active) return; if (e.type === 'contextmenu' || e.key === 'Escape' || e.button === 2) { e.preventDefault(); rw.current.cancel = true; } };
-    window.addEventListener('contextmenu', cancel, true); window.addEventListener('keydown', cancel, true); window.addEventListener('pointerdown', cancel, true);
-    return () => { window.removeEventListener('contextmenu', cancel, true); window.removeEventListener('keydown', cancel, true); window.removeEventListener('pointerdown', cancel, true); };
+    let quiet = 0; // 刚用右键取消：吞掉随后的右键菜单 / 点击
+    const edgeAt = e => e.altKey && e.button === 0 && e.target.closest?.('.react-flow__edge');
+    const stop = e => { e.preventDefault(); e.stopPropagation(); };
+    const down = e => {
+      if (rwRef.current) { stop(e); if (e.button === 2) { quiet = Date.now(); setRw(null); } return; }
+      const el = edgeAt(e); if (!el) return;
+      const path = el.querySelector('.react-flow__edge-path'); if (!path) return;
+      const ctm = path.getScreenCTM(), L = path.getTotalLength();
+      const scr = q => { const s = new DOMPoint(q.x, q.y).matrixTransform(ctm); return [s.x, s.y]; };
+      const a = scr(path.getPointAtLength(0)), b = scr(path.getPointAtLength(L));
+      const d = q => Math.hypot(q[0] - e.clientX, q[1] - e.clientY);
+      const end = d(a) <= d(b) ? 'source' : 'target';
+      stop(e);
+      setRw({ id: el.dataset.id, end, fixed: end === 'source' ? b : a, cur: [e.clientX, e.clientY] });
+    };
+    const mdown = e => { if (rwRef.current || edgeAt(e)) stop(e); }; // 拦住 React Flow 的平移（它听 mousedown）
+    const move = e => { if (rwRef.current) setRw(r => r && { ...r, cur: [e.clientX, e.clientY] }); };
+    const up = e => {
+      const r = rwRef.current; if (!r || e.button !== 0) return;
+      setRw(null); quiet = Date.now();
+      const { view, onRewire, onRemoveEdges } = live.current;
+      const ve = view.edges.find(x => x.id === r.id); if (!ve) return;
+      const hit = document.elementFromPoint(e.clientX, e.clientY);
+      const node = hit?.closest('.react-flow__node');
+      if (node) {
+        const nid = node.dataset.id, [f, t] = ve.raw[0].split('->');
+        const keep = r.end === 'target' ? ve.from : ve.to; // 不动的那端（可能是传送门 id）
+        if (ve.count !== 1 || nid === keep || (nid.startsWith('@') && !nid.startsWith('@portal:'))) return;
+        if (r.end === 'target') onRewire(f, t, f, nid); else onRewire(f, t, nid, t);
+      } else if (hit?.closest('.react-flow') && !hit.closest('.react-flow__panel')) onRemoveEdges(ve.raw.map(x => x.split('->')));
+    };
+    const key = e => { if (rwRef.current && e.key === 'Escape') { stop(e); setRw(null); } };
+    const menu = e => { if (rwRef.current || Date.now() - quiet < 800) { stop(e); if (rwRef.current) { quiet = Date.now(); setRw(null); } } };
+    const click = e => { if (Date.now() - quiet < 300) stop(e); };
+    const on = [['pointerdown', down], ['mousedown', mdown], ['pointermove', move], ['pointerup', up], ['keydown', key], ['contextmenu', menu], ['click', click]];
+    for (const [t, f] of on) window.addEventListener(t, f, true);
+    return () => { for (const [t, f] of on) window.removeEventListener(t, f, true); };
   }, []);
   const centered = new Set(plane?.ids || []); // 空间成员：卡片中心对准坐标点
   // >v<🎨画布-多选-选择由这里自己管（不用 React Flow 的 Ctrl 多选：两边各管一份会互相触发 → 死循环黑屏，👤 2026-10-08）：
@@ -154,8 +191,8 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
   // 选中一个框：框里的节点连出去的线也算「相连」
   const near = selected && view.parentOf?.size ? new Set([selected, ...view.nodes.filter(n => { for (let f = n.frame; f != null; f = view.parentOf.get(f)) if (f === selected) return true; return false; }).map(n => n.id)]) : null;
   const edges = view.edges.map((e, idx) => ({
-    id: e.id, source: e.from, target: e.to, type: 'flow', selectable: false, reconnectable: alt, ...(e.mod ? { sourceHandle: 'mo', targetHandle: 'mi' } : {}),
-    data: { look: edgeLook(e, selected, near), idx, text: e.text || '', mat: e.mat || null },
+    id: e.id, source: e.from, target: e.to, type: 'flow', selectable: false, ...(e.mod ? { sourceHandle: 'mo', targetHandle: 'mi' } : {}),
+    data: { look: rw?.id === e.id ? { ...edgeLook(e, selected, near), opacity: 0.2 } : edgeLook(e, selected, near), idx, text: e.text || '', mat: e.mat || null },
   }));
 
   const onNodesChange = useCallback(ch => setNodes(ns => applyNodeChanges(ch, ns)), []);
@@ -205,18 +242,16 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   });
-  return (
+  return (<>
+    {rw && <svg className="rwline"><line x1={rw.fixed[0]} y1={rw.fixed[1]} x2={rw.cur[0]} y2={rw.cur[1]} /><circle cx={rw.cur[0]} cy={rw.cur[1]} r="5" /></svg>}
     <ReactFlow nodes={shown} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChange} onSelectionEnd={onSelectionEnd}
       onNodeClick={click} multiSelectionKeyCode={null} disableKeyboardA11y
       onPaneClick={() => { onSelect(null); setMulti([]); }}
       onNodeContextMenu={(e, n) => { e.preventDefault(); onContextMenu(n.id, e.clientX, e.clientY); }}
       onPaneContextMenu={e => { e.preventDefault(); onContextMenu(null, e.clientX, e.clientY); }}
-      onEdgeContextMenu={(e, edge) => { e.preventDefault(); if (!rw.current.active) onEdgeMenu?.(edge.id, e.clientX, e.clientY); }}
-      onEdgeClick={() => {}} // 有点击回调连线才接收鼠标（右键菜单要用）
-      reconnectRadius={14}
-      onReconnectStart={() => { rw.current = { active: true, done: false, cancel: false }; }}
-      onReconnect={(old, c) => { rw.current.done = true; if (rw.current.cancel || c.__right) return; const e = view.edges.find(x => x.id === old.id); if (e?.count === 1) { const [f, t] = e.raw[0].split('->'); onRewire(f, t, c.source, c.target); } }}
-      onReconnectEnd={(evt, old) => { const r = rw.current; rw.current = { active: false }; if (r.done || r.cancel || evt?.button === 2 || (evt?.buttons & 2)) return; /* 按右键会直接结束拖动 → 当取消 */ const e = view.edges.find(x => x.id === old.id); if (e) onRemoveEdges(e.raw.map(x => x.split('->'))); }}
+      onEdgeContextMenu={(e, edge) => { e.preventDefault(); onEdgeMenu?.(edge.id, e.clientX, e.clientY); }}
+      onEdgeClick={() => {}} /* 有点击回调连线才接收鼠标（右键菜单、Alt 拖都要用） */
+      className={alt ? 'altdown' : ''}
       onNodeDoubleClick={(_, n) => onDrill(n.id)}
       onNodeDragStop={(_, n, dragged) => onMove(Object.fromEntries((dragged || [n]).map(d => [d.id, toLayout(d.id, d.position)])))}
       onConnect={c => onConnect(c.source, c.target, c.sourceHandle === 'mo' || c.targetHandle === 'mi')}
@@ -230,7 +265,7 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
       <FlowBridge />
       {multi.length > 1 && <ScaleFrame nodes={shown} ids={multi} setNodes={setNodes} onMove={ch => onMove(Object.fromEntries(Object.entries(ch).map(([id, p]) => [id, toLayout(id, p)])))} />}
     </ReactFlow>
-  );
+  </>);
 }
 
 createRoot(document.getElementById('root')).render(<Shell name="reactflow" Canvas={RFCanvas} />);

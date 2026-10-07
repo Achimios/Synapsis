@@ -29,6 +29,8 @@ function heartbeat() {
 function workspaceApi() {
   const body = req => new Promise((ok, no) => { let s = ''; req.on('data', c => s += c); req.on('end', () => { try { ok(s ? JSON.parse(s) : {}); } catch (e) { no(e); } }); });
   const payload = root => {
+    // 词表文件直接放出来（以前点「词表…」才建，👤 2026-10-08 根本找不到）
+    if (existsSync(join(root, DIR)) && !existsSync(join(root, DIR, '_配色.md'))) { try { ensureColorWords(root); } catch { /* 只读目录就用默认 */ } }
     const ws = loadWorkspace(root);
     const nodes = {};
     // file = 相对项目根的路径（文件树和「打开 md」用）；pics = 相对 __synapsis 的图片路径

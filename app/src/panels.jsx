@@ -91,7 +91,7 @@ function MetaTable({ id, meta, editable, onMeta, hints = [] }) {
   );
 }
 
-export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, tab, onTab, raw, onReveal, onRename, color, onColor, onEdgeKind, onEdgeRemove }) {
+export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, tab, onTab, raw, onReveal, onRename, color, onColor, onColorWords, onEdgeKind, onEdgeRemove }) {
   const n = graph.nodes.get(id);
   const [body, setBody] = useState(wsNode?.body || '');
   useEffect(() => setBody(wsNode?.body || ''), [id, wsNode?.body]);
@@ -124,7 +124,8 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
           <button title="清除状态（不标）" onClick={() => onStatus(id, null)}>—</button></div>
         {onColor && <div className="row swatches">颜色 <span className="cur" style={{ background: color }} title={'现在：' + color + (wsNode?.meta?.color ? '（手动）' : '（自动）')} />
           {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={wsNode?.meta?.color === k ? 'on' : ''} style={{ background: c }} onClick={() => onColor(id, k)} />)}
-          <button className={'auto' + (!wsNode?.meta?.color ? ' on' : '')} title="自动（按分组 / 词表配色）" onClick={() => onColor(id, null)}>自动</button></div>}
+          <button className={'auto' + (!wsNode?.meta?.color ? ' on' : '')} title="自动（按分组 / 词表配色）" onClick={() => onColor(id, null)}>自动</button>
+          {onColorWords && <button className="auto" title="自动配色按名字里的词认颜色：打开这个工作区的词表 __synapsis/_配色.md" onClick={onColorWords}>词表…</button>}</div>}
         <MetaTable id={id} meta={meta} editable={editable} onMeta={onMeta} hints={metaHints} />
         {(ins.length > 0 || outs.length > 0) && <div className="edges">
           {ins.length > 0 && <><div className="eh in">← 输入{sub.size > 1 ? '（含子节点）' : ''}</div><ul>{ins.map(e => edgeRow(e, e.from, e.to))}</ul></>}
@@ -193,7 +194,7 @@ export function OutlineTree({ graph, selected, scope, renaming, status, onPick, 
     <>
     <input className="ofilter" value={q} placeholder="过滤…（名字）" onChange={e => setQ(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') setQ(''); else if (e.key === 'Enter' && flt?.hits.size) onPick([...flt.hits][0]); }} />
     <div className="otree" ref={box} tabIndex={0} onKeyDown={onKey}>
-      {flt && !rows.length && <div className="hint" style={{ padding: 6 }}>没有名字含「{q}」的节点（Ctrl+K 可以搜属性和正文）</div>}
+      {flt && !rows.length && <div className="hint" style={{ padding: 6 }}>没有名字含「{q}」的节点（Ctrl+F 可以搜属性和正文）</div>}
       {rows.map(({ n, depth }) => (
         <div key={n.id} className={'orow' + (n.id === selected ? ' sel' : '') + (n.id === scope && scope ? ' scope' : '') + (flt?.hits.has(n.id) ? ' hit' : '')} style={{ paddingLeft: 4 + depth * 12 }}
           onClick={() => { if (renaming !== n.id) onPick(n.id); }} onDoubleClick={() => onRename(n.id)} title={n.id}>
@@ -239,15 +240,15 @@ export function ScaffoldModal({ items, root, onCreate, onClose }) {
 
 export const KEYMAP = [
   ['选择与查看', [['单击卡片 / 大纲行', '选中，右侧显示概览'], ['I', '属性面板开关'], ['Tab', '左栏开关'], ['? / F1', '这一页']]],
-  ['搜索', [['Ctrl+K', '全局搜索（名字 / 属性 / 正文）→ 跳过去'], ['大纲顶上的过滤框', '只看名字含这些字的节点']]],
+  ['搜索', [['Ctrl+F', '全局搜索（名字 / 属性 / 正文）→ 跳过去'], ['大纲顶上的过滤框', '只看名字含这些字的节点']]],
   ['导航', [['双击卡片 / 大纲行的 →', '钻进去'], ['Alt+↑', '上一层'], ['鼠标侧键 / Alt+← →', '后退 / 前进'], ['大纲树里 ↑↓←→', '上下走 / 折叠展开'], ['▸N / 空格', '卡片里原地展开子级'], ['⊞ / F', '分组原地展开成框（子节点画在框里、线直连）']]],
-  ['编辑', [['Enter', '新建同级'], ['Insert / Ctrl+Enter', '新建子级'], ['F2 / 双击大纲行', '改名'], ['Del', '删除（进 _过期的/）'], ['卡片边缘拖到另一张', '连线'], ['卡片底下 ◆ 拖到另一张顶上', '调节线（参数 / 修改器，不算数据流）'], ['L / 右键「连线到…」', '搜索目标连线（可以连到别的页）'], ['右键连线 / 属性面板 ✕', '删除连线'], ['Alt + 拖连线一端', '放到别的节点 = 改接，放到空白 = 删除，拖着时右键 / Esc = 取消'], ['右键', '菜单：状态（❌ = 弃用）、颜色、属性、原文……'], ['Ctrl+Z', '撤销（结构、连线、拖动；删除也能撤回）'], ['Ctrl+Shift+Z / Ctrl+Y', '重做']]],
+  ['编辑', [['Enter', '新建同级'], ['Insert / Ctrl+Enter', '新建子级'], ['F2 / 双击大纲行', '改名'], ['Del', '删除（进 _过期的/）'], ['卡片边缘拖到另一张', '连线'], ['卡片底下 ◆ 拖到另一张顶上', '调节线（参数 / 修改器，不算数据流）'], ['L / 右键「连线到…」', '搜索目标连线（可以连到别的页）'], ['右键连线 / 属性面板 ✕', '删除连线'], ['Alt + 拖连线', '在线身上任意处按下，拿起离鼠标近的那端：放到别的节点 = 改接，放到空白 = 删除，拖着时右键 / Esc = 取消'], ['右键', '菜单：状态（❌ = 弃用）、颜色、属性、原文……'], ['Ctrl+Z', '撤销（结构、连线、拖动；删除也能撤回）'], ['Ctrl+Shift+Z / Ctrl+Y', '重做']]],
   ['复制', [['Ctrl+C', '复制选中的卡（连同子孙、属性、正文、图片、它们之间的边）'], ['Ctrl+V', '粘到当前页、鼠标处（同名加「 2」）；剪贴板里是图片 = 贴图']]],
   ['选择', [['Ctrl+单击', '加入 / 移出选择'], ['Shift+单击', '加上它和已选之间连线路径上的所有节点'], ['Ctrl+← / →', '沿入线 / 出线扩选一层'], ['Shift+← / →', '沿入线 / 出线一直扩到头']]],
   ['排列', [['Shift+拖空白', '框选多张卡'], ['拖框的边 / 角', '整体拉开或收紧间距'], ['收到底', '对齐；会重叠的依次排开']]],
   ['图片', [['Ctrl+V', '贴进选中的卡；没选中 = 散图'], ['拖文件 / 网页图', '落在卡片上 = 进那张；空白处 = 散图'], ['图片右下角拖', '调大小'], ['🖼 / 工具栏', '收起这张 / 全部收起']]],
 ];
-// >v<🔎搜索-搜索框-Ctrl+K 跳到节点 / 右键「连线到…」选目标：同一个框（↑↓ 选，Enter 确定，Esc 关）
+// >v<🔎搜索-搜索框-Ctrl+F 跳到节点 / 右键「连线到…」选目标：同一个框（↑↓ 选，Enter 确定，Esc 关）
 export function SearchModal({ title, items, exclude, onPick, onClose }) {
   const [q, setQ] = useState(''), [i, setI] = useState(0);
   const res = useMemo(() => searchNodes(items, q).filter(r => r.id !== exclude), [items, q, exclude]);

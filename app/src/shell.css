@@ -73,7 +73,7 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .frame .fhead .kids:hover { background: #444; color: #fff; }
 .frame.dropped .lab { text-decoration: line-through; }
 .react-flow__node-frame { padding: 0; }
-/* 搜索框（Ctrl+K / 连线到…） */
+/* 搜索框（Ctrl+F / 连线到…） */
 .modal > div.finder { width: min(640px, 94vw); max-height: 70vh; align-self: flex-start; margin-top: 12vh; }
 .finder input { margin: 8px; padding: 6px 8px; font: 14px system-ui, "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); border: 1px solid var(--accent); border-radius: 3px; outline: none; }
 .finder ul { list-style: none; margin: 0; padding: 0 0 6px; overflow: auto; }
@@ -263,3 +263,9 @@ svg.axes text.al { fill: var(--dim); font-size: 12px; }
 .scaflist li { display: flex; gap: 8px; align-items: center; padding: 2px 0; font: var(--mono); }
 .scaflist li.has label { color: var(--faint); }
 .scaflist .warn { color: var(--warn); font-size: 11px; }
+
+/* Alt 拖连线：线身上显示可抓；拖着时画一条从不动端到鼠标的虚线 */
+.altdown .react-flow__edge { cursor: grab; }
+.rwline { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 60; }
+.rwline line { stroke: #ffd27a; stroke-width: 2; stroke-dasharray: 6 4; }
+.rwline circle { fill: #ffd27a; }
