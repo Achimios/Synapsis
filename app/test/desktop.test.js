@@ -28,6 +28,19 @@ try {
   ok(await eapp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getTitle()) === 'Synapsis — 工作区 一', '窗口标题 = 工作区名');
   const recent = JSON.parse(readFileSync(join(tmp, 'recent.json'), 'utf8'));
   ok(recent[0]?.dir === ws, '记进最近列表');
+  // 界面缩放：Ctrl+= 放大（Electron 默认菜单只认 Ctrl+Shift+=，👤 2026-10-08），Ctrl+- 缩小，Ctrl+0 还原
+  const zoomAfter = key => eapp.evaluate(async ({ BrowserWindow }, key) => {
+    const wc = BrowserWindow.getAllWindows()[0].webContents;
+    wc.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers: ['control'] });
+    wc.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers: ['control'] });
+    await new Promise(r => setTimeout(r, 300));
+    return wc.getZoomLevel();
+  }, key);
+  const z1 = await zoomAfter('=');
+  ok(z1 > 0, 'Ctrl+= 放大 ' + z1);
+  const z2 = await zoomAfter('-');
+  ok(z2 < z1, 'Ctrl+- 缩小 ' + z2);
+  ok(await zoomAfter('0') === 0, 'Ctrl+0 还原');
   await eapp.close();
 
   // 2) 无参数：启动台；从启动台打开未初始化的文件夹 → 自动挂上（测试模式跳过确认框）
