@@ -53,13 +53,13 @@ function RFCanvas({ view, layout, selected, images, onSelect, onDrill, onConnect
       onNodeDoubleClick={(_, n) => onDrill(n.id)}
       onNodeDragStop={(_, n, dragged) => onMove(Object.fromEntries((dragged || [n]).map(d => [d.id, d.position])))}
       onConnect={c => onConnect(c.source, c.target)}
-      zoomOnDoubleClick={false} deleteKeyCode={null} minZoom={0.1}
+      zoomOnDoubleClick={false} deleteKeyCode={null} minZoom={0.1} colorMode="dark"
       // 记住的视图优先；第一次进这个范围才 fitView
       fitView={!viewport} fitViewOptions={{ padding: 0.2 }} defaultViewport={viewport}
       onMoveEnd={(_, vp) => onViewport(vp)}>
-      <Background gap={20} />
+      <Background gap={24} size={1} color="#333" />
       <Controls showInteractive={false} />
-      <MiniMap pannable zoomable />
+      <MiniMap pannable zoomable nodeColor="#444" nodeStrokeColor="#666" maskColor="rgba(0,0,0,.55)" />
     </ReactFlow>
   );
 }

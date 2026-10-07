@@ -32,17 +32,18 @@ export function Shell({ name, Canvas }) {
   const [scope, setScope] = useState(ROOT);
   const [selected, setSelected] = useState(null);
   const [positions, setPositions] = useState(() => DEMO ? load('syn.pos.' + name, {}) : {});
-  const [localImages, setImages] = useState(() => load('syn.img', {}));
+  const [localImages, setImages] = useState(() => load('syn.img2', {})); // id -> [dataURL]
   const [exportText, setExportText] = useState(null);
-  // >v<🧭导航-视图记忆-每个范围各存平移+缩放
+  // >v<🧭导航-视图记忆-每个范围各存平移+缩放；工作区模式存 <项目>/.synapsis/view.json（下次启动还原：各页视图、上次所在页、展开、左栏）
   // 每个范围各记一份视图（平移+缩放），返回上一级/再钻进来时还原
-  const [viewports, setViewports] = useState(() => load('syn.vp.' + name, {}));
+  const [viewports, setViewports] = useState(() => DEMO ? load('syn.vp.' + name, {}) : {});
+  const [leftHidden, setLeftHidden] = useState(() => DEMO ? load('syn.lh', false) : false);
   // >v<🧭导航-历史-Alt+←/→ 后退前进，Alt+↑ 上一层
   // 导航历史：像浏览器一样 Alt+← / Alt+→
   const hist = useRef({ back: [], fwd: [] });
   const taRef = useRef(null);
   // >v<🔭视图投影-原地展开-不钻进去也能看子级：卡片里列出子节点（▸N 点一下 / 空格），双击子项跳进去并选中
-  const [expanded, setExpanded] = useState(() => load('syn.exp', {}));
+  const [expanded, setExpanded] = useState(() => DEMO ? load('syn.exp', {}) : {});
 
   const graph = useMemo(() => parseOutline(text), [text]);
   const realScope = graph.nodes.has(scope) ? scope : ROOT;
@@ -60,18 +61,26 @@ export function Shell({ name, Canvas }) {
       edges: v.edges.map(e => ({ ...e, text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '' })),
     };
   }, [graph, realScope, wsData, expanded]);
+  // >v<🖼️图片-卡片显示-节点的 _pics_名字/ 里所有图（旧版 frontmatter img: 也认）
   const images = useMemo(() => {
     if (local) return localImages;
-    const m = {};
-    for (const [id, n] of Object.entries(wsData?.nodes || {})) if (n.meta.img) m[id] = withWs('/file?p=' + encodeURIComponent(n.meta.img));
+    const m = {}, url = p => withWs('/file?p=' + encodeURIComponent(p));
+    for (const [id, n] of Object.entries(wsData?.nodes || {})) {
+      const l = [...(n.meta.img ? [n.meta.img] : []), ...(n.pics || [])].map(url);
+      if (l.length) m[id] = l;
+    }
     return m;
   }, [local, localImages, wsData]);
 
-  // 启动：从工作区加载；失败 → 离线（localStorage）
+  // 启动：从工作区加载（含上次的视图）；失败 → 离线（localStorage）
   useEffect(() => {
     if (DEMO) return;
-    api('/ws').then(d => { lastSaved.current = d.outline; setText(d.outline); setPositions(d.layout || {}); setWsData(d); setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载'); })
-      .catch(e => { setMode('offline'); setText(load('syn.text', SAMPLE)); setPositions(load('syn.pos.' + name, {})); setSaveState('⚠️ 没连上工作区（' + e.message + '），本地离线模式'); });
+    api('/ws').then(d => {
+      const v = d.view || {};
+      lastSaved.current = d.outline; setText(d.outline); setPositions(d.layout || {}); setWsData(d);
+      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setLeftHidden(!!v.leftHidden); if (v.scope) setScope(v.scope);
+      setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
+    }).catch(e => { setMode('offline'); setText(load('syn.text', SAMPLE)); setPositions(load('syn.pos.' + name, {})); setSaveState('⚠️ 没连上工作区（' + e.message + '），本地离线模式'); });
   }, []);
   // 自动保存：大纲停手 0.7s 且无错误 → 写回文件
   useEffect(() => {
@@ -95,8 +104,14 @@ export function Shell({ name, Canvas }) {
 
   useEffect(() => { if (local) save('syn.text', text); }, [text, local]);
   useEffect(() => { if (local) save('syn.pos.' + name, positions); }, [positions, name, local]);
-  useEffect(() => save('syn.img', localImages), [localImages]);
-  useEffect(() => save('syn.vp.' + name, viewports), [viewports, name]);
+  useEffect(() => save('syn.img2', localImages), [localImages]);
+  useEffect(() => { if (local) { save('syn.vp.' + name, viewports); save('syn.exp', expanded); save('syn.lh', leftHidden); } }, [viewports, expanded, leftHidden, name, local]);
+  // 工作区：视图状态停手 0.6s 写进 .synapsis/view.json
+  useEffect(() => {
+    if (mode !== 'ws') return;
+    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, leftHidden, scope: realScope }) }).catch(() => {}), 600);
+    return () => clearTimeout(t);
+  }, [viewports, expanded, leftHidden, realScope, mode]);
   const onViewport = useCallback((sc, vp) => setViewports(v => ({ ...v, [sc]: vp })), []);
   const go = useCallback(next => {
     if (next === realScope) return;
@@ -140,7 +155,9 @@ export function Shell({ name, Canvas }) {
     focusLabel(id);
   }, [graph]);
   // 大纲里选中某节点的名字（改名 = 直接打字）
-  const focusLabel = id => {
+  const focusLabel = (id, again) => {
+    // 左栏藏着时先展开它（改名在大纲里打字），下一帧再选中（again：闭包里的 leftHidden 还是旧值）
+    if (leftHidden && !again) { setLeftHidden(false); requestAnimationFrame(() => focusLabel(id, true)); return; }
     setLeftTab('outline');
     const ta = taRef.current, line = lineOf(graph, id);
     if (!ta || line < 0) return;
@@ -177,6 +194,10 @@ export function Shell({ name, Canvas }) {
     addSibling: id => { const r = withNode(graph, graph.nodes.get(id).parent, id); pendingRename.current = r.id; setText(r.text); setSelected(r.id); },
     addHere: () => { const r = withNode(graph, realScope, null); pendingRename.current = r.id; setText(r.text); setSelected(r.id); },
     toggle: id => toggle(id), drill: id => drill(id), remove,
+    hasFile: id => !!nodeFile(id),
+    openMd: id => openFile(nodeFile(id)),
+    reveal: id => reveal(nodeFile(id), 'select'),
+    pasteHint: id => { setSelected(id); setSaveState('选中了「' + graph.nodes.get(id).label + '」：现在 Ctrl+V 贴图'); },
     up: () => up(), canUp: realScope !== ROOT,
     toggleAll: () => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; }),
   };
@@ -184,9 +205,17 @@ export function Shell({ name, Canvas }) {
   // 文件页：切过去时取文件树；点文件 → 右侧预览
   useEffect(() => { if (leftTab === 'files' && mode === 'ws' && !tree) api('/tree').then(setTree).catch(e => setTree({ tree: [], error: e.message })); }, [leftTab, mode]);
   const openFile = p => { setPropsOpen(false); setFileView({ path: p }); api('/raw?p=' + encodeURIComponent(p)).then(setFileView).catch(e => setFileView({ path: p, error: e.message })); };
+  // >v<🗂️外部区-节点md-节点 ⇄ 文件：右键/属性面板「看 md 原文」「在资源管理器显示」「默认程序打开」；文件树点节点 md → 画布跳过去选中
+  const nodeFile = id => wsData?.nodes[id]?.file;
+  const reveal = (p, how) => api('/reveal', { method: 'POST', body: JSON.stringify({ p, how }) }).catch(e => setSaveState('❌ ' + e.message));
+  const fileToNode = useMemo(() => new Map(Object.entries(wsData?.nodes || {}).map(([id, n]) => [n.file, id])), [wsData]);
+  const onTreeOpen = p => {
+    openFile(p);
+    const id = fileToNode.get(p);
+    if (id && graph.nodes.has(id)) { const par = graph.nodes.get(id).parent; if (par !== realScope) go(par); setSelected(id); }
+  };
   const saveBody = (id, body) => api('/node', { method: 'PATCH', body: JSON.stringify({ id, body }) }).then(d => { setWsData(d); setSaveState('正文已保存 ' + new Date().toLocaleTimeString()); }).catch(e => setSaveState('❌ 正文保存失败：' + e.message));
 
-  useEffect(() => save('syn.exp', expanded), [expanded]);
   const toggle = id => setExpanded(x => ({ ...x, [id]: !x[id] }));
   cardActions.toggle = toggle;
   cardActions.openChild = child => { const p = graph.nodes.get(child)?.parent; if (p == null) return; go(p); setSelected(child); };
@@ -223,14 +252,34 @@ export function Shell({ name, Canvas }) {
       e.preventDefault(); e.stopPropagation();
       const r = new FileReader();
       r.onload = () => {
-        if (mode !== 'ws') return setImages(m => ({ ...m, [sel]: r.result }));
-        api('/asset', { method: 'POST', body: JSON.stringify({ id: sel, dataUrl: r.result }) }).then(() => api('/ws')).then(setWsData).catch(e => setSaveState('❌ 贴图失败：' + e.message));
+        if (mode !== 'ws') return setImages(m => ({ ...m, [sel]: [...(m[sel] || []), r.result] }));
+        api('/asset', { method: 'POST', body: JSON.stringify({ id: sel, dataUrl: r.result }) })
+          .then(a => { setSaveState('图片已存 ' + a.path); return api('/ws'); }).then(setWsData).catch(e => setSaveState('❌ 贴图失败：' + e.message));
       };
       r.readAsDataURL(item.getAsFile());
     };
     window.addEventListener('paste', onPaste, true);
     return () => window.removeEventListener('paste', onPaste, true);
   }, [sel, mode]);
+  // 拖图片文件到卡片上 → 进那个节点（PureRef 习惯）
+  const addImageTo = (id, file) => {
+    const r = new FileReader();
+    r.onload = () => {
+      if (mode !== 'ws') return setImages(m => ({ ...m, [id]: [...(m[id] || []), r.result] }));
+      api('/asset', { method: 'POST', body: JSON.stringify({ id, dataUrl: r.result }) })
+        .then(a => { setSaveState('图片已存 ' + a.path); return api('/ws'); }).then(setWsData).catch(e => setSaveState('❌ 贴图失败：' + e.message));
+    };
+    r.readAsDataURL(file);
+  };
+  const onDrop = e => {
+    const files = [...(e.dataTransfer?.files || [])].filter(f => f.type.startsWith('image/'));
+    if (!files.length) return;
+    e.preventDefault();
+    const id = e.target.closest?.('.react-flow__node')?.dataset.id;
+    if (!id || id.startsWith('@portal:')) return setSaveState('把图片拖到某张卡片上');
+    setSelected(id);
+    files.forEach(f => addImageTo(id, f));
+  };
 
   // 大纲里：Tab 缩进、Shift+Tab 反缩进、回车保持缩进
   const onTaKey = e => {
@@ -252,27 +301,29 @@ export function Shell({ name, Canvas }) {
   const crumbs = breadcrumb(graph, realScope);
   return (
     <div className="shell">
-      <aside className="outline">
+      <aside className="outline" style={leftHidden ? { display: 'none' } : undefined}>
         <div className="bar tabs">
           <a className={leftTab === 'outline' ? 'on' : ''} onClick={() => setLeftTab('outline')}>大纲</a>
-          <a className={leftTab === 'files' ? 'on' : ''} onClick={() => setLeftTab('files')} title="项目根目录里 __synapsis 之外的文件（只读）">文件</a>
-          <span className="hint">{leftTab === 'outline' ? '缩进=子级　-> 名称=连线　✅◐○=状态' : mode === 'ws' ? '点文件 → 右侧预览' : '样例模式没有项目文件'}</span>
+          <a className={leftTab === 'files' ? 'on' : ''} onClick={() => setLeftTab('files')} title="项目根目录的文件（只读预览；点 __synapsis 里的节点 md → 画布跳过去）">文件</a>
+          <span className="hint" title={leftTab === 'outline' ? '缩进 = 子级\n-> 名称 = 连线\n✅ ◐ ○ = 状态' : ''}>{leftTab === 'outline' ? '?' : mode === 'ws' ? '' : '样例模式没有项目文件'}</span>
         </div>
         <textarea ref={taRef} value={text} spellCheck={false} onChange={e => setText(e.target.value)} onKeyDown={onTaKey} style={{ display: leftTab === 'outline' ? '' : 'none' }} />
-        {leftTab === 'files' && mode === 'ws' && <FileTree tree={tree} onOpen={openFile} current={fileView?.path} />}
+        {leftTab === 'files' && mode === 'ws' && <FileTree tree={tree} onOpen={onTreeOpen} current={fileView?.path} />}
         {leftTab === 'outline' && graph.errors.length > 0 && <div className="errs">{graph.errors.map((er, i) => <div key={i}>第 {er.line} 行：{er.msg}</div>)}</div>}
       </aside>
       <main>
         <div className="bar top">
+          <button className="ghost" onClick={() => setLeftHidden(h => !h)} title="显示/隐藏左栏（大纲、文件）">{leftHidden ? '▸' : '◂'}</button>
           <span className="crumbs">{crumbs.map((c, i) => <span key={c.id}>{i > 0 && ' › '}<a onClick={() => { go(c.id); setSelected(null); }}>{c.label}</a></span>)}</span>
-          <span className="hint">右键=菜单　双击=钻进　▸N/空格=展开　Del=删除　F2=改名　I=属性　Enter/Tab=新建　Alt+↑←→=导航　边缘拖=连线</span>
+          <span className="grow" />
+          <span className="save-wrap"><span className={'save' + (saveState.startsWith('❌') || saveState.startsWith('⚠') ? ' bad' : '')} title={wsData?.root || ''}>{mode === 'ws' ? (wsData?.root || '').split(/[\\/]/).slice(-1)[0] + ' · ' : mode === 'demo' ? '样例 · ' : ''}{saveState}</span></span>
           <button onClick={() => addNode(false)} title="在当前层新建（选中节点时建在它后面）；建完直接打字改名">＋ 节点</button>
           <button onClick={() => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; })}>{allOpen ? '全部收起' : '全部展开'}</button>
           <button onClick={() => setExportText(exportForLLM(graph, realScope))}>导出给 LLM</button>
           {local && <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>}
-          <span className={'save' + (saveState.startsWith('❌') || saveState.startsWith('⚠') ? ' bad' : '')} title={wsData?.root || ''}>{mode === 'ws' ? '📁 ' + (wsData?.root || '').split(/[\\/]/).slice(-2).join('/') + '　' : mode === 'demo' ? '🧪 样例　' : ''}{saveState}</span>
+          <span className="hint keys" title={KEYS}>?</span>
         </div>
-        {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className="canvas">
+        {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className="canvas" onDragOver={e => e.preventDefault()} onDrop={onDrop}>
           <Canvas key={realScope} view={view} layout={layout} selected={sel} images={images}
             onSelect={setSelected} onDrill={drill} onConnect={connect} onMove={move} onContextMenu={onContextMenu}
             viewport={viewports[realScope]} onViewport={vp => onViewport(realScope, vp)} />
@@ -280,7 +331,7 @@ export function Shell({ name, Canvas }) {
       </main>
       {propsOpen && sel && !sel.startsWith('@portal:') && graph.nodes.has(sel) && (
         <PropsPanel id={sel} graph={graph} wsNode={wsData?.nodes[sel]} edges={mode === 'ws' ? (wsData?.edges || []) : graph.edges}
-          editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)} />
+          editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} file={nodeFile(sel)} onOpenMd={openFile} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)} />
       )}
       {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（I 开关）</div></aside>}
       {fileView && <FilePanel file={fileView.text !== undefined || fileView.error || fileView.note ? fileView : null} onClose={() => setFileView(null)} />}
@@ -300,9 +351,11 @@ export function Shell({ name, Canvas }) {
   );
 }
 
+const KEYS = ['右键 = 菜单', '双击 = 钻进', '▸N / 空格 = 原地展开', 'Del = 删除', 'F2 = 改名', 'I = 属性', 'Enter / Tab = 新建同级 / 子级', 'Alt + ↑ ← → = 上一层 / 后退 / 前进', '卡片边缘拖 = 连线', '选中后 Ctrl+V，或把图片文件拖到卡片上 = 贴图'].join('\n');
+
 // 两个画布共用的节点外观
 export const STATUS_ICON = { done: '✅', partial: '◐', todo: '○' };
-export const COLORS = { in: '#2b7bff', out: '#ff8a1f', idle: '#8a94a6' };
+export const COLORS = { in: '#2b7bff', out: '#ff8a1f', idle: '#8a8a8a' };
 export function edgeLook(e, selected) {
   const w = 1.5 + Math.log2(e.count) * 1.5;
   if (!selected) return { color: COLORS.idle, opacity: 0.55, width: w };
@@ -320,7 +373,7 @@ export const cardActions = { toggle: () => {}, openChild: () => {} };
 const stop = e => e.stopPropagation();
 export function NodeCard({ node, img, dim, isSel }) {
   return (
-    <div className={'card' + (dim ? ' dim' : '') + (isSel ? ' sel' : '')}>
+    <div className={'card' + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (img?.length ? ' hasimg' : '') + (node.status ? ' s-' + node.status : '')}>
       <div className="title">{node.status && <span className="st">{STATUS_ICON[node.status]}</span>}{node.label}
         {node.children.length > 0 && <span className="kids" title="展开/收起子级（空格）；双击卡片钻进" onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.toggle(node.id); }}>{node.open ? '▾' : '▸'} {node.children.length}</span>}</div>
@@ -329,7 +382,7 @@ export function NodeCard({ node, img, dim, isSel }) {
         <li key={k.id} title="双击跳进去" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
           <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span>{k.label}{k.n > 0 && <span className="kn">▸{k.n}</span>}
         </li>))}</ul>}
-      {img && <img src={img} draggable={false} />}
+      {img?.length > 0 && <div className={'pics n' + Math.min(img.length, 3)}>{img.map(u => <img key={u} src={u} draggable={false} />)}</div>}
     </div>
   );
 }

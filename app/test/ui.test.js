@@ -212,6 +212,30 @@ for (const kind of ['reactflow']) {
   ok((await page.$$eval('.fi', fs => fs.map(f => f.innerText))).some(t => t.includes('README_测试.md')), '文件页列出根目录文件');
   await page.click('.fi:has-text("README_测试.md")'); await sleep(800);
   ok((await page.$eval('pre.raw', p => p.innerText)).includes('外部区的文件'), '点文件 → 右侧预览内容');
+  // 文件树里有 __synapsis，点节点 md → 预览 + 画布选中它
+  await page.click('.fi:has-text("__synapsis")'); await sleep(300);
+  await page.click('.fi:has-text("游戏AI")'); await sleep(300);
+  await page.click('.fi:has-text("决策")'); await sleep(300);
+  await page.click('.fi:has-text("_node.md") >> nth=-1').catch(() => {}); await sleep(500);
+  const fis = await page.$$eval('.fi', fs => fs.map(f => f.innerText));
+  ok(fis.some(t => t.includes('__synapsis')), '文件树列出 __synapsis');
+  ok((await page.$$('.card.sel')).length === 1 && (await page.$eval('pre.raw', p => p.innerText)).includes('---'), '点节点 md → 预览原文 + 画布选中那个节点');
+  await page.click('.bar.tabs a:has-text("大纲")');
+  await page.click('.side.wide .bar button'); await sleep(300); // 关掉预览：它会压住画布右半边
+  await page.keyboard.press('Escape'); await page.click('.crumbs a >> nth=0'); await sleep(600);
+  b = await box('游戏AI'); await page.mouse.dblclick(b.x + b.width / 2, b.y + b.height / 2); await sleep(800);
+  // 贴图（走同一个接口）→ 卡片显示图片；文件进 _pics_决策/
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  await page.evaluate(async ([ws, png]) => { await fetch('/api/asset?ws=' + encodeURIComponent(ws), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: '游戏AI/决策', dataUrl: png }) }); }, [ws, PNG]);
+  ok(readdirSync(join(ws, '__synapsis', '游戏AI', '决策', '_pics_决策')).length === 1, '贴图 → __synapsis/游戏AI/决策/_pics_决策/');
+  // 视图记忆：缩放一下 → 刷新（= 下次启动）→ 还在 游戏AI 这一页、视图一样
+  await page.mouse.move(900, 500); await page.mouse.wheel(0, -300); await sleep(1500);
+  const camBefore = await page.$eval('.react-flow__viewport', v => v.style.transform);
+  ok(existsSync(join(ws, '.synapsis', 'view.json')), '视图写进 .synapsis/view.json');
+  await page.reload(); await sleep(2000);
+  ok((await page.$eval('.crumbs', e => e.innerText)).includes('游戏AI'), '刷新后还在上次那一页 ' + await page.$eval('.crumbs', e => e.innerText));
+  ok(await page.$eval('.react-flow__viewport', v => v.style.transform) === camBefore, '刷新后视图还原 ' + camBefore);
+  ok((await page.$$('.card .pics img')).length === 1, '刷新后卡片显示 _pics_ 里的图');
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });

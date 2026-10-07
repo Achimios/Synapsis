@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { resolve, join, normalize } from 'node:path';
+import { resolve, join, normalize, relative } from 'node:path';
+import { spawn } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
-import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, DIR } from '../core/workspace.js';
+import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, DIR } from '../core/workspace.js';
 import { workspaceRoot } from '../core/cli.js';
 
 // >v<🚀启停-心跳-3 分钟没人 ping 就退出（SYN_IDLE_MS 可调）
@@ -30,7 +31,8 @@ function workspaceApi() {
   const payload = root => {
     const ws = loadWorkspace(root);
     const nodes = {};
-    for (const [id, n] of ws.graph.nodes) if (id) nodes[id] = { meta: n.meta, body: n.body };
+    // file = 相对项目根的路径（文件树和「打开 md」用）；pics = 相对 __synapsis 的图片路径
+    for (const [id, n] of ws.graph.nodes) if (id) nodes[id] = { meta: n.meta, body: n.body, file: relative(root, n.file).split('\\').join('/'), pics: n.pics };
     return { root, outline: workspaceOutline(ws), layout: ws.layout, nodes, edges: ws.graph.edges, errors: ws.graph.errors };
   };
   return {
@@ -42,7 +44,17 @@ function workspaceApi() {
         let root;
         try { root = url.searchParams.get('ws') || workspaceRoot([]); } catch (e) { return send(404, { error: e.message }); }
         try {
-          if (url.pathname === '/ws' && req.method === 'GET') { ensureWorkspaceReadme(root, CLI); return send(200, payload(root)); }
+          if (url.pathname === '/ws' && req.method === 'GET') { ensureWorkspaceReadme(root, CLI); return send(200, { ...payload(root), view: loadView(root) }); }
+          // 只往已挂上 Synapsis 的目录写（别因为一个拼错的 ?ws= 在磁盘上凭空建目录）
+          if (url.pathname === '/view' && req.method === 'PUT') { if (!existsSync(join(root, DIR))) return send(404, { error: '不是 Synapsis 工作区' }); saveView(root, await body(req)); return send(200, { ok: true }); }
+          // 在资源管理器里显示 / 用默认程序打开（服务只在本机跑，等于本机操作；路径限定在项目内）
+          if (url.pathname === '/reveal' && req.method === 'POST') {
+            const b = await body(req), f = normalize(join(root, b.p || ''));
+            if (!f.startsWith(normalize(root)) || !existsSync(f)) return send(404, { error: 'not found' });
+            if (b.how === 'open') spawn('cmd', ['/c', 'start', '""', '"' + f + '"'], { windowsVerbatimArguments: true, detached: true, stdio: 'ignore' }).unref();
+            else spawn('explorer.exe', ['/select,"' + f + '"'], { windowsVerbatimArguments: true, detached: true, stdio: 'ignore' }).unref();
+            return send(200, { ok: true });
+          }
           if (url.pathname === '/outline' && req.method === 'PUT') {
             const r = saveOutline(root, (await body(req)).outline);
             return send(r.ok ? 200 : 400, { report: r, ...(r.ok ? payload(root) : {}) });
@@ -61,7 +73,8 @@ function workspaceApi() {
             const base = join(root, DIR);
             const f = normalize(join(base, url.searchParams.get('p') || ''));
             if (!f.startsWith(normalize(base)) || !existsSync(f)) return send(404, { error: 'not found' });
-            res.setHeader('content-type', f.endsWith('.png') ? 'image/png' : f.endsWith('.jpg') ? 'image/jpeg' : 'application/octet-stream');
+            const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml' };
+            res.setHeader('content-type', MIME[f.split('.').pop().toLowerCase()] || 'application/octet-stream');
             return res.end(readFileSync(f));
           }
           send(404, { error: 'no route' });

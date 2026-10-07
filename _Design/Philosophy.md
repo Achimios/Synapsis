@@ -67,3 +67,11 @@
 **7.7 后来定下的（详见各文件）**
 - 画布 = React Flow（`Decision_Canvas.md`）；导航是主功能、中键 = 基变换、嵌入衡量「同类」不是「相连」（`Navigation.md` §2–§3.6）
 - 托盘程序 = Electron（Node + Chromium，Obsidian 同款），不需要 Python
+
+**7.8 矩阵、决策树等「富内容」放哪（2026-10-07，👤 问要不要自定义后缀）**
+- **不发明新后缀。** 自定义后缀 = Obsidian、GitHub、编辑器、LLM、grep 全都不认识它；`.md` 是所有工具的公约数。
+- **决策树 / 状态机本来就是图** → 就是子节点 + 边，Synapsis 已经会画（「免费」）；要的只是换个布局（树形 / 状态机）。
+- **小矩阵、表、公式** → 节点正文里的围栏代码块：```matrix（CSV 式行）、```mermaid、```math。没装 Synapsis 的地方照样能读（显示为代码），LLM 原生能读，Synapsis 识别语言名后在卡片里渲染成热力图 / 表。
+- **大数据**（权重矩阵、采样、潜空间点云）→ 节点旁标准格式文件（`.csv` / `.json` / `.npy`），和图片一样放 `_pics_` 式的旁挂文件夹或 frontmatter 指过去（`data: _data_名字/W1.csv`）。
+- 判据：**格式要让「没有 Synapsis 的人和 LLM」也能读**；Synapsis 只负责把它画得好看。
+

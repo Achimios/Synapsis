@@ -3,6 +3,7 @@
 //   叶子节点      名字.md
 //   有子节点的    名字/_node.md   （它自己的属性与正文）
 //   以 _ 或 . 开头的文件/目录不是节点（_layout.json、_assets/、_过期的/、_synapsis.md）
+//   节点的图片    _pics_名字/   （紧挨节点的 .md：叶子在同目录，分组在自己文件夹里；文件夹本身就是真源，往里丢图就显示）
 // 节点文件 = frontmatter + 正文：
 //   ---
 //   status: done | partial | todo
@@ -23,6 +24,10 @@ const KEY_ORDER = ['label', 'status', 'order'];
 // 名字里有文件名非法字符（如 NN/LLM 的 /，会被当成路径）→ 文件名换全角，原名存 frontmatter label:
 const FW = { '/': '／', '\\': '＼', ':': '：', '*': '＊', '?': '？', '"': '＂', '<': '＜', '>': '＞', '|': '｜' };
 export const fileName = label => label.replace(/[\/\\:*?"<>|]/g, c => FW[c]).replace(/[. ]+$/, m => m.replace(/./g, '＿'));
+// 图片文件夹用 _ 不用 .：Obsidian 不索引点开头的文件夹，正文里 ![](...) 会断
+export const picsDir = (file, label) => join(dirname(file), '_pics_' + fileName(label));
+const IMG_EXT = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
+const listPics = (dir, base) => { try { return readdirSync(dir).filter(f => IMG_EXT.test(f)).sort().map(f => relative(base, join(dir, f)).split('\\').join('/')); } catch { return []; } };
 
 // >v<💾工作区-frontmatter-最小 YAML 子集：key: value 与 key: + "  - 项" 列表
 export function parseFrontmatter(text) {
@@ -82,7 +87,8 @@ export function loadWorkspace(root) {
       const status = STATUS_IN[meta.status] || null;
       const order = meta.order !== undefined && meta.order !== '' ? +meta.order : Infinity;
       const { status: _s, order: _o, label: _l, ...rest } = meta;
-      const node = { id, label, parent, status, children: [], file, isGroup: isDir, meta: rest, body, order };
+      const pics = listPics(picsDir(file, label), base);
+      const node = { id, label, parent, status, children: [], file, isGroup: isDir, meta: rest, body, order, pics };
       nodes.set(id, node);
       kids.push(node);
       if (isDir) walk(abs, id);
@@ -166,7 +172,7 @@ export function saveOutline(root, text) {
       return fmtEdge({ ref: shortRef(next, id, e.to), label: oe ? oe.label : '', kind: oe ? oe.kind : '' });
     });
     if (to.length) meta.to = to; else delete meta.to;
-    writes.set(file, { content: serializeNode(meta, old ? old.body : ''), old });
+    writes.set(file, { content: serializeNode(meta, old ? old.body : ''), old, label: n.label });
   }
 
   // 1) 删掉的节点 → _过期的/
@@ -177,6 +183,8 @@ export function saveOutline(root, text) {
     const dst = join(graveyard, `${stamp()}_${id.replace(/\//g, '～')}.md`);
     renameSync(n.file, dst);
     report.removed.push(relative(base, dst));
+    const pd = picsDir(n.file, n.label);
+    if (existsSync(pd)) renameSync(pd, dst.slice(0, -3) + '_pics');
   }
   // 2) 写新内容（只写变了的）
   for (const [file, { content, old }] of writes) {
@@ -186,6 +194,15 @@ export function saveOutline(root, text) {
     writeFileSync(file, content);
     report.written.push(relative(base, file));
     if (old && old.file !== file) report.moved.push(relative(base, old.file) + ' → ' + relative(base, file));
+  }
+  // 2b) 图片文件夹跟着节点走（改名、移动、叶子⇄分组）
+  for (const [file, { old, label }] of writes) {
+    if (!old || !old.file) continue;
+    const from = picsDir(old.file, old.label), to = picsDir(file, label);
+    if (from === to || !existsSync(from) || existsSync(to)) continue;
+    mkdirSync(dirname(to), { recursive: true });
+    renameSync(from, to);
+    report.moved.push(relative(base, from) + ' → ' + relative(base, to));
   }
   // 3) 搬走的旧文件删掉（内容已在新位置）
   for (const [, { old }] of writes) {
@@ -231,17 +248,33 @@ export function setNodeMeta(root, id, patch) {
   writeFileSync(n.file, serializeNode(meta, n.body));
 }
 
+// >v<🖼️图片-贴图落盘-存进节点旁边的 _pics_名字/（不写 frontmatter：文件夹就是真源）
 export function saveAsset(root, id, dataUrl) {
-  const m = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+  const m = dataUrl.match(/^data:image\/([\w+]+);base64,(.+)$/);
   if (!m) throw new Error('不是图片 dataURL');
-  const ext = m[1] === 'jpeg' ? 'jpg' : m[1];
-  const name = `${id.replace(/[\/\\:*?"<>|]/g, '～')}_${stamp()}.${ext}`;
-  const dir = join(root, DIR, '_assets');
+  const ext = m[1] === 'jpeg' ? 'jpg' : m[1] === 'svg+xml' ? 'svg' : m[1];
+  const ws = loadWorkspace(root);
+  const n = ws.graph.nodes.get(id);
+  if (!n || id === ROOT) throw new Error('没有这个节点：' + id);
+  const dir = picsDir(n.file, n.label);
   mkdirSync(dir, { recursive: true });
+  let name = `${stamp()}.${ext}`;
+  for (let k = 2; existsSync(join(dir, name)); k++) name = `${stamp()}_${k}.${ext}`;
   writeFileSync(join(dir, name), Buffer.from(m[2], 'base64'));
-  const rel = '_assets/' + name;
-  setNodeMeta(root, id, { img: rel });
-  return rel;
+  return relative(ws.base, join(dir, name)).split('\\').join('/');
+}
+
+// >v<🧭导航-视图记忆-每个工作区的 .synapsis/view.json：各页平移缩放、上次所在页、展开状态、左栏（本机状态，不进 git）
+export function loadView(root) {
+  try { return JSON.parse(readFileSync(join(root, '.synapsis', 'view.json'), 'utf8')); } catch { return {}; }
+}
+export function saveView(root, patch) {
+  const v = { ...loadView(root), ...patch };
+  mkdirSync(join(root, '.synapsis'), { recursive: true });
+  const gi = join(root, '.synapsis', '.gitignore');
+  if (!existsSync(gi)) writeFileSync(gi, '# 本机状态（视图、缓存），不进 git\n*\n');
+  writeFileSync(join(root, '.synapsis', 'view.json'), JSON.stringify(v, null, 1) + '\n');
+  return v;
 }
 
 // >v<✅自检-graph check-悬空边、无状态、节点 code 指向不存在的文件
@@ -305,8 +338,8 @@ export function setNodeBody(root, id, body) {
   writeFileSync(n.file, serializeNode(meta, body));
 }
 
-// >v<🗂️外部区-文件树-项目根目录（__synapsis 之外）的只读文件树
-const SKIP = new Set(['.git', 'node_modules', '__pycache__', '.venv', 'venv', 'dist', 'build', DIR, '.synapsis', '.obsidian', 'Intermediate', 'Saved', 'DerivedDataCache', 'Binaries']);
+// >v<🗂️外部区-文件树-项目根目录的只读文件树（含 __synapsis：节点 md 也能直接看）
+const SKIP = new Set(['.git', 'node_modules', '__pycache__', '.venv', 'venv', 'dist', 'build', '.synapsis', '.obsidian', 'Intermediate', 'Saved', 'DerivedDataCache', 'Binaries']);
 export function listTree(root, maxEntries = 3000) {
   let count = 0;
   const walk = (dir, rel) => {

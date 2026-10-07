@@ -26,10 +26,12 @@ grep -rn ">v<💾工作区" core app bootstrap --include=*.js --include=*.jsx
 | `>v<📤LLM导出` | `core/outline.js` | 节点卡格式的结构化文本 |
 | `>v<💾工作区` | `core/workspace.js` `app/vite.config.js` `app/src/shell.jsx` `core/tools/` | `__synapsis/` 文件夹 ⇄ 图、HTTP 接口、界面自动保存、导入空间图 |
 | `>v<🤖LLM接口` | `core/cli.js` | overview / outline / export / get / check / apply / init |
-| `>v<🧭导航` | `app/src/shell.jsx` | 钻进/退出、后退前进、视图记忆、快捷键 |
+| `>v<🧭导航` | `app/src/shell.jsx` `core/workspace.js`(loadView/saveView) | 钻进/退出、后退前进、视图记忆（`<项目>/.synapsis/view.json`）、快捷键 |
 | `>v<🎨画布` | `app/src/main.jsx` `app/src/td.jsx` `app/src/shell.jsx` | 两个画布实现、贴图 |
 | `>v<🚀启停` | `app/vite.config.js` `app/src/shell.jsx` `core/cli.js`(init) + `core/templates/Synapsis.vbs` `Synapsis_stop.bat` `Synapsis_init.vbs` `core/tools/init_picker.ps1` | 无窗口启动、按端口停止、心跳自动退出 |
-| `>v<🗂️外部区` | `core/workspace.js`(listTree/readProjectFile) `app/src/panels.jsx` | 左栏「文件」页：项目根目录里 __synapsis 之外的只读文件树 + 右侧预览 |
+| `>v<🗂️外部区` | `core/workspace.js`(listTree/readProjectFile) `app/src/panels.jsx` `app/src/shell.jsx` | 左栏「文件」页：项目根目录只读文件树（含 __synapsis）+ 右侧预览；节点 ⇄ md（看原文、资源管理器、默认程序打开） |
+| `>v<🖼️图片` | `core/workspace.js`(picsDir/saveAsset) `app/src/shell.jsx` | 节点图片 = 紧挨 md 的 `_pics_名字/` 文件夹；贴图 / 拖图进卡片；改名删除跟着走 |
+| `>v<🎨外观` | `app/src/shell.css` `app/src/launcher.css` | PureRef 风深色高密度主题（颜色全是 `:root` 变量） |
 | `>v<🖥️桌面` | `app/electron/` `app/src/launcher.jsx` `Synapsis_desktop.vbs` `core/templates/Synapsis.vbs` | 托盘程序：内置服务、托盘菜单、启动台、每个工作区一个窗口、单实例 |
 | `>v<✅自检` | `app/test/` `core/test/` `core/workspace.js`(checkWorkspace) | 纯 Node 核心自检 + 无头 Edge 界面自检 |
 | `>v<🧪嵌入实验` | `core/tools/embed_probe.js` | 本地嵌入模型（LM Studio）× 工作区：有连线 vs 没连线的相似度效应量、最像但没连线的候选 |

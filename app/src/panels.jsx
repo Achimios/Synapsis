@@ -17,7 +17,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       <span>{label}</span>{opts.key && <kbd>{opts.key}</kbd>}
     </div>
   );
-  const style = { left: Math.min(menu.x, innerWidth - 220), top: Math.min(menu.y, innerHeight - 330) };
+  const style = { left: Math.min(menu.x, innerWidth - 220), top: Math.min(menu.y, innerHeight - 430) };
   if (!node) return (
     <div className="ctx" style={style}>
       {item('＋ 在这里新建节点', actions.addHere)}
@@ -39,6 +39,9 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       {item('＋ 新建同级', () => actions.addSibling(node.id), { key: 'Enter' })}
       {node.children.length > 0 && item(node.open ? '收起子级' : '原地展开子级', () => actions.toggle(node.id), { key: '空格' })}
       {item('钻进去', () => actions.drill(node.id), { key: '双击' })}
+      {actions.hasFile(node.id) && item('看 md 原文', () => actions.openMd(node.id))}
+      {actions.hasFile(node.id) && item('在资源管理器中显示', () => actions.reveal(node.id))}
+      {item('贴图…', () => actions.pasteHint(node.id), { key: 'Ctrl+V' })}
       {item('删除' + (node.children.length ? `（含 ${countAll(node)} 个子孙）` : ''), () => actions.remove(node.id), { danger: true, key: 'Del' })}
     </div>
   );
@@ -46,7 +49,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
 const countAll = n => n.descendants ?? n.children.length;
 
 // >v<🎨画布-属性面板-节点属性/出入边/正文（工作区模式下正文可改，失焦保存）
-export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onSelect, onClose }) {
+export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onSelect, onClose, file, onOpenMd, onReveal }) {
   const n = graph.nodes.get(id);
   const [body, setBody] = useState(wsNode?.body || '');
   useEffect(() => setBody(wsNode?.body || ''), [id, wsNode?.body]);
@@ -72,7 +75,10 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
         <div className="eh">正文{editable ? '（失焦自动保存）' : '（样例模式不可编辑）'}</div>
         <textarea className="body" value={body} readOnly={!editable} placeholder={editable ? '想法、职责、验收方式……（存进这个节点的 .md）' : ''}
           onChange={e => setBody(e.target.value)} onBlur={() => { if (editable && body !== (wsNode?.body || '')) onBody(id, body); }} />
-        {wsNode && n.children.length === 0 && <div className="hint">文件：__synapsis/…/{n.label}.md（Obsidian 里也能改）</div>}
+        {file && <div className="filerow"><span className="hint" title={file}>{file}</span>
+          <button onClick={() => onOpenMd(file)} title="右侧看原文（含 frontmatter）">原文</button>
+          <button onClick={() => onReveal(file, 'select')} title="在资源管理器中显示">📂</button>
+          <button onClick={() => onReveal(file, 'open')} title="用默认程序打开（Obsidian / 编辑器）">↗</button></div>}
       </div>
     </aside>
   );

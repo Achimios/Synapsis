@@ -1,6 +1,6 @@
 // >v<🖥️桌面-托盘主进程-Electron（= Node + Chromium，和 Obsidian 同款）：内置 dev 服务、托盘、启动台、每个工作区一个窗口
 // 启动：根目录 Synapsis_desktop.vbs；项目里的 Synapsis.vbs 也会优先用它（--ws <目录>）。单实例：再次启动只是把参数交给已开的那个。
-import { app, BrowserWindow, Tray, Menu, dialog, nativeImage, ipcMain } from 'electron';
+import { app, BrowserWindow, Tray, Menu, dialog, nativeImage, ipcMain, screen } from 'electron';
 import { createServer } from 'vite';
 import { join, resolve, dirname, basename } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
@@ -13,9 +13,18 @@ const PORT = 5410, BASE = `http://localhost:${PORT}`;
 const HIDDEN = !!process.env.SYN_TEST_HIDDEN;                         // 自动化测试：窗口不显示
 process.env.SYN_DESKTOP = '1';
 
-if (!app.requestSingleInstanceLock()) app.quit();
-const wsArg = argv => { const i = argv.indexOf('--ws'); return i >= 0 ? argv[i + 1] : null; };
-app.on('second-instance', (_e, argv) => { const ws = wsArg(argv); ws ? openWorkspace(ws) : showLauncher(); });
+// 工作区参数：--ws <目录> 或 --ws=<目录>；后面紧跟的是另一个 -- 开关就不算
+const wsArg = argv => {
+  const eq = argv.find(a => a.startsWith('--ws='));
+  if (eq) return eq.slice(5);
+  const i = argv.indexOf('--ws'), v = i >= 0 ? argv[i + 1] : null;
+  return v && !v.startsWith('--') ? v : null;
+};
+// 单实例：第二次启动把工作区经 additionalData 交给已开的那个。
+// 别从 second-instance 的 argv 里解析 —— Chromium 会重排参数，--ws 后面可能变成它自己的开关（2026-10-07 弹出「文件夹不存在：…\--allow-file-access-from-files」）
+// 自动化测试（SYN_TEST_HIDDEN）不抢单实例锁：否则用户开着 Synapsis 时，测试会把参数塞给用户的窗口
+if (!HIDDEN && !app.requestSingleInstanceLock({ ws: wsArg(process.argv) })) app.quit();
+app.on('second-instance', (_e, _argv, _cwd, data) => { const ws = data?.ws; ws ? openWorkspace(ws) : showLauncher(); });
 app.on('window-all-closed', () => { /* 留在托盘里，不退出 */ });
 
 // —— 最近打开（.synapsis/recent.json，本机状态）——
@@ -37,7 +46,7 @@ async function startServer() {
 // —— 窗口 ——
 const wins = new Map(); // dir -> BrowserWindow
 let launcher = null, tray = null;
-const winOpts = (w, h) => ({ width: w, height: h, show: !HIDDEN, autoHideMenuBar: true, icon: trayIcon(), webPreferences: { preload: join(APP, 'electron', 'preload.cjs'), contextIsolation: true } });
+const winOpts = (w, h) => ({ width: w, height: h, show: !HIDDEN, autoHideMenuBar: true, icon: trayIcon(), backgroundColor: '#1c1c1c', webPreferences: { preload: join(APP, 'electron', 'preload.cjs'), contextIsolation: true } });
 
 function showLauncher() {
   if (launcher && !launcher.isDestroyed()) { launcher.show(); launcher.focus(); return launcher; }
@@ -57,7 +66,15 @@ async function openWorkspace(dir) {
   touchRecent(dir); refreshTray();
   const old = wins.get(dir);
   if (old && !old.isDestroyed()) { old.show(); old.focus(); return old; }
-  const w = new BrowserWindow({ ...winOpts(1500, 950), title: 'Synapsis — ' + basename(dir) });
+  // 窗口位置大小按工作区记在 <项目>/.synapsis/window.json（本机状态）；屏幕变了（拔显示器）放不下就用默认
+  const wfile = join(dir, '.synapsis', 'window.json');
+  let saved = null; try { saved = JSON.parse(readFileSync(wfile, 'utf8')); } catch { /* 第一次 */ }
+  const fits = b => b && screen.getAllDisplays().some(d => { const a = d.workArea; return b.x >= a.x - 50 && b.y >= a.y - 50 && b.x + 200 <= a.x + a.width && b.y + 100 <= a.y + a.height; });
+  const w = new BrowserWindow({ ...winOpts(1500, 950), ...(fits(saved) ? { x: saved.x, y: saved.y, width: saved.width, height: saved.height } : {}), title: 'Synapsis — ' + basename(dir) });
+  if (saved?.maximized && !HIDDEN) w.maximize();
+  const keep = () => { try { mkdirSync(dirname(wfile), { recursive: true }); writeFileSync(wfile, JSON.stringify({ ...w.getNormalBounds(), maximized: w.isMaximized() })); } catch { /* 只读目录就算了 */ } };
+  let kt = null; const keepSoon = () => { clearTimeout(kt); kt = setTimeout(keep, 500); };
+  w.on('resize', keepSoon); w.on('move', keepSoon); w.on('close', keep);
   w.loadURL(`${BASE}/?ws=${encodeURIComponent(dir)}`);
   w.on('page-title-updated', e => e.preventDefault());
   w.on('closed', () => wins.delete(dir));

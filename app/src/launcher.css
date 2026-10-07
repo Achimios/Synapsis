@@ -1,16 +1,18 @@
-html, body, #root { margin: 0; height: 100%; font: 14px/1.5 system-ui, "Microsoft YaHei", sans-serif; background: #f6f7f9; color: #1d2330; }
-.lw { max-width: 480px; margin: 0 auto; padding: 32px 24px; }
-h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: .5px; }
-h2 { font-size: 13px; color: #7a8394; margin: 26px 0 8px; font-weight: 600; }
-.hint { color: #7a8394; margin: 0 0 14px; }
-.hint.small { font-size: 12px; margin-top: 8px; }
-button.big { font: inherit; font-size: 15px; padding: 10px 18px; border: 1px solid #2b7bff; background: #2b7bff; color: #fff; border-radius: 6px; cursor: pointer; }
-button.big:hover { background: #1f69e6; }
+/* 启动台：和工作区窗口同一套 PureRef 风深色 */
+:root { --bg: #1c1c1c; --panel: #232323; --line: #383838; --text: #d6d6d6; --dim: #8c8c8c; --faint: #5f5f5f; --accent: #4d9bff; --bad: #ff6b5e; }
+html, body, #root { margin: 0; height: 100%; font: 13px/1.45 system-ui, "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); }
+.lw { max-width: 460px; margin: 0 auto; padding: 26px 20px; }
+h1 { margin: 0 0 2px; font-size: 22px; letter-spacing: .5px; color: #fff; }
+h2 { font-size: 11px; color: var(--dim); margin: 22px 0 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+.hint { color: var(--dim); margin: 0 0 12px; }
+.hint.small { font-size: 11px; margin-top: 6px; }
+button.big { font: inherit; padding: 7px 14px; border: 1px solid var(--accent); background: #24456e; color: #fff; border-radius: 3px; cursor: pointer; }
+button.big:hover { background: #2f5a8f; }
 .recent { list-style: none; margin: 0; padding: 0; }
-.recent li { position: relative; padding: 10px 36px 10px 12px; background: #fff; border: 1px solid #e3e6eb; border-radius: 6px; margin-bottom: 8px; cursor: pointer; }
-.recent li:hover { border-color: #2b7bff; }
-.recent li.gone { opacity: .55; cursor: default; }
-.recent .dir { font-size: 12px; color: #9aa3b2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.recent .tag { margin-left: 8px; font-size: 11px; color: #c0392b; }
-.recent .x { position: absolute; right: 10px; top: 10px; color: #b0b7c3; padding: 2px 6px; border-radius: 4px; }
-.recent .x:hover { background: #fdecea; color: #c0392b; }
+.recent li { position: relative; padding: 6px 32px 6px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; margin-bottom: 4px; cursor: pointer; }
+.recent li:hover { border-color: var(--accent); }
+.recent li.gone { opacity: .5; cursor: default; }
+.recent .dir { font-size: 11px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent .tag { margin-left: 8px; font-size: 11px; color: var(--bad); }
+.recent .x { position: absolute; right: 8px; top: 6px; color: var(--faint); padding: 1px 5px; border-radius: 3px; }
+.recent .x:hover { background: #4a2420; color: var(--bad); }

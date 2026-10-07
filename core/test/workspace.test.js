@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, DIR } from '../workspace.js';
+import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveView, loadView, listTree, DIR } from '../workspace.js';
 import { SAMPLE } from '../../app/src/sample.js';
 
 let pass = 0, fail = 0;
@@ -75,6 +75,34 @@ try {
   const issues = checkWorkspace(loadWorkspace(root));
   ok(issues.some(i => i.msg.includes('code 指向不存在')), 'check 抓到 code 指向不存在的文件');
   ok(parseFrontmatter(readFileSync(B('游戏AI/决策/决策空间/_node.md'), 'utf8')).meta.status === 'done', 'setNodeMeta 不丢 status');
+
+  // 图片：_pics_名字/ 紧挨节点 md；改名 / 叶子变分组 / 删除 时跟着走
+  const r2 = mkdtempSync(join(tmpdir(), 'syn-pics-'));
+  try {
+    const P = p => join(r2, DIR, p);
+    const PNG = 'data:image/png;base64,' + Buffer.from('89504e470d0a1a0a', 'hex').toString('base64');
+    saveOutline(r2, 'A\n  叶子\nB');
+    const rel = saveAsset(r2, 'A/叶子', PNG);
+    ok(rel.startsWith('A/_pics_叶子/') && existsSync(P(rel)), '贴图存进 A/_pics_叶子/ ' + rel);
+    ok(loadWorkspace(r2).graph.nodes.get('A/叶子').pics[0] === rel, 'loadWorkspace 列出 pics');
+    ok(!loadWorkspace(r2).graph.nodes.has('A/_pics_叶子'), '_pics_ 文件夹不是节点');
+    saveOutline(r2, 'A\n  新名\nB');
+    ok(existsSync(P('A/_pics_新名')) && !existsSync(P('A/_pics_叶子')), '改名 → 图片文件夹跟着改名');
+    saveOutline(r2, 'A\n  新名\n    孙\nB');
+    ok(existsSync(P('A/新名/_pics_新名')) && loadWorkspace(r2).graph.nodes.get('A/新名').pics.length === 1, '叶子变分组 → 图片文件夹搬进自己的文件夹');
+    saveAsset(r2, 'B', PNG);
+    saveOutline(r2, 'A\n  新名\n    孙');
+    ok(!existsSync(P('_pics_B')) && readdirSync(P('_过期的')).some(n => n.endsWith('_pics')), '删除节点 → 图片文件夹一起进 _过期的/');
+    saveOutline(r2, 'C\n  新名\n    孙');
+    ok(existsSync(P('C/新名/_pics_新名')) && !existsSync(P('A')), '父节点改名 → 子节点的图片跟着走、旧目录清掉');
+    // 视图记忆
+    saveView(r2, { scope: 'C', viewports: { C: { x: 1, y: 2, zoom: 0.5 } } });
+    saveView(r2, { leftHidden: true });
+    const v = loadView(r2);
+    ok(v.scope === 'C' && v.viewports.C.zoom === 0.5 && v.leftHidden === true, '视图记忆合并写入 .synapsis/view.json');
+    ok(existsSync(join(r2, '.synapsis', '.gitignore')), '.synapsis/ 自带 gitignore');
+    ok(listTree(r2).tree.some(t => t.name === DIR) && !listTree(r2).tree.some(t => t.name === '.synapsis'), '文件树含 __synapsis、不含 .synapsis');
+  } finally { rmSync(r2, { recursive: true, force: true }); }
 } finally {
   rmSync(root, { recursive: true, force: true });
 }
