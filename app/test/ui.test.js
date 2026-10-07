@@ -875,6 +875,15 @@ for (const kind of ['reactflow']) {
   await page.keyboard.press('Alt+ArrowUp'); await sleep(1200);
   await page.mouse.move(700, 650); await page.keyboard.press('Control+v'); await sleep(2000);
   ok(existsSync(join(ws, '__synapsis', '咕噜人.md')) && /血量: 120/.test(readFileSync(join(ws, '__synapsis', '咕噜人.md'), 'utf8')) && !existsSync(join(ws, '__synapsis', '情绪反应', '咕噜人.md')), 'Ctrl+X → 回到根 Ctrl+V = 剪出来（属性还在）');
+  // 大纲树拖动：行 → 行 = 放进去；行 → 树下空白 = 挪到根；行 → 画布卡片 = 放进那张卡
+  const F = p => join(ws, '__synapsis', ...p.split('/')) + '.md';
+  await page.dragAndDrop('.orow:has(.olab:text-is("吓坏了"))', '.orow:has(.olab:text-is("传感器"))'); await sleep(2000);
+  ok(existsSync(F('传感器/吓坏了')) && !existsSync(F('吓坏了')), '大纲树：把「吓坏了」拖到「传感器」上 → 放进去');
+  const tb2 = await (await page.$('.otree')).boundingBox();
+  await page.dragAndDrop('.orow:has(.olab:text-is("吓坏了"))', '.otree', { targetPosition: { x: 40, y: tb2.height - 20 } }); await sleep(2000);
+  ok(existsSync(F('吓坏了')) && !existsSync(F('传感器/吓坏了')), '拖到树下面的空白 → 挪回根');
+  await page.dragAndDrop('.orow:has(.olab:text-is("吓坏了"))', '.react-flow__node[data-id="惊慌失措"]'); await sleep(2000);
+  ok(existsSync(F('惊慌失措/吓坏了')), '从大纲树拖到画布的卡片上 → 放进那张卡');
   // 右键空白「在这里新建」→ 新卡片在鼠标处
   await page.mouse.click(700, 600); await sleep(200);
   await page.mouse.click(700, 600, { button: 'right' }); await sleep(300);

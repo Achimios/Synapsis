@@ -192,7 +192,10 @@ export function FilePanel({ file, onClose }) {
 }
 
 // >v<🌳大纲模型-大纲树-左栏默认页：点一下 = 导航 + 看内容（不进编辑）；双击 / F2 = 原地改名；▸ 折叠；→ 钻进；↑↓←→ 键盘走
-export function OutlineTree({ graph, selected, scope, renaming, status, onPick, onDrill, onRename, onCommit, onCancel }) {
+// >v<🌳左栏-大纲树拖动-拖一行到另一行上 = 放进它里面；拖到树下面的空白 = 挪到根；拖到画布的卡片上也行（👤 2026-10-08 第 9 条）
+export const DRAG_NODE = 'application/x-synapsis-node';
+export function OutlineTree({ graph, selected, scope, renaming, status, onPick, onDrill, onRename, onCommit, onCancel, onMove }) {
+  const [over, setOver] = useState(null); // 拖动时悬停的行（'' = 根 / 空白）
   const [open, setOpen] = useState({});
   const [q, setQ] = useState(''); // 过滤：只留名字命中的和它们的祖先（全部展开）
   const flt = useMemo(() => filterTree(graph, q), [graph, q]);
@@ -215,10 +218,17 @@ export function OutlineTree({ graph, selected, scope, renaming, status, onPick, 
   return (
     <>
     <input className="ofilter" value={q} placeholder="过滤…（名字）" onChange={e => setQ(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') setQ(''); else if (e.key === 'Enter' && flt?.hits.size) onPick([...flt.hits][0]); }} />
-    <div className="otree" ref={box} tabIndex={0} onKeyDown={onKey}>
+    <div className={'otree' + (over === '' ? ' dropr' : '')} ref={box} tabIndex={0} onKeyDown={onKey}
+      onDragOver={e => { if (onMove && e.dataTransfer.types.includes(DRAG_NODE)) { e.preventDefault(); if (e.target === box.current) setOver(''); } }}
+      onDragLeave={e => { if (e.target === box.current) setOver(null); }}
+      onDrop={e => { const id = e.dataTransfer.getData(DRAG_NODE); if (id && e.target === box.current) { e.preventDefault(); setOver(null); onMove(id, ''); } }}>
       {flt && !rows.length && <div className="hint" style={{ padding: 6 }}>没有名字含「{q}」的节点（Ctrl+F 可以搜属性和正文）</div>}
       {rows.map(({ n, depth }) => (
-        <div key={n.id} className={'orow' + (n.id === selected ? ' sel' : '') + (n.id === scope && scope ? ' scope' : '') + (flt?.hits.has(n.id) ? ' hit' : '')} style={{ paddingLeft: 4 + depth * 12 }}
+        <div key={n.id} className={'orow' + (n.id === selected ? ' sel' : '') + (n.id === scope && scope ? ' scope' : '') + (flt?.hits.has(n.id) ? ' hit' : '') + (over === n.id ? ' dropin' : '')} style={{ paddingLeft: 4 + depth * 12 }}
+          draggable={!!onMove && renaming !== n.id} onDragStart={e => { e.dataTransfer.setData(DRAG_NODE, n.id); e.dataTransfer.effectAllowed = 'move'; }}
+          onDragOver={e => { if (onMove && e.dataTransfer.types.includes(DRAG_NODE)) { e.preventDefault(); e.stopPropagation(); setOver(n.id); } }}
+          onDragLeave={() => setOver(o => o === n.id ? null : o)} onDragEnd={() => setOver(null)}
+          onDrop={e => { const id = e.dataTransfer.getData(DRAG_NODE); e.stopPropagation(); setOver(null); if (id && id !== n.id) { e.preventDefault(); onMove(id, n.id); } }}
           onClick={() => { if (renaming !== n.id) onPick(n.id); }} onDoubleClick={() => onRename(n.id)} title={n.id}>
           <span className="ocaret" onClick={e => { e.stopPropagation(); if (n.children.length) setOpen(o => ({ ...o, [n.id]: !isOpen(n.id, depth) })); }}>{n.children.length ? (isOpen(n.id, depth) ? '▾' : '▸') : ''}</span>
           <span className="ost">{n.status ? status[n.status] : '·'}</span>
@@ -267,7 +277,7 @@ export const KEYMAP = [
   ['搜索', [['Ctrl+F', '全局搜索（名字 / 属性 / 正文）→ 跳过去'], ['大纲顶上的过滤框', '只看名字含这些字的节点']]],
   ['导航', [['双击卡片 / 大纲行的 →', '钻进去'], ['Alt+↑', '上一层'], ['鼠标侧键 / Alt+← →', '后退 / 前进'], ['大纲树里 ↑↓←→', '上下走 / 折叠展开'], ['▸N / 空格', '卡片里原地展开子级'], ['⊞ / F', '分组原地展开成框（子节点画在框里、线直连）']]],
   ['编辑', [['Enter', '新建同级'], ['Insert / Ctrl+Enter', '新建子级'], ['F2 / 双击大纲行', '改名'], ['Del', '删除（进 _过期的/）'], ['卡片边缘拖到另一张', '连线'], ['卡片底下 ◆ 拖到另一张顶上', '调节线（参数 / 修改器，不算数据流）'], ['L / 右键「连线到…」', '搜索目标连线（可以连到别的页）'], ['右键连线 / 属性面板 ✕', '删除连线'], ['Alt + 拖连线', '在线身上任意处按下，拿起离鼠标近的那端：放到别的节点 = 改接，放到空白 = 删除，拖着时右键 / Esc = 取消'], ['右键', '菜单：状态（❌ = 弃用）、颜色、属性、原文……'], ['Ctrl+Z', '撤销（结构、连线、拖动；删除也能撤回）'], ['Ctrl+Shift+Z / Ctrl+Y', '重做']]],
-  ['移动', [['拖卡片到另一张卡上', '放进它里面（目标会高亮；正文 / 属性 / 图片 / 连线跟着走）'], ['框里的卡拖出框', '拿出来放到当前页'], ['Ctrl+X → 目标页 Ctrl+V', '剪切粘贴 = 移过去']]],
+  ['移动', [['拖卡片到另一张卡上', '放进它里面（目标会高亮；正文 / 属性 / 图片 / 连线跟着走）'], ['框里的卡拖出框', '拿出来放到当前页'], ['Ctrl+X → 目标页 Ctrl+V', '剪切粘贴 = 移过去'], ['大纲树里拖一行', '拖到另一行上 = 放进去；拖到树下空白 = 挪到根；拖到画布卡片上 = 放进那张卡']]],
   ['复制', [['Ctrl+C', '复制选中的卡（连同子孙、属性、正文、图片、它们之间的边）'], ['Ctrl+V', '粘到当前页、鼠标处（同名加「 2」）；剪贴板里是图片 = 贴图']]],
   ['选择', [['Ctrl+单击', '加入 / 移出选择'], ['Shift+单击', '加上它和已选之间连线路径上的所有节点'], ['Ctrl+← / →', '沿入线 / 出线扩选一层'], ['Shift+← / →', '沿入线 / 出线一直扩到头']]],
   ['排列', [['Shift+拖空白', '框选多张卡'], ['拖框的边 / 角', '整体拉开或收紧间距'], ['收到底', '对齐；会重叠的依次排开']]],

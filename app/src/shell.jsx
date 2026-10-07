@@ -5,7 +5,7 @@ import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode
 import { colorMap } from './colors.js';
 import { patternMap, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
-import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal, ScaffoldModal, SearchModal } from './panels.jsx';
+import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal, ScaffoldModal, SearchModal, DRAG_NODE } from './panels.jsx';
 import { AiPanel, RelatedDock, AgentBox } from './ai.jsx';
 import { MdLite } from './mdlite.jsx';
 import { SAMPLE } from './sample.js';
@@ -659,6 +659,15 @@ export function Shell({ name, Canvas }) {
   const onDrop = e => {
     // dataTransfer 只在事件同步阶段可读 → 先全部取出来
     const dt = e.dataTransfer;
+    const treeNode = dt?.getData(DRAG_NODE);
+    if (treeNode) { // 从大纲树拖来的：落在卡片上 = 放进它；落在空白 = 挪到当前页、落在鼠标处
+      e.preventDefault();
+      const card = document.elementsFromPoint(e.clientX, e.clientY).map(el => el.closest?.('.react-flow__node')).find(n => n && n.dataset.id !== treeNode && !n.dataset.id.startsWith('@pic:'));
+      const t = card?.dataset.id;
+      if (t) moveInto([treeNode], t.startsWith('@portal:') ? t.slice(8) : t);
+      else moveInto([treeNode], realScope, cardActions.toFlow ? cardActions.toFlow({ x: e.clientX, y: e.clientY }) : null);
+      return;
+    }
     const files = [...(dt?.files || [])].filter(f => f.type.startsWith('image/'));
     const html = dt?.getData('text/html') || '';
     const url = (dt?.getData('text/uri-list') || '').split('\n')[0].trim() || (html.match(/<img[^>]+src="([^"]+)"/) || [])[1] || '';
@@ -732,7 +741,7 @@ export function Shell({ name, Canvas }) {
           <span className="hint" title={leftTab === 'text' ? '缩进 = 子级\n-> 名称 = 连线\n✅ ◐ ○ = 状态，❌ = 弃用' : ''}>{leftTab === 'text' ? '?' : leftTab === 'files' && mode !== 'ws' ? '样例模式没有项目文件' : ''}</span>
         </div>
         <textarea ref={taRef} value={text} spellCheck={false} onChange={e => setText(e.target.value)} onKeyDown={onTaKey} style={{ display: leftTab === 'text' ? '' : 'none' }} />
-        {leftTab === 'outline' && <OutlineTree graph={graph} selected={selected} scope={realScope} renaming={renaming} status={STATUS_ICON}
+        {leftTab === 'outline' && <OutlineTree graph={graph} selected={selected} scope={realScope} renaming={renaming} status={STATUS_ICON} onMove={mode === 'ws' ? (id, parent) => moveInto([id], parent) : null}
           onPick={pick} onDrill={id => { go(id); setSelected(null); }} onRename={id => setRenaming(id)} onCommit={commitRename} onCancel={() => setRenaming(null)} />}
         {leftTab === 'files' && mode === 'ws' && <FileTree tree={tree} onOpen={onTreeOpen} current={fileView?.path} />}
         {leftTab !== 'files' && graph.errors.length > 0 && <div className="errs">{graph.errors.map((er, i) => <div key={i}>第 {er.line} 行：{er.msg}</div>)}</div>}
