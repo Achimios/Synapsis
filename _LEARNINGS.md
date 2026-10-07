@@ -8,3 +8,4 @@
 6. **React Flow 重建 nodes 时要保留旧对象的 `measured`**，否则节点被设为 `visibility:hidden` 直到重新测量。
 7. **内置浏览器面板在后台时 `visibilityState=hidden`**，ResizeObserver 不触发、截图超时 → UI 验证改用 playwright-core + 本机 Edge 无头（`channel: 'msedge'`，不用下载浏览器）。
 8. Git Bash 里 `cat > 文件` 后面没接 heredoc 会一直等 stdin 卡死；跑 node 脚本时加 `< /dev/null`。
+9. sed 替换文本里含 Windows 路径时，`\U` `\a` `\L` 等会被当成转义/大小写指令，路径被吃掉 → 含反斜杠的内容用 Edit 工具或 node 写。
