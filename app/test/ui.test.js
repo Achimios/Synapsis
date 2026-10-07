@@ -465,6 +465,24 @@ for (const kind of ['reactflow']) {
   await page.click('.scaffold button:has-text("创建勾选的")'); await sleep(800);
   ok(existsSync(join(ws, '_TODO.md')) && !existsSync(join(ws, '_DevProgress.md')) && !existsSync(join(ws, 'AGENTS.md')), '只创建勾上的（_TODO.md）');
   ok(readFileSync(join(ws, '_开发进度.md'), 'utf8') === '中文名的进度', '已有文件不动');
+  // 传送门（↗ 别处的节点）也能框选排列（👤 2026-10-08 截图：一列 ↗ 框选后没反应）
+  await page.keyboard.press('Escape');
+  saveOutline(ws, '组\n  里面 -> 外一, 外二\n外一\n外二');
+  await page.reload(); await sleep(1800);
+  await page.mouse.dblclick(...mid(await (await card('组')).boundingBox())); await sleep(1000);
+  const pb = await Promise.all((await page.$$('.card.portal')).map(c => c.boundingBox()));
+  ok(pb.length === 2, '组里有 2 个传送门');
+  const pl = Math.min(...pb.map(b => b.x)) - 15, pt = Math.min(...pb.map(b => b.y)) - 15;
+  const pr = Math.max(...pb.map(b => b.x + b.width)) + 15, pbm = Math.max(...pb.map(b => b.y + b.height)) + 15;
+  await page.keyboard.down('Shift'); await page.mouse.move(pl, pt); await page.mouse.down();
+  await page.mouse.move(pr, pbm, { steps: 8 }); await page.mouse.up(); await page.keyboard.up('Shift'); await sleep(500);
+  ok(!!(await page.$('.scaleframe')), '框选传送门 → 出现缩放框');
+  const before = JSON.stringify(Object.entries(lay()).filter(([k]) => k.startsWith('@portal:')));
+  const sh = await (await page.$('.scaleframe .sh-s')).boundingBox();
+  await page.mouse.move(...mid(sh)); await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(sh.x + 5, sh.y + 5 + i * 25);
+  await page.mouse.up(); await sleep(900);
+  ok(JSON.stringify(Object.entries(lay()).filter(([k]) => k.startsWith('@portal:'))) !== before, '拖缩放框 → 传送门坐标写进 _layout.json');
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });

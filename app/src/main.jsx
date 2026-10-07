@@ -86,7 +86,7 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
   const build = () => [
     ...(plane ? [{ id: '@axes', type: 'axes', position: { x: -plane.S * 1.25, y: -plane.S * 1.25 }, data: plane, draggable: false, selectable: false, focusable: false, zIndex: -1, style: { pointerEvents: 'none' } }] : []),
     ...view.nodes.map(n => ({ id: n.id, type: 's', position: layout[n.id], ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id) }, selected: isSel(n.id) })),
-    ...view.portals.map(p => ({ id: p.id, type: 's', position: layout[p.id], data: { portal: p, dim: nodeDim(p.id, view, selected) }, selected: p.id === selected })),
+    ...view.portals.map(p => ({ id: p.id, type: 's', position: layout[p.id], data: { portal: p, dim: nodeDim(p.id, view, selected) }, selected: isSel(p.id) })),
     ...pics.map(p => ({ id: p.id, type: 'pic', position: layout[p.id] || { x: 0, y: 0 }, data: { pic: p, isSel: isSel(p.id) }, selected: isSel(p.id) })),
   ];
   const [nodes, setNodes] = useState(build);
@@ -106,7 +106,7 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
 
   const onNodesChange = useCallback(ch => setNodes(ns => applyNodeChanges(ch, ns)), []);
   const onSelectionChange = useCallback(({ nodes: sel }) => {
-    const ids = sel.map(n => n.id).filter(id => !id.startsWith('@portal:') && id !== '@axes');
+    const ids = sel.map(n => n.id).filter(id => id !== '@axes'); // 传送门（↗ 别处的节点）也能框选排列：它们的坐标同样存在 _layout.json
     const next = ids.length > 1 ? ids : [];
     setMulti(m => m.join('|') === next.join('|') ? m : next);
   }, []);
