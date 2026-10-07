@@ -8,6 +8,10 @@ import './shell.css';
 const load = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* 配额满/隐私模式：不持久化 */ } };
 
+// 心跳：告诉服务「还有网页开着」（全关后服务自动退出，见 vite.config.js）
+const ping = () => fetch('/__alive').catch(() => {});
+ping(); setInterval(ping, 20000);
+
 export function Shell({ name, Canvas }) {
   const [text, setText] = useState(() => load('syn.text', SAMPLE));
   const [scope, setScope] = useState(ROOT);
@@ -15,6 +19,10 @@ export function Shell({ name, Canvas }) {
   const [positions, setPositions] = useState(() => load('syn.pos.' + name, {}));
   const [images, setImages] = useState(() => load('syn.img', {}));
   const [exportText, setExportText] = useState(null);
+  // 每个范围各记一份视图（平移+缩放），返回上一级/再钻进来时还原
+  const [viewports, setViewports] = useState(() => load('syn.vp.' + name, {}));
+  // 导航历史：像浏览器一样 Alt+← / Alt+→
+  const hist = useRef({ back: [], fwd: [] });
   const taRef = useRef(null);
 
   const graph = useMemo(() => parseOutline(text), [text]);
@@ -26,15 +34,24 @@ export function Shell({ name, Canvas }) {
   useEffect(() => save('syn.text', text), [text]);
   useEffect(() => save('syn.pos.' + name, positions), [positions, name]);
   useEffect(() => save('syn.img', images), [images]);
+  useEffect(() => save('syn.vp.' + name, viewports), [viewports, name]);
+  const onViewport = useCallback((sc, vp) => setViewports(v => ({ ...v, [sc]: vp })), []);
+  const go = useCallback(next => {
+    if (next === realScope) return;
+    hist.current.back.push(realScope); hist.current.fwd = [];
+    setScope(next);
+  }, [realScope]);
+  const back = () => { const h = hist.current; if (!h.back.length) return; h.fwd.push(realScope); setSelected(null); setScope(h.back.pop()); };
+  const fwd = () => { const h = hist.current; if (!h.fwd.length) return; h.back.push(realScope); setSelected(null); setScope(h.fwd.pop()); };
 
   const drill = useCallback(id => {
     if (id.startsWith('@portal:')) {
       const target = id.slice(8);
-      setScope(graph.nodes.get(target).parent);
+      go(graph.nodes.get(target).parent);
       setSelected(target);
-    } else { setScope(id); setSelected(null); }
-  }, [graph]);
-  const up = () => { const p = graph.nodes.get(realScope).parent; if (p !== null) { setSelected(realScope); setScope(p); } };
+    } else { go(id); setSelected(null); }
+  }, [graph, go]);
+  const up = () => { const p = graph.nodes.get(realScope).parent; if (p !== null) { setSelected(realScope); go(p); } };
   const connect = useCallback((from, to) => {
     const resolve = id => id.startsWith('@portal:') ? id.slice(8) : id;
     const t = withEdge(graph, resolve(from), resolve(to));
@@ -45,7 +62,7 @@ export function Shell({ name, Canvas }) {
     const parent = sel && asChild ? sel : sel ? graph.nodes.get(sel).parent : realScope;
     const r = withNode(graph, parent, asChild ? null : sel);
     setText(r.text);
-    if (!asChild) setSelected(r.id); else setScope(sel);
+    if (!asChild) setSelected(r.id); else go(sel);
   };
 
   // 画布快捷键（焦点在大纲里时不触发）
@@ -56,6 +73,8 @@ export function Shell({ name, Canvas }) {
       if (e.key === 'Enter' && !e.altKey) { e.preventDefault(); e.stopPropagation(); addNode(false); }
       else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); if (sel) addNode(true); }
       else if (e.key === 'ArrowUp' && e.altKey) { e.preventDefault(); up(); }
+      else if (e.key === 'ArrowLeft' && e.altKey) { e.preventDefault(); back(); }
+      else if (e.key === 'ArrowRight' && e.altKey) { e.preventDefault(); fwd(); }
       else if (e.key === 'Escape') setSelected(null);
     };
     window.addEventListener('keydown', onKey, true);
@@ -104,15 +123,16 @@ export function Shell({ name, Canvas }) {
       </aside>
       <main>
         <div className="bar top">
-          <span className="crumbs">{crumbs.map((c, i) => <span key={c.id}>{i > 0 && ' › '}<a onClick={() => { setScope(c.id); setSelected(null); }}>{c.label}</a></span>)}</span>
-          <span className="hint">双击=钻进　Alt+↑=上一层　Enter=同级　Tab=子级　选中+Ctrl+V=贴图　{name === 'tldraw' ? 'A=箭头工具连线 V=选择' : '从节点边缘拖=连线'}</span>
+          <span className="crumbs">{crumbs.map((c, i) => <span key={c.id}>{i > 0 && ' › '}<a onClick={() => { go(c.id); setSelected(null); }}>{c.label}</a></span>)}</span>
+          <span className="hint">双击=钻进　Alt+↑=上一层 Alt+←/→=后退/前进　Enter=同级　Tab=子级　选中+Ctrl+V=贴图　{name === 'tldraw' ? 'A=箭头工具连线 V=选择' : '从节点边缘拖=连线'}</span>
           <button onClick={() => setExportText(exportForLLM(graph, realScope))}>导出给 LLM</button>
           <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>
           <a className="switch" href={name === 'tldraw' ? './reactflow.html' : './tldraw.html'}>换 {name === 'tldraw' ? 'React Flow' : 'tldraw'} →</a>
         </div>
         <div className="canvas">
           <Canvas key={realScope} view={view} layout={layout} selected={sel} images={images}
-            onSelect={setSelected} onDrill={drill} onConnect={connect} onMove={move} />
+            onSelect={setSelected} onDrill={drill} onConnect={connect} onMove={move}
+            viewport={viewports[realScope]} onViewport={vp => onViewport(realScope, vp)} />
         </div>
       </main>
       {exportText !== null && (

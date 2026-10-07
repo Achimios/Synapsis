@@ -2,6 +2,9 @@
 
 > 2026-10-07。未来的东西进 `_TODO.md`，不进这里。原始需求文档（AI 行为图视角，更细）：`Life Games/研究/有向图软件_需求与方案.md`。
 
+## 0. 测试工作区（👤）
+`C:SERSADMINISTRATORDESKTOPife games研究`（空间图.html 等就是被规划的内容）。core 写好前不往那里写 `__synapsis/`。
+
 ## 1. 工作空间布局（被规划的项目）
 ```
 <项目根>/

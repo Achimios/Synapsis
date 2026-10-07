@@ -108,6 +108,27 @@ for (const kind of ['reactflow', 'tldraw']) {
   ok(ex.includes('[游戏AI/决策/决策空间]') && ex.includes('输入(←)'), '导出含 id 与入边');
   await page.click('.modal button:has-text("关闭")');
 
+  // 视图记忆：缩放平移后返回上一级、再钻回来 → 视图还原；Alt+← / Alt+→ 历史
+  const cam = () => kind === 'reactflow'
+    ? page.$eval('.react-flow__viewport', v => v.style.transform)
+    : page.evaluate(() => { const c = window.__ed.getCamera(); return `${c.x.toFixed(1)},${c.y.toFixed(1)},${c.z.toFixed(3)}`; });
+  const camFit = await cam();
+  await page.mouse.move(900, 600);
+  await page.mouse.wheel(0, -400); await sleep(300);
+  await page.mouse.move(900, 600); await page.mouse.down(); await page.mouse.move(800, 500, { steps: 5 }); await page.mouse.up();
+  await sleep(500);
+  const camIn = await cam();
+  ok(camIn !== camFit, '缩放平移确实改变了视图（否则下面的还原检查无意义）');
+  await page.mouse.click(1000, 780); await page.keyboard.press('Escape');
+  await page.keyboard.press('Alt+ArrowUp'); await sleep(800);
+  ok((await page.$eval('.crumbs', e => e.innerText)) === '根', 'Alt+↑ 返回上一级');
+  await page.keyboard.press('Alt+ArrowLeft'); await sleep(800);
+  ok((await page.$eval('.crumbs', e => e.innerText)).includes('游戏AI'), 'Alt+← 后退回游戏AI');
+  ok(await cam() === camIn, `返回再进来视图还原 ${camIn} vs ${await cam()}`);
+  await page.keyboard.press('Alt+ArrowRight'); await sleep(600);
+  ok((await page.$eval('.crumbs', e => e.innerText)) === '根', 'Alt+→ 前进');
+  await page.keyboard.press('Alt+ArrowLeft'); await sleep(600);
+
   // 刷新：坐标持久
   await page.reload(); await sleep(1500);
   b = await cardBox('游戏AI'); await page.mouse.dblclick(...center(b)); await sleep(800);

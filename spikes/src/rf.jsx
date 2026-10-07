@@ -15,7 +15,7 @@ function SNode({ data }) {
 }
 const nodeTypes = { s: SNode };
 
-function RFCanvas({ view, layout, selected, images, onSelect, onDrill, onConnect, onMove }) {
+function RFCanvas({ view, layout, selected, images, onSelect, onDrill, onConnect, onMove, viewport, onViewport }) {
   const build = () => [
     ...view.nodes.map(n => ({ id: n.id, type: 's', position: layout[n.id], data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: n.id === selected }, selected: n.id === selected })),
     ...view.portals.map(p => ({ id: p.id, type: 's', position: layout[p.id], data: { portal: p, dim: nodeDim(p.id, view, selected) }, selected: p.id === selected })),
@@ -49,7 +49,10 @@ function RFCanvas({ view, layout, selected, images, onSelect, onDrill, onConnect
       onNodeDoubleClick={(_, n) => onDrill(n.id)}
       onNodeDragStop={(_, n, dragged) => onMove(Object.fromEntries((dragged || [n]).map(d => [d.id, d.position])))}
       onConnect={c => onConnect(c.source, c.target)}
-      zoomOnDoubleClick={false} deleteKeyCode={null} fitView fitViewOptions={{ padding: 0.2 }} minZoom={0.1}>
+      zoomOnDoubleClick={false} deleteKeyCode={null} minZoom={0.1}
+      // 记住的视图优先；第一次进这个范围才 fitView
+      fitView={!viewport} fitViewOptions={{ padding: 0.2 }} defaultViewport={viewport}
+      onMoveEnd={(_, vp) => onViewport(vp)}>
       <Background gap={20} />
       <Controls showInteractive={false} />
       <MiniMap pannable zoomable />

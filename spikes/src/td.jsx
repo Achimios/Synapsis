@@ -72,7 +72,7 @@ function sync(editor, view, layout, images, selected) {
   syncing = false;
 }
 
-function TDCanvas({ view, layout, selected, images, onSelect, onDrill, onConnect, onMove }) {
+function TDCanvas({ view, layout, selected, images, onSelect, onDrill, onConnect, onMove, viewport, onViewport }) {
   const [editor, setEditor] = useState(null);
   cb.drill = onDrill;
   useEffect(() => { data.set({ view, images, selected }); }, [view, images, selected]);
@@ -125,15 +125,22 @@ function TDCanvas({ view, layout, selected, images, onSelect, onDrill, onConnect
       }, 0);
     };
     editor.on('event', onEvent);
-    return () => { off(); editor.off('event', onEvent); };
-  }, [editor, layout, onConnect, onMove]);
+    // 相机变化（平移/缩放）→ 防抖后回报，返回上一级再进来时还原
+    let t = 0;
+    const offCam = editor.store.listen(() => {
+      clearTimeout(t);
+      t = setTimeout(() => { const c = editor.getCamera(); onViewport({ x: c.x, y: c.y, zoom: c.z }); }, 250);
+    }, { scope: 'session' });
+    return () => { off(); offCam(); clearTimeout(t); editor.off('event', onEvent); };
+  }, [editor, layout, onConnect, onMove, onViewport]);
 
   return (
     <Tldraw shapeUtils={shapeUtils} onMount={ed => {
       setEditor(ed);
       window.__ed = ed; // 只给 test/ui.test.js 用
       sync(ed, view, layout, images, selected);
-      ed.zoomToFit({ animation: { duration: 0 } });
+      if (viewport) ed.setCamera({ x: viewport.x, y: viewport.y, z: viewport.zoom });
+      else ed.zoomToFit({ animation: { duration: 0 } });
     }} />
   );
 }

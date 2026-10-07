@@ -7,3 +7,7 @@
   - 【未验】贴图（Ctrl+V）没有自动化测；手感只能用户亲手试
   - 【实测】tldraw 在 localhost 免 key 可跑，但右下角有「Get a license for production」水印；许可条款本身未读
 - ⏳ 等用户试两个画布 → 选库 → 写 core/（一节点一 .md 的读写）+ server + CLI
+- ✅ 视图记忆（每个范围各存平移+缩放，返回再进来还原）+ Alt+←/→ 历史；【实测】`test:ui` 38/38（含「缩放确实改变视图」的前置断言）
+- ✅ `Synapsis_start.vbs` 无窗口启动；`Synapsis_stop.bat` 停（按端口 5410 杀）；心跳：网页全关 3 分钟自动退出（`SYN_IDLE_MS` 可调）。【实测】三者都跑过
+- ✅ `_Design/Navigation.md`：导航原语、中键=基变换、标签/嵌入/结构度量（👤 Google 类比）
+- 📝 画布选型对比（含 Gemini 意见）：tldraw 自定义形状也能放任意 React（Gemini 说「中等」偏重），但胶水多（3 个坑 + 箭头绑定同步，~150 行 vs RF ~60 行）；RF 边即数据、MIT；tldraw 自由手绘强、有生产水印。倾向 RF 做主干，手绘以后叠一层。**等用户手感**
