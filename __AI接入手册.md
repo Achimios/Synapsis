@@ -18,7 +18,7 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
 - 节点 id = 名称路径，比如 `游戏NPC状态空间组/决策/决策空间（战术目标）`。
 - 中文参数在 Windows 上走 **Bash**；PowerShell 5.1 会把中文变成 `??`。
 - 根节点写 `.`（Git Bash 会把单独的 `/` 改写成 Git 安装目录）。名字里有 `/` 的节点，id 照写 `/`，也接受文件名里的全角 `／`。
-- **先看 `__synapsis/_黑板.md`**：这是这个项目里人和各个 AI 讨论设计的地方（见 §6）。
+- **先看 `__synapsis/_Blackboard.md`**：这是这个项目里人和各个 AI 讨论设计的地方（见 §6）。
 
 ## 3. 规矩（重要）
 1. **正文是人写的思考。** 不要改写或删掉人写的段落。要补充就在正文末尾追加一节 `## AI 记录（YYYY-MM-DD）`。`body` 命令会整段替换正文，用之前先 `get` 读出原文，保留原文再追加。
@@ -70,7 +70,7 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
 
 ## 5. 文件格式（文件夹 = 层级）
 - 叶子节点 `名字.md`；有子节点的 `名字/_node.md`。
-- 以 `_` 或 `.` 开头的都不是节点：`_黑板.md`（讨论区）、`_配色.md`（自动配色的词表）、`_layout.json`（坐标）、`_过期的/`（删掉的）、`_pics_名字/`（这个节点的图片）、`_pics/`（这一页的散图）、`_synapsis.md`（本手册）。
+- 以 `_` 或 `.` 开头的都不是节点：`_Blackboard.md`（讨论区）、`_配色.md`（自动配色的词表）、`_layout.json`（坐标）、`_过期的/`（删掉的）、`_pics_名字/`（这个节点的图片）、`_pics/`（这一页的散图）、`_synapsis.md`（本手册）。
 - 名字里有 `/` 等非法字符时，文件名用全角，原名写在 frontmatter 的 `label:` 里。
 ```
 ---
@@ -87,6 +87,6 @@ to:
 
 ## 6. 和人、和 Synapsis 本身打交道
 - 人是 Leo：游戏开发者 / motion designer。回复用中文。他累的时候别让他做琐碎决定，有惯例就按惯例办。
-- **讨论这个项目本身**（设计想法、分歧、要人拍板的事）：追加到本项目的 `<被规划项目根目录>/__synapsis/_黑板.md`，格式 `## YYYY-MM-DD · 谁 · 话题`。人和其他 AI 都在这里回。定下来的结论搬进对应节点的正文 / 属性，讨论条目剪进 `__synapsis/_过期的/_黑板.md`。
-- **Synapsis 这个工具本身**的问题：你在用 Synapsis 时觉得别扭，或者缺了什么功能：**追加一条到 `C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/_黑板.md`**，写日期、你在干什么、卡在哪。维护 Synapsis 的那个 Claude 会看，看完处理掉。别直接改 Synapsis 的代码。
+- **讨论这个项目本身**（设计想法、分歧、要人拍板的事）：追加到本项目的 `<被规划项目根目录>/__synapsis/_Blackboard.md`，格式 `## YYYY-MM-DD · 谁 · 话题`。人和其他 AI 都在这里回。定下来的结论搬进对应节点的正文 / 属性，讨论条目剪进 `__synapsis/_过期的/_Blackboard.md`。
+- **Synapsis 这个工具本身**的问题：你在用 Synapsis 时觉得别扭，或者缺了什么功能：**追加一条到 `C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/_Blackboard.md`**，写日期、你在干什么、卡在哪。维护 Synapsis 的那个 Claude 会看，看完处理掉。别直接改 Synapsis 的代码。
 - 打开图形界面：双击项目根目录的 `Synapsis.vbs`。改动会和 CLI 的写入同步，两边写的都是同一批 md 文件。

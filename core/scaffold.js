@@ -7,13 +7,13 @@ import { plan } from '../bootstrap/bootstrap.js';
 // 模板文件名 → 用户别的项目里可能已经在用的同类文件（有了就别再铺一份）；英文名是 2026-10-08 改中文之前的旧名
 const ALIASES = {
   '_开发进度.md': ['_DevProgress.md', '_研究进度.md', '_进度.md'],
-  '_待办.md': ['_TODO.md', 'TODO.md'],
-  '_从哪继续.md': ['_where_continue.md', '_接手.md'],
-  '_经验教训.md': ['_LEARNINGS.md', 'LEARNINGS.md', '_坑.md'],
+  '_TODO.md': ['_TODO.md', 'TODO.md'],
+  '__where_continue.md': ['_从哪继续.md', '_where_continue.md', '_接手.md'],
+  '_LEARNINGS.md': ['_LEARNINGS.md', 'LEARNINGS.md', '_坑.md'],
   '_工程规矩.md': ['_ProjectRules.md', '_项目规则.md'],
   '_开发索引.md': ['_DevIndex.md', '_开发索引表.md'],
   'AGENTS.md': ['CLAUDE.md'],
-  '_计划.md': ['_Plan.md'],
+  '_PLAN.md': ['_PLAN.md', '_Plan.md'],
 };
 
 export function scaffoldPlan(root) {

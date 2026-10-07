@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // >v<🤖LLM接口-CLI-给 LLM（和人）读图、检查、导出；工作区默认取 .synapsis/config.json
-// 完整说明见仓库根目录 _AI接入手册.md（= `node core/cli.js manual`）
+// 完整说明见仓库根目录 __AI接入手册.md（= `node core/cli.js manual`）
 export const USAGE = `用法：node core/cli.js <命令> [参数] [--ws <被规划项目根目录>]
 读：
   overview                     分组树 + 状态统计（先看这个，省 token）
@@ -80,7 +80,7 @@ function get(ws, id) {
   ].filter(Boolean).join('\n');
 }
 
-const BLACKBOARD = '# 讨论黑板（人和各个 AI 讨论这个项目的设计）\n\n> 格式：`## YYYY-MM-DD · 谁 · 话题`，往下追加。定下来的结论搬进对应节点的正文 / 属性，这里的条目剪进 `_过期的/_黑板.md`。\n> Synapsis 工具本身的问题不写这里，写 Synapsis 仓库根目录的 `_黑板.md`。\n';
+const BLACKBOARD = '# 讨论黑板（人和各个 AI 讨论这个项目的设计）\n\n> 格式：`## YYYY-MM-DD · 谁 · 话题`，往下追加。定下来的结论搬进对应节点的正文 / 属性，这里的条目剪进 `_过期的/_Blackboard.md`。\n> Synapsis 工具本身的问题不写这里，写 Synapsis 仓库根目录的 `_Blackboard.md`。\n';
 // 空间节点：轴、成员数、哪几个成员方向几乎一样（不正交的证据）
 function spaceText(g, id) {
   const s = spaceInfo(g, id, x => g.nodes.get(x)?.meta);
@@ -97,7 +97,7 @@ export function init(root) {
   const put = (rel, content) => { const f = join(root, rel); if (existsSync(f)) return; mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, content); made.push(rel); };
   mkdirSync(join(root, DIR), { recursive: true });
   if (ensureWorkspaceReadme(root, manualText(root))) made.push(DIR + '/_synapsis.md（AI 接入手册）');
-  if (blackboardName(root) === '_黑板.md') put(DIR + '/_黑板.md', BLACKBOARD);
+  if (blackboardName(root) === '_Blackboard.md') put(DIR + '/_Blackboard.md', BLACKBOARD);
   put(DIR + '/' + WORDS_FILE, DEFAULT_WORDS);
   put('.synapsis/.gitignore', '# 本机状态（视图、缓存），不进 git\n*\n');
   // 启动器是生成物：内容和最新模板不同就刷新（Synapsis 搬家/改目录后重跑 init 即可修好旧项目）
@@ -178,8 +178,8 @@ export function runBatch(root, ops) {
   return out.join('\n');
 }
 
-// 工作区的讨论黑板：新建的叫 _黑板.md；2026-10-08 改中文名之前建的叫 _Blackboard.md，就继续用它（不去改别人仓库里的文件）
-export const blackboardName = root => root && existsSync(join(root, DIR, '_Blackboard.md')) && !existsSync(join(root, DIR, '_黑板.md')) ? '_Blackboard.md' : '_黑板.md';
+// 工作区的讨论黑板：叫 _Blackboard.md（👤 2026-10-08：TODO / PLAN / Blackboard / LEARNINGS 用英文）；当天短暂用过中文名 _Blackboard.md，已有的就继续用它
+export const blackboardName = root => root && existsSync(join(root, DIR, '_Blackboard.md')) && !existsSync(join(root, DIR, '_Blackboard.md')) ? '_Blackboard.md' : '_Blackboard.md';
 export function manualText(root) {
   const cli = join(HOME, 'core', 'cli.js').split('\\').join('/');
   const ws = root ? root.split('\\').join('/') : '<被规划项目根目录>';
@@ -187,8 +187,8 @@ export function manualText(root) {
   const bb = blackboardName(root);
   return readFileSync(join(HOME, 'core', 'templates', 'AI_Manual.md'), 'utf8').replace(/\r\n/g, '\n').split('{{CLI}}').join(cli).split('{{WS}}').join(ws).split('{{HOME}}').join(home).split('{{USAGE}}').join(USAGE).split('{{BB}}').join(bb);
 }
-// 仓库根目录 _AI接入手册.md = 通用版（不填工作区）；自检会核对它和模板是否一致
-export const ROOT_MANUAL = join(HOME, '_AI接入手册.md');
+// 仓库根目录 __AI接入手册.md = 通用版（不填工作区）；自检会核对它和模板是否一致
+export const ROOT_MANUAL = join(HOME, '__AI接入手册.md');
 export const rootManualText = () => MANUAL_MARK + '\n' + manualText(null);
 
 function main(argv) {

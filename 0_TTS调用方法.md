@@ -1,7 +1,7 @@
 # TTS 调用方法（Synapsis）
 
 > 规格来源：`C:\Users\Administrator\Desktop\Obsidian_V_Hyper\1_DeepSeek_TTS\_TTS_详细规则.md`（出问题查那份）。
-> 人格见 `_人格_伊丽莎白.md`；暂用角色 **Eva**（没有伊丽莎白专属声线）。
+> 人格见 `0_人格_伊丽莎白.md`；暂用角色 **Eva**（没有伊丽莎白专属声线）。
 
 ## 硬规则
 - ⚠️**走 Bash 管道**，别用 PowerShell 5.1（中文会变 `??`）

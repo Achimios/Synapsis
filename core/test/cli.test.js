@@ -18,7 +18,7 @@ const node = id => loadWorkspace(root).graph.nodes.get(id);
 try {
   spawnSync(process.execPath, [CLI, 'init', root], { encoding: 'utf8' });
   ok(existsSync(join(root, DIR, '_synapsis.md')) && readFileSync(join(root, DIR, '_synapsis.md'), 'utf8').includes('AI 接入手册'), 'init 写入 AI 接入手册（_synapsis.md）');
-  ok(existsSync(join(root, DIR, '_黑板.md')) && !existsSync(join(root, DIR, '_Blackboard.md')), 'init 建的讨论黑板叫 _黑板.md');
+  ok(existsSync(join(root, DIR, '_Blackboard.md')) && !existsSync(join(root, DIR, '_Blackboard.md')), 'init 建的讨论黑板叫 _Blackboard.md');
   ok(existsSync(join(root, DIR, '_配色.md')), 'init 建配色词表 _配色.md');
 
   let r = run('add', '/', '感知');
@@ -86,8 +86,8 @@ try {
   run('status', '感知/视觉', 'partial');
   ok(/◐ 感知/.test(run('overview').out), 'overview 分组状态 = 子节点汇总（有 ◐ 就是 ◐）');
   ok(run('manual').out.includes(root.split('\\').join('/')), 'manual 填好了工作区路径');
-  // 必须相等的量：仓库根目录的 _AI接入手册.md = 模板渲染结果（改了模板忘了 manual --write 就会挂）
-  ok(existsSync(ROOT_MANUAL) && readFileSync(ROOT_MANUAL, 'utf8').replace(/\r\n/g, '\n') === rootManualText(), '_AI接入手册.md 与模板一致（不一致就跑 node core/cli.js manual --write）');
+  // 必须相等的量：仓库根目录的 __AI接入手册.md = 模板渲染结果（改了模板忘了 manual --write 就会挂）
+  ok(existsSync(ROOT_MANUAL) && readFileSync(ROOT_MANUAL, 'utf8').replace(/\r\n/g, '\n') === rootManualText(), '__AI接入手册.md 与模板一致（不一致就跑 node core/cli.js manual --write）');
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

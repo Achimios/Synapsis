@@ -556,9 +556,9 @@ for (const kind of ['reactflow']) {
   await page.click('button:has-text("项目文档")'); await sleep(600);
   ok((await page.$eval('.scaffold', e => e.innerText)).includes('已有同类：_DevProgress.md'), '项目文档：检测到同类旧英文名');
   ok(!(await page.$eval('.scaflist li:has-text("_开发进度.md") input', e => e.checked)), '有同类的默认不勾');
-  for (const li of await page.$$('.scaflist li')) { const t = await li.innerText(); const cbx = await li.$('input'); if (!t.includes('_待办.md') && await cbx.isChecked() && !(await cbx.isDisabled())) await cbx.uncheck(); }
+  for (const li of await page.$$('.scaflist li')) { const t = await li.innerText(); const cbx = await li.$('input'); if (!t.includes('_TODO.md') && await cbx.isChecked() && !(await cbx.isDisabled())) await cbx.uncheck(); }
   await page.click('.scaffold button:has-text("创建勾选的")'); await sleep(800);
-  ok(existsSync(join(ws, '_待办.md')) && !existsSync(join(ws, '_开发进度.md')) && existsSync(join(ws, '_DevProgress.md')) && !existsSync(join(ws, 'AGENTS.md')), '只创建勾上的（_待办.md）');
+  ok(existsSync(join(ws, '_TODO.md')) && !existsSync(join(ws, '_开发进度.md')) && existsSync(join(ws, '_DevProgress.md')) && !existsSync(join(ws, 'AGENTS.md')), '只创建勾上的（_TODO.md）');
   ok(readFileSync(join(ws, '_DevProgress.md'), 'utf8') === '旧英文名的进度', '已有文件不动');
   // 传送门（↗ 别处的节点）也能框选排列（👤 2026-10-08 截图：一列 ↗ 框选后没反应）
   await page.keyboard.press('Escape');

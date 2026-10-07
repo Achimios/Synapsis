@@ -55,7 +55,7 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .canvas { flex: 1; position: relative; min-height: 0; background: var(--bg); }
 
 /* 卡片：扁、细边、状态用左边一条色带 */
-.card { background: var(--panel2); border: 1px solid var(--line2); border-left-width: 3px; border-radius: 3px; padding: 3px 7px; min-width: 96px; max-width: 200px; transition: opacity .15s; color: var(--text); }
+.card { background: var(--panel2); border: 1px solid var(--line2); border-left-width: 3px; border-radius: 3px; padding: 6px 11px; min-width: 120px; max-width: 220px; font-size: 14px; transition: opacity .15s; color: var(--text); }
 .card.s-done { border-left-color: var(--ok); } .card.s-partial { border-left-color: #e0b84d; } .card.s-todo { border-left-color: var(--faint); }
 /* 节点颜色 --c（core/colors.js）：边框 + 淡底色；左边那条仍是状态色 */
 .card { --c: var(--line2); border-top-color: color-mix(in srgb, var(--c) 70%, var(--line2)); border-right-color: color-mix(in srgb, var(--c) 70%, var(--line2)); border-bottom-color: color-mix(in srgb, var(--c) 70%, var(--line2)); background: color-mix(in srgb, var(--c) 9%, var(--panel2)); }
@@ -88,7 +88,7 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .side .edges button.ex { font-size: 10px; padding: 0 4px; margin-left: 4px; color: var(--faint); border-color: transparent; background: none; }
 .side .edges button.ex:hover { color: var(--bad); border-color: var(--bad); }
 /* 调节口：顶上 / 底下的小菱形，平时很淡，鼠标移到卡片上才明显 */
-.react-flow__handle.modh { width: 7px; height: 7px; border-radius: 1px; transform: translate(-50%, -50%) rotate(45deg); background: #555; border: 1px solid var(--bg); opacity: .25; }
+.react-flow__handle.modh { width: 10px; height: 10px; border-radius: 1px; transform: translate(-50%, -50%) rotate(45deg); background: #555; border: 1px solid var(--bg); opacity: .25; }
 .react-flow__handle.modh.react-flow__handle-bottom { transform: translate(-50%, 50%) rotate(45deg); }
 .react-flow__node:hover .react-flow__handle.modh { opacity: .9; }
 .side .edges button.ek { font-size: 10px; padding: 0 4px; margin-left: 4px; color: var(--dim); }
@@ -120,7 +120,7 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 
 /* React Flow 深色微调 */
 .react-flow { --xy-background-color: var(--bg); --xy-edge-label-background-color: var(--bg); --xy-edge-label-color: var(--dim); --xy-minimap-background-color: var(--panel); --xy-controls-button-background-color: var(--panel2); --xy-controls-button-background-color-hover: var(--hover); --xy-controls-button-color: var(--text); --xy-controls-button-border-color: var(--line); --xy-handle-background-color: #666; --xy-handle-border-color: var(--bg); }
-.react-flow__handle { width: 6px; height: 6px; }
+.react-flow__handle { width: 10px; height: 10px; }
 .react-flow__edge-textbg { fill: var(--bg); }
 .react-flow__edge-text { font-size: 10px; }
 .react-flow__attribution { background: transparent !important; opacity: .35; } .react-flow__attribution a { color: var(--faint) !important; }
