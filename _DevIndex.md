@@ -61,7 +61,7 @@ grep -rn ">v<💾工作区" core spikes bootstrap --include=*.js --include=*.jsx
 小标题：
 
 - **读取 / 写回** —— `loadWorkspace` / `saveOutline`：文件夹 = 层级（叶子 `名字.md`，分组 `名字/_node.md`）；以 `_`/`.` 开头的不是节点。写回时按「同 id，或同父下 1:1 改名」配对旧节点，保留正文、其余属性、边标签；只写变了的文件；节点消失 → 移进 `_过期的/`（不真删）；空目录清掉；坐标跟着改名走。⭐往返逐字相等有自检。
-- **文件名** —— `fileName`：名字含 `/  : * ? " < > |` → 全角，原名存 `label:`（`NN/LLM` 曾被拆成两层，往返自检抓到）。
+- **文件名** —— `fileName`：名字含 `/ \ : * ? " < > |` → 全角，原名存 `label:`（`NN/LLM` 曾被拆成两层，往返自检抓到）。
 - **frontmatter** —— 最小 YAML 子集（`key: value`、`key:` + `  - 项`），键顺序 label/status/order/其余(字母序)/to，稳定好 diff。出边 `目标 | 标签 | 类型`，目标按名字就近解析。
 - **说明文件** —— `ensureWorkspaceReadme`：每个 `__synapsis/` 一份 `_synapsis.md`（格式 + CLI 用法），给人和 LLM。
 - **HTTP接口** —— `vite.config.js` 的 `workspaceApi`：`GET /api/ws`、`PUT /api/outline`、`PUT /api/layout`、`POST /api/asset`、`GET /api/file`；工作区 `?ws=` > `SYN_WS` > `.synapsis/config.json`。
