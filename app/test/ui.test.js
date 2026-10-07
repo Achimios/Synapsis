@@ -178,7 +178,7 @@ for (const kind of ['reactflow']) {
   // 大纲树：点一下 = 导航 + 属性面板显示内容，不进编辑
   await page.click('.orow:has-text("短期记忆")'); await sleep(600);
   ok((await crumbNow()).includes('记忆与人格'), '点大纲树 → 画布跳到那一页 ' + await crumbNow());
-  ok((await page.$eval('.side h3', e => e.innerText).catch(() => '')) === '短期记忆', '点大纲树 → 右侧显示它的内容');
+  ok((await page.$eval('.side h3 input', e => e.value).catch(() => '')) === '短期记忆', '点大纲树 → 右侧显示它的内容');
   ok(await page.evaluate(() => document.activeElement.tagName) !== 'INPUT', '点大纲树不进改名');
   await page.keyboard.press('ArrowDown'); await sleep(300);
   ok((await page.$eval('.orow.sel', e => e.innerText)).includes('个性空间'), '大纲树 ↓ 走到下一个');
@@ -278,7 +278,16 @@ for (const kind of ['reactflow']) {
   await rclick('行动'); await page.click('.ctx .swatches button.auto'); await sleep(1500);
   ok(!nodeFile('游戏AI/行动/_node.md').includes('color:') && await cc('行动') === PALETTE.绿, '右键「自动」→ 删掉 color:，回到绿');
   await rclick('行动'); await page.click('.ctx .mi:has-text("属性")'); await sleep(400);
-  ok((await page.$eval('.side h3', e => e.innerText)) === '行动', '右键 属性 → 面板');
+  ok((await page.$eval('.side h3 input', e => e.value)) === '行动', '右键 属性 → 面板');
+  // 属性面板：颜色色块 → color:；名字框改名（👤 2026-10-08）
+  await page.click('.side .swatches button[title="青"]'); await sleep(1500);
+  ok(/^color: 青$/m.test(nodeFile('游戏AI/行动/_node.md')) && await cc('行动') === PALETTE.青, '属性面板点色块 → color: 写进文件、卡片变色');
+  await page.click('.side .swatches button.auto'); await sleep(1500);
+  ok(!nodeFile('游戏AI/行动/_node.md').includes('color:'), '属性面板「自动」→ 删掉 color:');
+  await page.fill('.side h3 input', '行动层'); await page.keyboard.press('Enter'); await sleep(1800);
+  ok(existsSync(join(ws, '__synapsis', '游戏AI', '行动层', '_node.md')) && (await page.$eval('.side h3 input', e => e.value)) === '行动层', '属性面板名字框改名 → 文件夹跟着改，面板还停在它上面');
+  await page.fill('.side h3 input', '行动'); await page.keyboard.press('Enter'); await sleep(1800);
+  ok(existsSync(join(ws, '__synapsis', '游戏AI', '行动', '_node.md')), '改回原名');
   ok((await page.$$eval('.side .edges li', ls => ls.length)) > 0, '属性面板列出入/出边');
   await page.fill('textarea.body', '行动层：从战术目标展开成动作序列。');
   await page.mouse.click(1000, 780); await sleep(1200);
@@ -366,6 +375,15 @@ for (const kind of ['reactflow']) {
   await page.mouse.click(lb.x + lb.width / 2, lb.y + lb.height / 2); await sleep(200);
   await page.keyboard.press('Delete'); await sleep(1500);
   ok((await page.$$('.loosepic')).length === 0 && readdirSync(looseDir).length === 0, '选中散图 Del → 删掉（文件进 _过期的/）');
+  // 左右栏拖宽（👤 2026-10-08）
+  const sideW = () => page.$eval('aside.side', a => a.offsetWidth);
+  const sw0 = await sideW(), rz = await (await page.$('.resizer.right')).boundingBox();
+  await page.mouse.move(rz.x + 3, rz.y + 300); await page.mouse.down(); await page.mouse.move(rz.x - 117, rz.y + 300, { steps: 6 }); await page.mouse.up(); await sleep(900);
+  ok(Math.abs(await sideW() - sw0 - 120) < 4, "拖右栏边 → 右栏变宽 " + sw0 + ' → ' + await sideW());
+  ok(JSON.parse(readFileSync(join(ws, '.synapsis', 'view.json'), 'utf8')).panelW?.right === sw0 + 120, '栏宽记进 view.json');
+  const olw0 = await page.$eval('aside.outline', a => a.offsetWidth), lz = await (await page.$('.resizer.left')).boundingBox();
+  await page.mouse.move(lz.x + 3, lz.y + 300); await page.mouse.down(); await page.mouse.move(lz.x + 63, lz.y + 300, { steps: 6 }); await page.mouse.up(); await sleep(300);
+  ok(Math.abs(await page.$eval('aside.outline', a => a.offsetWidth) - olw0 - 60) < 4, '拖左栏边 → 左栏变宽');
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });

@@ -51,6 +51,7 @@ export function Shell({ name, Canvas }) {
   // >v<🎨画布-分组展开成框-分组变半透明底框，子节点画在框里、线直连（👤 2026-10-08「这个好！值得做！」）；框里的坐标 = 钻进分组那一页的坐标
   const [framed, setFramed] = useState(() => DEMO ? load('syn.frm', {}) : {});
   const toggleFrame = id => setFramed(x => ({ ...x, [id]: !x[id] }));
+  const [panelW, setPanelW] = useState(() => DEMO ? load('syn.pw', { left: 280, right: 300 }) : { left: 280, right: 300 });
   // >v<🖼️图片-折叠与大小-每个节点的图可单独收起（视图状态，进 view.json）；宽度 picw 是设计数据，进节点 frontmatter
   const [picFold, setPicFold] = useState(() => DEMO ? load('syn.pf', {}) : {});
   const [localPicw, setLocalPicw] = useState(() => load('syn.pw', {}));
@@ -132,7 +133,7 @@ export function Shell({ name, Canvas }) {
       // 页面刷新（开发服务重启、Ctrl+R）后接上撤销记录：只在文件和上次记下的一致时接（外面改过就不接，免得撤销盖掉别人的改动）
       const sv = (() => { try { return JSON.parse(sessionStorage.getItem(HIST_KEY)); } catch { return null; } })();
       if (sv?.committed?.text === d.outline) { hist2.current.undo = sv.undo || []; hist2.current.redo = sv.redo || []; }
-      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); setPicFold(v.picFold || {}); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
+      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
       setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
     }).catch(e => { setMode('offline'); setText(load('syn.text', SAMPLE)); setPositions(load('syn.pos.' + name, {})); setSaveState('⚠️ 没连上工作区（' + e.message + '），本地离线模式'); });
   }, []);
@@ -178,15 +179,16 @@ export function Shell({ name, Canvas }) {
   useEffect(() => { if (local) save('syn.pos.' + name, positions); }, [positions, name, local]);
   useEffect(() => save('syn.img2', localImages), [localImages]);
   useEffect(() => { if (local) save('syn.frm', framed); }, [framed, local]);
+  useEffect(() => { if (local) save('syn.pw', panelW); }, [panelW, local]);
   useEffect(() => { if (local) { save('syn.vp.' + name, viewports); save('syn.exp', expanded); save('syn.lh', leftHidden); save('syn.pf', picFold); save('syn.po', propsOpen); } }, [viewports, expanded, leftHidden, picFold, propsOpen, name, local]);
   useEffect(() => save('syn.pw', localPicw), [localPicw]);
   useEffect(() => save('syn.loose', localLoose), [localLoose]);
   // 工作区：视图状态停手 0.6s 写进 .synapsis/view.json
   useEffect(() => {
     if (mode !== 'ws') return;
-    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, framed, leftHidden, picFold, propsOpen, spaceAxes, scope: realScope }) }).catch(() => {}), 600);
+    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, framed, panelW, leftHidden, picFold, propsOpen, spaceAxes, scope: realScope }) }).catch(() => {}), 600);
     return () => clearTimeout(t);
-  }, [viewports, expanded, framed, leftHidden, picFold, propsOpen, spaceAxes, realScope, mode]);
+  }, [viewports, expanded, framed, panelW, leftHidden, picFold, propsOpen, spaceAxes, realScope, mode]);
   const onViewport = useCallback((sc, vp) => setViewports(v => ({ ...v, [sc]: vp })), []);
   const go = useCallback(next => {
     if (next === realScope) return;
@@ -584,8 +586,17 @@ export function Shell({ name, Canvas }) {
   };
 
   const crumbs = breadcrumb(graph, realScope);
+  // >v<🎨画布-左右栏宽度-拖栏边调宽（👤 2026-10-08），记进 view.json（样例模式 localStorage）
+  const dragPanel = (e, side) => {
+    e.preventDefault();
+    const x0 = e.clientX, w0 = side === 'left' ? panelW.left : panelW.right;
+    const mv = ev => { const w = Math.max(180, Math.min(760, w0 + (side === 'left' ? 1 : -1) * (ev.clientX - x0))); setPanelW(p => ({ ...p, [side]: Math.round(w) })); };
+    const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+  };
   return (
-    <div className="shell">
+    <div className="shell" style={{ '--leftw': panelW.left + 'px', '--rightw': panelW.right + 'px' }}>
+      {!leftHidden && <div className="resizer left" title="拖动调宽度" onPointerDown={e => dragPanel(e, 'left')} />}
       <aside className="outline" style={leftHidden ? { display: 'none' } : undefined}>
         <div className="bar tabs">
           <a className={leftTab === 'outline' ? 'on' : ''} onClick={() => setLeftTab('outline')} title="点一下 = 画布跳过去并显示内容；双击 / F2 = 改名">大纲</a>
@@ -631,9 +642,11 @@ export function Shell({ name, Canvas }) {
             viewport={viewports[realScope]} onViewport={vp => onViewport(realScope, vp)} />
         </div>}
       </main>
+      {propsOpen && <div className="resizer right" title="拖动调宽度" onPointerDown={e => dragPanel(e, 'right')} />}
       {propsOpen && sel && !sel.startsWith('@') && graph.nodes.has(sel) && (
         <PropsPanel id={sel} graph={graph} wsNode={wsData?.nodes[sel]} edges={mode === 'ws' ? (wsData?.edges || []) : graph.edges}
-          editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} onMeta={saveMeta} metaHints={mode === 'ws' ? metaHints(sel) : []} file={nodeFile(sel)} tab={propsTab} onTab={setPropsTab} raw={rawText} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)} />
+          editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} onMeta={saveMeta} metaHints={mode === 'ws' ? metaHints(sel) : []} file={nodeFile(sel)} tab={propsTab} onTab={setPropsTab} raw={rawText} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)}
+          onRename={commitRename} color={colors.get(sel)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} />
       )}
       {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（I 开关）</div></aside>}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}

@@ -19,8 +19,21 @@
 html, body, #root { margin: 0; height: 100%; font: 12px/1.35 system-ui, "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); }
 ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: #3c3c3c; border-radius: 4px; } ::-webkit-scrollbar-track { background: transparent; }
 ::selection { background: #2f4f7a; }
-.shell { display: flex; height: 100%; }
-.outline { width: 280px; flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--panel); }
+.shell { display: flex; height: 100%; position: relative; }
+/* 左右栏的拖动条：贴在栏边上，看不见，鼠标过去变成左右箭头 */
+.resizer { position: absolute; top: 0; bottom: 0; width: 6px; z-index: 50; cursor: col-resize; }
+.resizer:hover { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.resizer.left { left: calc(var(--leftw, 280px) - 3px); }
+.resizer.right { right: calc(var(--rightw, 300px) - 3px); }
+.side h3 input.nameedit { font: inherit; font-weight: 600; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 3px; padding: 1px 4px; width: 100%; box-sizing: border-box; outline: none; }
+.side h3 input.nameedit:hover { border-color: var(--line2); }
+.side h3 input.nameedit:focus { border-color: var(--accent); background: var(--bg); }
+.side .swatches { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; }
+.side .swatches button { width: 14px; height: 14px; padding: 0; border-radius: 50%; border: 1px solid rgba(0,0,0,.4); }
+.side .swatches button.on { outline: 2px solid var(--sel); outline-offset: 1px; }
+.side .swatches button.auto { width: auto; height: auto; border-radius: 3px; padding: 0 4px; font-size: 10px; background: var(--panel2); border-color: var(--line2); }
+.side .swatches .cur { width: 18px; height: 10px; border-radius: 2px; margin-right: 4px; }
+.outline { width: var(--leftw, 280px); flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--panel); }
 .outline textarea { flex: 1; border: 0; padding: 6px 10px; font: var(--mono); resize: none; outline: none; tab-size: 2; background: var(--panel); color: var(--text); }
 .errs { color: var(--bad); padding: 4px 8px; border-top: 1px solid var(--line); font-size: 11px; max-height: 30%; overflow: auto; }
 main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -114,7 +127,7 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .ctx button.on, .side .row button.on { background: #2f4f7a; border-color: var(--accent); }
 
 /* 右侧面板：属性 / 文件预览 */
-.side { width: 300px; flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--panel); min-height: 0; }
+.side { width: var(--rightw, 300px); flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--panel); min-height: 0; }
 .side.wide { width: 44vw; max-width: 760px; }
 .side .bar .hint { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebody { flex: 1; overflow: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
