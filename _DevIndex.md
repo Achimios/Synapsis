@@ -12,3 +12,5 @@
 >v< 🚀 启动 - Synapsis_start.vbs - 无窗口起 dev 服务 :5410 并打开浏览器（网页全关 3 分钟自动退出）
 >v< 🛑 停止 - Synapsis_stop.bat - 按端口 5410 停服务
 >v< 🧭 设计 - _Design/Navigation.md - 导航原语、中键=基变换、标签/嵌入/结构度量
+>v< 🏗️ 构建引导 - bootstrap/_ProjectBootstrap.md - 用户项目规矩本体（人/判据/权威度/文档分层/代码约定/新建流程）
+>v< 🏗️ 构建引导 - bootstrap/bootstrap.js - 生成骨架，已有文件跳过；全局 skill ~/.claude/skills/project-bootstrap

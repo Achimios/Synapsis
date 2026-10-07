@@ -18,6 +18,7 @@
 |---|---|
 | `_Design/` | 哲学、规格、决定（长文） |
 | `__synapsis/` | Synapsis 规划它自己（自测） |
+| `bootstrap/` | ⭐**项目构建引导**：用户所有新项目的规矩 + 骨架模板 + 生成脚本（全局 skill `project-bootstrap` 指向这里） |
 | `spikes/` | 画布库对比原型（tldraw vs React Flow），选完后进 `_过期的/` |
 
 ## 规矩

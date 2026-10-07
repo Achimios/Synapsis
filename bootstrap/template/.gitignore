@@ -1,0 +1,8 @@
+node_modules/
+__pycache__/
+.venv/
+dist/
+logs/
+cache/
+.synapsis/
+config/creds.*
