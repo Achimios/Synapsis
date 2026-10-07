@@ -60,6 +60,8 @@ export function Shell({ name, Canvas }) {
   // >v<🖼️图片-折叠与大小-每个节点的图可单独收起（视图状态，进 view.json）；宽度 picw 是设计数据，进节点 frontmatter
   const [picFold, setPicFold] = useState(() => DEMO ? load('syn.pf', {}) : {});
   const [textOpen, setTextOpen] = useState({}); // 卡片里展开正文的节点（记进 view.json）
+  const [theme, setTheme] = useState(() => load('syn.theme', 'dark')); // 本机偏好，不跟项目走
+  useEffect(() => { document.documentElement.dataset.theme = theme; save('syn.theme', theme); }, [theme]);
   const [localPicw, setLocalPicw] = useState(() => load('syn.pw', {}));
   const [renaming, setRenaming] = useState(null); // 大纲树里正在改名的节点
   const [canvasRename, setCanvasRename] = useState(null); // 画布卡片上正在改名的节点（👤 2026-10-08：跳到左栏改「太视觉跳跃」）
@@ -702,6 +704,7 @@ export function Shell({ name, Canvas }) {
           {mode === 'ws' && <button className={'aibtn ' + (aiStatus?.ok ? 'on' : 'off')} title={aiStatus?.ok ? 'LM Studio 已连上：语义配色 / 潜在关联 / 生成词表' : 'AI 辅助（LM Studio）：' + (aiStatus?.error || '检查中')} onClick={() => { setAiOpen(true); aiCheck(); }}>🤖 AI</button>}
           {mode === 'ws' && <button title="给这个项目补开发进度 / 待办 / 规矩那套文档（先检测，已有的不覆盖）" onClick={() => api('/scaffold').then(d => setScaffold(d.items)).catch(e => setSaveState('❌ ' + e.message))}>📄 项目文档…</button>}
           {local && <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>}
+          <button className="themebtn" title={theme === 'light' ? '换深色主题' : '换白色主题'} onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}>{theme === 'light' ? '🌙' : '☀'}</button>
           <button className="keysbtn" title="快捷键一览（? 或 F1）" onClick={() => setHelpOpen(true)}>⌨ 快捷键</button>
         </div>
         {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className="canvas" onDragOver={e => e.preventDefault()} onDrop={onDrop}>
@@ -715,7 +718,7 @@ export function Shell({ name, Canvas }) {
             {space.members.length < 2 ? <span className="hint">子节点写 vec: 才会出现在这里</span> :
               <span className="hint" title="成员两两余弦，|cos| 最大的一对：这两个其实差不多是一回事">最像：{(p => `${p.a}·${p.b} ${p.cos.toFixed(2)}`)(closestPairs(space, 1)[0])}</span>}
           </div>}
-          <Canvas key={realScope} view={view} layout={layout} selected={sel} images={images}
+          <Canvas key={realScope} theme={theme} view={view} layout={layout} selected={sel} images={images}
             plane={plane && { S: plane.S, labels: plane.labels, ids: plane.pts.map(p => p.id) }}
             pics={loosePics.map(p => ({ ...p, w: positions[p.id]?.w || 0, folded: !!picFold[p.id] }))}
             onSelect={setSelected} onDrill={drill} onConnect={connect} onMove={move} onContextMenu={onContextMenu} onEdgeMenu={onEdgeMenu} onRewire={rewire} onRemoveEdges={removeEdges}

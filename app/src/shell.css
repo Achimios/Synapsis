@@ -14,11 +14,19 @@
   --ok: #6fbf73; --bad: #ff6b5e;
   --sel: #e8e8e8;
   --mono: 12px/1.55 Consolas, "Microsoft YaHei", monospace;
+  --selbg: #2f4f7a; --chip: #353535; --chip2: #444; --strong: #fff; --scroll: #3c3c3c;
+}
+/* >v<🎨外观-白色主题（👤 2026-10-08）：顶栏 ☀ / 🌙 切换，记在本机（localStorage syn.theme），不跟项目走 */
+:root[data-theme="light"] {
+  --bg: #f3f3f1; --panel: #ffffff; --panel2: #fafaf8; --hover: #ececec;
+  --line: #dedede; --line2: #c6c6c6; --text: #222; --dim: #6b6b6b; --faint: #a9a9a9;
+  --accent: #2f7be0; --in: #2b6fe0; --out: #e07612; --ok: #2e9a44; --bad: #d9473a; --sel: #333;
+  --selbg: #cfe2ff; --chip: #ececec; --chip2: #dcdcdc; --strong: #000; --scroll: #c9c9c9;
 }
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; font: 12px/1.35 system-ui, "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); }
-::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: #3c3c3c; border-radius: 4px; } ::-webkit-scrollbar-track { background: transparent; }
-::selection { background: #2f4f7a; }
+::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 4px; } ::-webkit-scrollbar-track { background: transparent; }
+::selection { background: var(--selbg); }
 .shell { display: flex; height: 100%; position: relative; }
 /* 左右栏的拖动条：贴在栏边上，看不见，鼠标过去变成左右箭头 */
 .resizer { position: absolute; top: 0; bottom: 0; width: 6px; z-index: 50; cursor: col-resize; }
@@ -47,7 +55,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .crumbs a:hover { color: var(--accent); }
 .crumbs span:last-child a { color: #fff; }
 button { font: inherit; color: var(--text); padding: 1px 8px; border: 1px solid var(--line2); background: var(--panel2); border-radius: 3px; cursor: pointer; }
-button:hover { background: var(--hover); border-color: #5a5a5a; }
+button:hover { background: var(--hover); border-color: var(--line2); }
 button.ghost { border-color: transparent; background: none; padding: 1px 4px; color: var(--dim); }
 .save-wrap { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .save { color: var(--ok); font-size: 11px; }
@@ -68,9 +76,9 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .frame.dim { opacity: .35; }
 .frame.dropped { filter: grayscale(1); opacity: .5; }
 .frame .fhead { display: flex; gap: 4px; align-items: center; padding: 4px 8px; font-weight: 600; color: color-mix(in srgb, var(--c) 45%, var(--text)); border-bottom: 1px solid color-mix(in srgb, var(--c) 25%, transparent); cursor: default; }
-.frame .fhead .kids, .card .kids.fr { margin-left: auto; font-size: 10px; color: var(--dim); background: #353535; border-radius: 8px; padding: 0 5px; font-weight: 400; cursor: pointer; user-select: none; }
+.frame .fhead .kids, .card .kids.fr { margin-left: auto; font-size: 10px; color: var(--dim); background: var(--chip); border-radius: 8px; padding: 0 5px; font-weight: 400; cursor: pointer; user-select: none; }
 .card .kids.fr { margin-left: 2px; }
-.frame .fhead .kids:hover { background: #444; color: #fff; }
+.frame .fhead .kids:hover { background: var(--chip2); color: var(--strong); }
 .frame.dropped .lab { text-decoration: line-through; }
 .react-flow__node-frame { padding: 0; }
 /* 搜索框（Ctrl+F / 连线到…） */
@@ -78,7 +86,7 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .finder input { margin: 8px; padding: 6px 8px; font: 14px system-ui, "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); border: 1px solid var(--accent); border-radius: 3px; outline: none; }
 .finder ul { list-style: none; margin: 0; padding: 0 0 6px; overflow: auto; }
 .finder li { padding: 4px 12px; cursor: pointer; display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; }
-.finder li.on { background: #2f4f7a; }
+.finder li.on { background: var(--selbg); }
 .finder .fp { color: var(--dim); font-size: 11px; }
 .finder .fw { font-size: 10px; color: var(--faint); border: 1px solid var(--line2); border-radius: 3px; padding: 0 3px; }
 .finder .fs { flex-basis: 100%; color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -102,8 +110,8 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .orow .olab.strike, .kidlist .strike { color: var(--faint); }
 .card .title { font-weight: 600; display: flex; gap: 4px; align-items: center; line-height: 1.3; }
 .card .st { font-size: 10px; }
-.card .kids { margin-left: auto; font-size: 10px; color: var(--dim); background: #353535; border-radius: 8px; padding: 0 5px; font-weight: 400; cursor: pointer; user-select: none; }
-.card .kids:hover { background: #444; color: #fff; }
+.card .kids { margin-left: auto; font-size: 10px; color: var(--dim); background: var(--chip); border-radius: 8px; padding: 0 5px; font-weight: 400; cursor: pointer; user-select: none; }
+.card .kids:hover { background: var(--chip2); color: var(--strong); }
 .card .sub { font-size: 10px; color: var(--dim); margin-top: 1px; }
 .card.portal { border-style: dashed; border-left-width: 1px; border-left-color: color-mix(in srgb, var(--c) 70%, var(--line2)); color: color-mix(in srgb, var(--c) 45%, var(--dim)); font-size: 11px; min-width: 0; background: transparent; }
 /* 图片：PureRef 式 —— 有图的卡片放宽，图是主体 */
@@ -134,7 +142,7 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .ctx { position: fixed; z-index: 2000; min-width: 190px; background: var(--panel); border: 1px solid var(--line2); border-radius: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.5); padding: 3px 0; font-size: 12px; }
 .ctx .mh { padding: 3px 10px 4px; font-weight: 600; color: var(--dim); border-bottom: 1px solid var(--line); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
 .ctx .mi { display: flex; align-items: center; gap: 6px; padding: 3px 10px; cursor: pointer; }
-.ctx .mi:hover { background: #2f4f7a; }
+.ctx .mi:hover { background: var(--selbg); }
 .ctx .mi kbd { margin-left: auto; font: 10px system-ui; color: var(--faint); }
 .ctx .mi.danger { color: var(--bad); }
 .ctx .mi.row { cursor: default; }
@@ -144,7 +152,7 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .ctx .swatches button { width: 14px; height: 14px; padding: 0; border-radius: 50%; border: 1px solid rgba(0,0,0,.4); }
 .ctx .swatches button.on { outline: 2px solid var(--sel); outline-offset: 1px; }
 .ctx .swatches button.auto { width: auto; height: auto; border-radius: 3px; padding: 0 4px; font-size: 10px; background: var(--panel2); border-color: var(--line2); }
-.ctx button.on, .side .row button.on { background: #2f4f7a; border-color: var(--accent); }
+.ctx button.on, .side .row button.on { background: var(--selbg); border-color: var(--accent); }
 
 /* 右侧面板：属性 / 文件预览 */
 .side { width: var(--rightw, 300px); flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--panel); min-height: 0; }
@@ -173,11 +181,11 @@ pre.raw { margin: 0; white-space: pre-wrap; word-break: break-word; font: var(--
 .files { flex: 1; overflow: auto; font-size: 12px; padding: 2px 0; }
 .fi { padding: 1px 6px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.5; }
 .fi:hover { background: var(--hover); }
-.fi.cur { background: #2f4f7a; }
+.fi.cur { background: var(--selbg); }
 /* 图片：收起徽标 + 右下角拖动调大小 */
 .card .lab { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .card .picbadge { margin-left: auto; font-size: 10px; cursor: pointer; opacity: .6; user-select: none; padding: 0 2px; border-radius: 3px; }
-.card .picbadge:hover { opacity: 1; background: #444; }
+.card .picbadge:hover { opacity: 1; background: var(--chip2); }
 .card .picbadge + .kids { margin-left: 2px; }
 .card .pics { position: relative; }
 .picgrip { position: absolute; right: -4px; bottom: -4px; width: 12px; height: 12px; cursor: nwse-resize; border-right: 2px solid var(--dim); border-bottom: 2px solid var(--dim); opacity: 0; transition: opacity .1s; }
@@ -186,7 +194,7 @@ pre.raw { margin: 0; white-space: pre-wrap; word-break: break-word; font: var(--
 .otree { flex: 1; overflow: auto; padding: 2px 0; outline: none; }
 .orow { display: flex; align-items: center; gap: 3px; padding: 0 6px 0 0; line-height: 20px; cursor: pointer; white-space: nowrap; }
 .orow:hover { background: var(--hover); }
-.orow.sel { background: #2f4f7a; color: #fff; }
+.orow.sel { background: var(--selbg); color: var(--strong); }
 .orow.scope > .olab { color: var(--accent); font-weight: 600; }
 .orow .ocaret { width: 14px; flex: none; text-align: center; color: var(--dim); font-size: 11px; }
 .orow .ocaret:hover { color: var(--text); }
@@ -194,7 +202,7 @@ pre.raw { margin: 0; white-space: pre-wrap; word-break: break-word; font: var(--
 .orow .olab { overflow: hidden; text-overflow: ellipsis; }
 .orow .odrill { margin-left: auto; color: var(--faint); font-size: 10px; padding: 0 4px; border-radius: 3px; visibility: hidden; }
 .orow:hover .odrill { visibility: visible; }
-.orow .odrill:hover { background: #444; color: #fff; }
+.orow .odrill:hover { background: var(--chip2); color: var(--strong); }
 .orow input { flex: 1; min-width: 0; font: inherit; background: var(--panel2); color: #fff; border: 1px solid var(--accent); border-radius: 2px; padding: 0 3px; outline: none; }
 /* 快捷键页 */
 .modal > div.help { width: min(880px, 94vw); }
@@ -343,3 +351,9 @@ button.aibtn.off { opacity: .7; }
 .mdlite table { border-collapse: collapse; margin: 4px 0; font-size: 11px; }
 .mdlite th, .mdlite td { border: 1px solid var(--line2); padding: 2px 5px; text-align: left; vertical-align: top; }
 .mdlite th { background: color-mix(in srgb, var(--c, var(--accent)) 12%, var(--panel2)); }
+
+/* 快捷键页：每个分区淡淡的底色，标题大一点带 emoji（👤 2026-10-08） */
+.helpgrid section { background: color-mix(in srgb, var(--hue, var(--accent)) 7%, var(--panel)); border: 1px solid color-mix(in srgb, var(--hue, var(--accent)) 18%, var(--line)); border-radius: 6px; padding: 4px 10px 8px; }
+.helpgrid h4 { font-size: 14px !important; color: color-mix(in srgb, var(--hue, var(--accent)) 55%, var(--text)) !important; letter-spacing: 0 !important; margin: 4px 0 6px !important; }
+.help .bar b { font-size: 15px; }
+button.themebtn { padding: 1px 6px; }

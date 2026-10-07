@@ -248,6 +248,7 @@ export function ScaffoldModal({ items, root, onCreate, onClose }) {
   );
 }
 
+const KEY_HUE = { 选择与查看: ['👆', '#4d9bff'], AI: ['🤖', '#a97cff'], 搜索: ['🔎', '#36c6c0'], 导航: ['🧭', '#5cc46a'], 编辑: ['✏️', '#ff9636'], 复制: ['📋', '#e6c440'], 选择: ['🎯', '#ff79c2'], 排列: ['📐', '#9a9a9a'], 图片: ['🖼️', '#ff5f5f'] };
 export const KEYMAP = [
   ['选择与查看', [['单击卡片 / 大纲行', '选中，右侧显示概览'], ['I', '属性面板开关'], ['Tab', '左栏开关'], ['? / F1', '这一页']]],
   ['AI', [['Ctrl+J', 'AI 指令框：一句话让本地模型在当前页做事（先预览，Enter 执行，Esc 不要）'], ['顶栏 🤖 AI', '连 LM Studio、选模型、语义配色、生成词表'], ['选中节点 → 右边「🔗 潜在关联」', '可能有关但还没连上的节点 / 文档']]],
@@ -286,9 +287,9 @@ export function HelpModal({ onClose }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="help" onClick={e => e.stopPropagation()}>
-        <div className="bar"><b>快捷键</b><span className="hint" style={{ flex: 1 }}>暂不可改；以后要改从这张表接配置</span><button onClick={onClose}>✕</button></div>
+        <div className="bar"><b>⌨️ 快捷键</b><span className="hint" style={{ flex: 1 }}>暂不可改；以后要改从这张表接配置</span><button onClick={onClose}>✕</button></div>
         <div className="helpgrid">{KEYMAP.map(([g, rows]) => (
-          <section key={g}><h4>{g}</h4><table><tbody>{rows.map(([k, v]) => <tr key={k}><td><kbd>{k}</kbd></td><td>{v}</td></tr>)}</tbody></table></section>
+          <section key={g} style={{ '--hue': KEY_HUE[g]?.[1] }}><h4>{KEY_HUE[g]?.[0] || '•'} {g}</h4><table><tbody>{rows.map(([k, v]) => <tr key={k}><td><kbd>{k}</kbd></td><td>{v}</td></tr>)}</tbody></table></section>
         ))}</div>
       </div>
     </div>

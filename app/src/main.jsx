@@ -109,7 +109,7 @@ function FlowBridge() {
 }
 
 // >v<🎨画布-ReactFlow-显示 view + 回报选择/拖动/连线/视图
-function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, onDrill, onConnect, onMove, onContextMenu, onEdgeMenu, onRewire, onRemoveEdges, viewport, onViewport }) {
+function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], plane, onSelect, onDrill, onConnect, onMove, onContextMenu, onEdgeMenu, onRewire, onRemoveEdges, viewport, onViewport }) {
   // >v<🎨画布-改接连线-按住 Alt 在连线身上任意处按下 = 拿起离鼠标近的那一端（👤 2026-10-08：端点处常叠着好几条线，只能从线身上挑）
   //   放到别的节点 = 改接（标签 / 类型跟过去），放到画布空白 = 删除，拖着时右键 / Esc = 取消，放到画布外（面板上）= 取消
   const [alt, setAlt] = useState(false);
@@ -282,13 +282,13 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
       onNodeDragStart={(_, n, dragged) => { dragStart.current = { pos: Object.fromEntries((dragged || [n]).map(d => [d.id, { ...d.position }])) }; }}
       onNodeDragStop={(_, n, dragged) => { dragStart.current = null; const cur = id => nodesRef.current.find(x => x.id === id)?.position; /* 用画布上的（锁轴后的）坐标 */ onMove(Object.fromEntries((dragged || [n]).map(d => [d.id, toLayout(d.id, cur(d.id) || d.position)]))); }}
       onConnect={c => onConnect(c.source, c.target, c.sourceHandle === 'mo' || c.targetHandle === 'mi')}
-      zoomOnDoubleClick={false} deleteKeyCode={null} minZoom={0.1} colorMode="dark"
+      zoomOnDoubleClick={false} deleteKeyCode={null} minZoom={0.1} colorMode={theme === 'light' ? 'light' : 'dark'}
       // 记住的视图优先；第一次进这个范围才 fitView
       fitView={!viewport} fitViewOptions={{ padding: 0.2 }} defaultViewport={viewport}
       onMoveEnd={(_, vp) => onViewport(vp)}>
-      <Background gap={24} size={1} color="#333" />
+      <Background gap={24} size={1} color={theme === 'light' ? '#cfcfcf' : '#333'} />
       <Controls showInteractive={false} />
-      <MiniMap pannable zoomable nodeColor={n => n.data?.node?.color || n.data?.portal?.color || "#444"} nodeStrokeColor="#666" maskColor="rgba(0,0,0,.55)" />
+      <MiniMap pannable zoomable nodeColor={n => n.data?.node?.color || n.data?.portal?.color || "#444"} nodeStrokeColor="#666" maskColor={theme === 'light' ? 'rgba(255,255,255,.6)' : 'rgba(0,0,0,.55)'} />
       <FlowBridge />
       {multi.length > 1 && <ScaleFrame nodes={shown} ids={multi} setNodes={setNodes} onMove={ch => onMove(Object.fromEntries(Object.entries(ch).map(([id, p]) => [id, toLayout(id, p)])))} />}
     </ReactFlow>
