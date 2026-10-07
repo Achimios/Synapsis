@@ -61,6 +61,7 @@ export function Shell({ name, Canvas }) {
   // >v<🖼️图片-折叠与大小-每个节点的图可单独收起（视图状态，进 view.json）；宽度 picw 是设计数据，进节点 frontmatter
   const [picFold, setPicFold] = useState(() => DEMO ? load('syn.pf', {}) : {});
   const [textOpen, setTextOpen] = useState({}); // 卡片里展开正文的节点（记进 view.json）
+  const [portalModes, setPortalModes] = useState({}); // 每页的传送门：show | fade | hide（记进 view.json）
   const [theme, setTheme] = useState(() => load('syn.theme', 'dark')); // 本机偏好，不跟项目走
   useEffect(() => { document.documentElement.dataset.theme = theme; save('syn.theme', theme); }, [theme]);
   const [localPicw, setLocalPicw] = useState(() => load('syn.pw', {}));
@@ -103,6 +104,9 @@ export function Shell({ name, Canvas }) {
   const view = useMemo(() => {
     const v = projectView(graph, realScope, space ? null : new Set(Object.keys(framed).filter(k => framed[k] && graph.nodes.get(k)?.children.length)));
     const lab = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.label]));
+    // >v<🔭视图投影-传送门三档-每页：显示 / 淡化 / 隐藏（👤 2026-10-08 待办第 5 条）；隐藏时和选中节点相连的传送门照样显示
+    const pm = portalModes[realScope] || 'show';
+    const keepPortal = new Set(v.portals.filter(p => p.id === selected || v.edges.some(e => (e.from === p.id && e.to === selected) || (e.to === p.id && e.from === selected))).map(p => p.id));
     const kind = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.kind || '']));
     const colOf = id => colors.get(id.startsWith('@portal:') ? id.slice(8) : id) || PALETTE_IDLE;
     const pAxes = space ? space.axes : null; // 在空间页里，成员卡片的小横条用这一页的轴名
@@ -128,11 +132,11 @@ export function Shell({ name, Canvas }) {
         framed: !space && !!framed[n.id] && n.children.length > 0, frame: v.parentOf.get(n.id) ?? null,
         kids: n.children.map(c => { const k = graph.nodes.get(c); return { id: c, label: k.label, status: k.status, n: k.children.length, renaming: canvasRename === c }; }),
       })),
-      portals: v.portals.map(p => ({ ...p, color: colOf(p.id), dropped: isDropped(graph, p.target) })),
+      portals: v.portals.filter(p => pm !== 'hide' || keepPortal.has(p.id)).map(p => ({ ...p, label: '↗ ' + (graph.nodes.get(p.target)?.label || p.target), color: colOf(p.id), dropped: isDropped(graph, p.target), faded: pm === 'fade' })),
       // 线 = 出发节点的颜色；kind 是「离散」→ 虚线（聚合的边要每条都离散才虚）
-      edges: v.edges.map(e => ({ ...e, text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e), color: colOf(e.from), dropped: [e.from, e.to].some(x => isDropped(graph, x.startsWith('@portal:') ? x.slice(8) : x)), dashed: e.raw.every(r => DISCRETE.test(kind.get(r) || '')), mod: e.raw.every(r => MOD.test(kind.get(r) || '')) })),
+      edges: v.edges.filter(e => pm !== 'hide' || [e.from, e.to].every(x => !x.startsWith('@portal:') || keepPortal.has(x))).map(e => ({ ...e, fadedPortal: pm === 'fade' && [e.from, e.to].some(x => x.startsWith('@portal:')), text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e), color: colOf(e.from), dropped: [e.from, e.to].some(x => isDropped(graph, x.startsWith('@portal:') ? x.slice(8) : x)), dashed: e.raw.every(r => DISCRETE.test(kind.get(r) || '')), mod: e.raw.every(r => MOD.test(kind.get(r) || '')) })),
     };
-  }, [graph, realScope, wsData, expanded, picFold, textOpen, localPicw, space, getMeta, colors, patterns, canvasRename, framed]);
+  }, [graph, realScope, wsData, expanded, picFold, textOpen, localPicw, space, getMeta, colors, patterns, canvasRename, framed, portalModes, selected]);
   // >v<🖼️图片-卡片显示-节点的 _pics_名字/ 里所有图（旧版 frontmatter img: 也认）
   const images = useMemo(() => {
     if (local) return localImages;
@@ -159,7 +163,7 @@ export function Shell({ name, Canvas }) {
       // 页面刷新（开发服务重启、Ctrl+R）后接上撤销记录：只在文件和上次记下的一致时接（外面改过就不接，免得撤销盖掉别人的改动）
       const sv = (() => { try { return JSON.parse(sessionStorage.getItem(HIST_KEY)); } catch { return null; } })();
       if (sv?.committed?.text === d.outline) { hist2.current.undo = sv.undo || []; hist2.current.redo = sv.redo || []; }
-      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
+      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
       setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
     }).catch(e => { setMode('offline'); setText(load('syn.text', SAMPLE)); setPositions(load('syn.pos.' + name, {})); setSaveState('⚠️ 没连上工作区（' + e.message + '），本地离线模式'); });
   }, []);
@@ -213,9 +217,9 @@ export function Shell({ name, Canvas }) {
   // 工作区：视图状态停手 0.6s 写进 .synapsis/view.json
   useEffect(() => {
     if (mode !== 'ws') return;
-    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, framed, panelW, leftHidden, picFold, textOpen, propsOpen, spaceAxes, scope: realScope }) }).catch(() => {}), 600);
+    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, framed, panelW, leftHidden, picFold, textOpen, portalModes, propsOpen, spaceAxes, scope: realScope }) }).catch(() => {}), 600);
     return () => clearTimeout(t);
-  }, [viewports, expanded, framed, panelW, leftHidden, picFold, textOpen, propsOpen, spaceAxes, realScope, mode]);
+  }, [viewports, expanded, framed, panelW, leftHidden, picFold, textOpen, portalModes, propsOpen, spaceAxes, realScope, mode]);
   const onViewport = useCallback((sc, vp) => setViewports(v => ({ ...v, [sc]: vp })), []);
   const go = useCallback(next => {
     if (next === realScope) return;
@@ -743,6 +747,7 @@ export function Shell({ name, Canvas }) {
           <button onClick={() => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; })}>{allOpen ? '全部收起' : '全部展开'}</button>
           {withText.length > 0 && <button title="当前页所有带正文的卡片：一起展开 / 收起正文（单张点卡片上的 📄）" onClick={() => setTextOpen(f => { const g = { ...f }; for (const n of withText) { if (allTextOpen) delete g[n.id]; else g[n.id] = true; } return g; })}>{allTextOpen ? '📄 收起正文' : '📄 展开正文'}</button>}
           {withPics.length > 0 && <button onClick={() => setPicFold(f => { const g = { ...f }; for (const n of withPics) g[n.id] = !allPicsFolded; return g; })} title="当前页所有卡片的图片一起收起 / 显示">{allPicsFolded ? '显示图片' : '收起图片'}</button>}
+          {view.portals.length + (portalModes[realScope] === 'hide' ? 1 : 0) > 0 && <button className="portalbtn" title="这一页的传送门（别的层的节点）：显示 → 淡化 → 隐藏（隐藏时和选中节点相连的仍显示）" onClick={() => setPortalModes(m => ({ ...m, [realScope]: { show: 'fade', fade: 'hide', hide: 'show' }[m[realScope] || 'show'] }))}>↗ 传送门：{{ show: '显示', fade: '淡化', hide: '隐藏' }[portalModes[realScope] || 'show']}</button>}
           <button onClick={() => setExportText(exportForLLM(graph, realScope))}>导出给 LLM</button>
           {mode === 'ws' && <button title="AI 指令框（Ctrl+J）：用一句话让本地模型在当前页对齐 / 排列 / 连线 / 改状态…，先预览再执行" onClick={() => setAgentOpen(o => !o)}>💬 指令</button>}
           {mode === 'ws' && <button className={'aibtn ' + (aiStatus?.ok ? 'on' : 'off')} title={aiStatus?.ok ? 'LM Studio 已连上：语义配色 / 潜在关联 / 生成词表' : 'AI 辅助（LM Studio）：' + (aiStatus?.error || '检查中')} onClick={() => { setAiOpen(true); aiCheck(); }}>🤖 AI</button>}
@@ -824,9 +829,9 @@ export function edgeLook(e, selected, near = null) {
   const w = (e.mod ? 1 : 1.5) + Math.log2(e.count) * 1.5, color = e.dropped ? PALETTE_IDLE : e.color || PALETTE_IDLE, dash = e.mod ? '2 4' : e.dashed ? '6 4' : undefined;
   const mod = !!e.mod;
   if (e.dropped && !(selected && on)) return { hl: false, color, dash, mod, opacity: selected ? 0.08 : 0.2, width: w }; // 连着弃用节点的线：灰、更淡
-  if (!selected) return { hl: false, color, dash, mod, opacity: 0.6, width: w };
+  if (!selected) return { hl: false, color, dash, mod, opacity: e.fadedPortal ? 0.2 : 0.6, width: w };
   if (on) return { hl: true, color, dash, mod, opacity: 1, width: w + 1.5 };
-  return { hl: false, color, dash, mod, opacity: 0.14, width: w };
+  return { hl: false, color, dash, mod, opacity: e.fadedPortal ? 0.06 : 0.14, width: w };
 }
 export const FADE = { near: 350, far: 1600, minOpacity: 0.3, minSat: 0.15 }; // 画布坐标长度；短于 near 不衰减，长于 far 到下限
 export function lengthFade(len) {
@@ -973,5 +978,5 @@ export function FrameCard({ node, dim, isSel }) {
   );
 }
 export function PortalCard({ portal, dim }) {
-  return <div className={'card portal' + (dim ? ' dim' : '') + (portal.dropped ? ' dropped' : '')} style={portal.color ? { '--c': portal.color } : undefined} title={'在别的层：' + portal.target + '（双击跳过去）'}>{portal.label}</div>;
+  return <div className={'card portal' + (dim ? ' dim' : '') + (portal.faded ? ' faded' : '') + (portal.dropped ? ' dropped' : '')} style={portal.color ? { '--c': portal.color } : undefined} title={'在别的层：' + portal.target.split('/').join(' / ') + '（双击跳过去）'}>{portal.label}</div>;
 }

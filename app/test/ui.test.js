@@ -583,6 +583,19 @@ for (const kind of ['reactflow']) {
   for (let i = 1; i <= 8; i++) await page.mouse.move(sh.x + 5, sh.y + 5 + i * 25);
   await page.mouse.up(); await sleep(900);
   ok(JSON.stringify(Object.entries(lay()).filter(([k]) => k.startsWith('@portal:'))) !== before, '拖缩放框 → 传送门坐标写进 _layout.json');
+  // 传送门三档：只显示名字（悬停看路径）；显示 → 淡化 → 隐藏（隐藏时和选中节点相连的仍显示）
+  const ptxt = await page.$$eval('.card.portal', cs => cs.map(c => c.textContent + '|' + c.title));
+  ok(ptxt.some(t => t.startsWith('↗ 外一|') && t.includes('外一')), '传送门只显示名字，悬停（title）看路径 ' + ptxt);
+  await page.mouse.click(700, 760); await sleep(200);
+  await page.click('button.portalbtn'); await sleep(500);
+  ok((await page.$$('.card.portal.faded')).length === 2 && (await page.$eval('button.portalbtn', e => e.textContent)).includes('淡化'), '点一下 → 淡化');
+  await page.click('button.portalbtn'); await sleep(500);
+  ok((await page.$$('.card.portal')).length === 0, '再点 → 隐藏');
+  await page.mouse.click(...mid(await (await card('里面')).boundingBox())); await sleep(500);
+  ok((await page.$$('.card.portal')).length === 2, '隐藏时选中「里面」→ 和它相连的传送门照样显示');
+  await sleep(900);
+  ok(JSON.parse(readFileSync(join(ws, '.synapsis', 'view.json'), 'utf8')).portalModes?.['组'] === 'hide', '每页的档位记进 view.json');
+  await page.click('button.portalbtn'); await sleep(300);
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });

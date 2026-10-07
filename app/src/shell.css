@@ -369,3 +369,6 @@ button.themebtn { padding: 1px 6px; }
 .pat-wave { background-image: radial-gradient(circle at 50% 100%, transparent 4px, color-mix(in srgb, var(--c) 30%, transparent) 4.5px, transparent 5.5px), radial-gradient(circle at 50% 0%, transparent 4px, color-mix(in srgb, var(--c) 30%, transparent) 4.5px, transparent 5.5px); background-size: 12px 10px; background-position: 0 0, 6px 5px; }
 button.patsw { width: 22px; height: 16px; border-radius: 3px; border: 1px solid var(--line2); background-color: var(--panel2); --c: var(--text); padding: 0; }
 button.patsw.on { outline: 2px solid var(--accent); } button.patsw.auto-on { outline: 1px dashed var(--accent); }
+
+/* 传送门淡化（每页一档） */
+.card.portal.faded { opacity: .35; } .card.portal.faded:hover { opacity: .9; }
