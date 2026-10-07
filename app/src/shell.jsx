@@ -61,6 +61,18 @@ export function Shell({ name, Canvas }) {
   // >v<🖼️图片-折叠与大小-每个节点的图可单独收起（视图状态，进 view.json）；宽度 picw 是设计数据，进节点 frontmatter
   const [picFold, setPicFold] = useState(() => DEMO ? load('syn.pf', {}) : {});
   const [textOpen, setTextOpen] = useState({}); // 卡片里展开正文的节点（记进 view.json）
+  // >v<🖼️图片-灯箱-双击卡片里的图 / 散图 = 放大看；← → 切换，Esc / 点背景关
+  const [lightbox, setLightbox] = useState(null); // {urls, i}
+  cardActions.lightbox = (urls, i) => setLightbox({ urls, i });
+  useEffect(() => {
+    if (!lightbox) return;
+    const k = e => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setLightbox(null); }
+      else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); setLightbox(l => ({ ...l, i: (l.i + (e.key === 'ArrowRight' ? 1 : -1) + l.urls.length) % l.urls.length })); }
+    };
+    window.addEventListener('keydown', k, true);
+    return () => window.removeEventListener('keydown', k, true);
+  }, [!!lightbox]);
   const [portalModes, setPortalModes] = useState({}); // 每页的传送门：show | fade | hide（记进 view.json）
   const [theme, setTheme] = useState(() => load('syn.theme', 'dark')); // 本机偏好，不跟项目走
   useEffect(() => { document.documentElement.dataset.theme = theme; save('syn.theme', theme); }, [theme]);
@@ -793,6 +805,10 @@ export function Shell({ name, Canvas }) {
       )}
       {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（I 开关）</div></aside>}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+      {lightbox && <div className="lightbox" onClick={() => setLightbox(null)}>
+        <img src={lightbox.urls[lightbox.i]} onClick={e => e.stopPropagation()} />
+        {lightbox.urls.length > 1 && <div className="lbcount">{lightbox.i + 1} / {lightbox.urls.length}（← →）</div>}
+      </div>}
       {agentOpen && mode === 'ws' && <AgentBox api={api} scope={realScope} selected={cardActions.multi?.length ? cardActions.multi : sel ? [sel] : []}
         onPreview={ids => ids.length && cardActions.select?.(ids)} onClose={() => setAgentOpen(false)}
         onApplied={async good => {
@@ -913,7 +929,7 @@ export function NodeCard({ node, img, dim, isSel }) {
         <li key={k.id} title="双击跳进去" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
           <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span>{k.renaming ? <RenameInput id={k.id} label={k.label} /> : <span className={k.status === 'dropped' ? 'strike' : ''}>{k.label}</span>}{k.n > 0 && <span className="kn">▸{k.n}</span>}
         </li>))}</ul>}
-      {showPics && <div className={'pics n' + Math.min(img.length, 3)}>{img.map(u => <img key={u} src={u} draggable={false} />)}
+      {showPics && <div className={'pics n' + Math.min(img.length, 3)}>{img.map((u, i) => <img key={u} src={u} draggable={false} title="双击放大" onDoubleClick={e => { e.stopPropagation(); cardActions.lightbox?.(img, i); }} />)}
         <span className="picgrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} /></div>}
     </div>
   );
@@ -969,7 +985,7 @@ export function PicCard({ pic, isSel }) {
   if (pic.folded) return <div className={'loosepic folded' + (isSel ? ' sel' : '')} title={pic.path || ''}>🖼</div>;
   return (
     <div className={'loosepic' + (isSel ? ' sel' : '')} style={{ width: pic.w || 240 }} title={pic.path || ''}>
-      <img src={pic.url} draggable={false} />
+      <img src={pic.url} draggable={false} title="双击放大" onDoubleClick={e => { e.stopPropagation(); cardActions.lightbox?.([pic.url], 0); }} />
       <span className="picgrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} />
     </div>
   );

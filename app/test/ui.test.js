@@ -331,6 +331,12 @@ for (const kind of ['reactflow']) {
   ok((await page.$eval('.crumbs', e => e.innerText)).includes('游戏AI'), '刷新后还在上次那一页 ' + await page.$eval('.crumbs', e => e.innerText));
   ok(await page.$eval('.react-flow__viewport', v => v.style.transform) === camBefore, '刷新后视图还原 ' + camBefore);
   ok((await page.$$('.card .pics img')).length === 1, '刷新后卡片显示 _pics_ 里的图');
+  // 双击图 → 灯箱放大，Esc 关；不触发钻进
+  const crumbBefore = await page.$eval('.crumbs', e => e.innerText);
+  await page.dblclick('.card .pics img'); await sleep(500);
+  ok(!!(await page.$('.lightbox img')) && await page.$eval('.crumbs', e => e.innerText) === crumbBefore, '双击图 → 灯箱放大（没有钻进去）');
+  await page.keyboard.press('Escape'); await sleep(300);
+  ok(!(await page.$('.lightbox')), 'Esc 关灯箱');
   // 收起 / 显示：卡片上的 🖼；工具栏全局按钮
   await page.click('.card .picbadge'); await sleep(400);
   ok((await page.$$('.card .pics img')).length === 0, '点 🖼 收起这张卡的图');

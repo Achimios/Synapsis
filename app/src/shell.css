@@ -376,3 +376,8 @@ button.patsw.on { outline: 2px solid var(--accent); } button.patsw.auto-on { out
 /* 大纲树拖动：放进这一行 / 挪到根 */
 .orow.dropin { outline: 1px dashed var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .otree.dropr { box-shadow: inset 0 0 0 1px var(--accent); }
+
+/* 图片灯箱 */
+.lightbox { position: fixed; inset: 0; z-index: 1100; background: rgba(0,0,0,.82); display: flex; align-items: center; justify-content: center; cursor: zoom-out; }
+.lightbox img { max-width: 94vw; max-height: 90vh; object-fit: contain; box-shadow: 0 10px 40px rgba(0,0,0,.6); cursor: default; }
+.lightbox .lbcount { position: absolute; bottom: 18px; color: #ddd; font-size: 13px; }
