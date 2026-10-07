@@ -6,3 +6,4 @@ logs/
 cache/
 .synapsis/
 config/creds.*
+.obsidian/workspace*.json

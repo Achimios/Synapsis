@@ -1,3 +1,4 @@
 node_modules/
 dist/
 .synapsis/
+.obsidian/workspace*.json
