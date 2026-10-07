@@ -30,6 +30,7 @@ grep -rn ">v<💾工作区" core app bootstrap --include=*.js --include=*.jsx
 | `>v<🎨画布` | `app/src/main.jsx` `app/src/td.jsx` `app/src/shell.jsx` | 两个画布实现、贴图 |
 | `>v<🚀启停` | `app/vite.config.js` `app/src/shell.jsx` `core/cli.js`(init) + `core/templates/Synapsis.vbs` `Synapsis_stop.bat` `Synapsis_init.vbs` `core/tools/init_picker.ps1` | 无窗口启动、按端口停止、心跳自动退出 |
 | `>v<✅自检` | `app/test/` `core/test/` `core/workspace.js`(checkWorkspace) | 纯 Node 核心自检 + 无头 Edge 界面自检 |
+| `>v<🧪嵌入实验` | `core/tools/embed_probe.js` | 本地嵌入模型（LM Studio）× 工作区：有连线 vs 没连线的相似度效应量、最像但没连线的候选 |
 | `>v<🏗️构建引导` | `bootstrap/bootstrap.js` `bootstrap/template/` | 给新项目铺骨架，已有文件跳过 |
 
 ---

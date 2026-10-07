@@ -22,3 +22,5 @@
 - ✅ 新建节点可发现：工具栏「＋ 节点」、Enter/Tab 建完光标跳到大纲选中名字直接改名；原地展开子级（▸N/空格/全部展开，双击子项跳进去）。【实测】test:ui 72/72
 - ✅ **画布定为 React Flow**（👤 问该定了，Claude 给证据：胶水代码/坑/体积/许可/未来矩阵与基变换需求）。`spikes/` → `app/`，tldraw 版进 `_过期的/tldraw_spike/`，卸 tldraw（打包 1.7MB → 416kB）。决定记录 `_Design/Decision_Canvas.md`。【实测】outline 18、workspace 19、ui 36、Synapsis 自身 check 0 错
 - ✅ `Synapsis_init.bat`：拖项目文件夹上去 = init；init 重跑会按新模板刷新启动器（研究与 Synapsis 的启动器已刷新到 `app`）。【实测】中文路径（初始化测试）通过
+- 🧪 嵌入实验 #1（`core/tools/embed_probe.js`）：nomic 在研究工作区，有连线 vs 没连线 效应量 0.86（名字+说明）/ 0.56（只名字）；中文分辨力差，候选多被代码片段带偏。判断：用多语种嵌入模型，8B 只做判断，代码/数学先走精确结构。见 `_Design/Navigation.md` §3.5
+- ✅ 用户级 `~/.claude/CLAUDE.md`（👤要求，短）：反斜杠与中文的跨项目坑
