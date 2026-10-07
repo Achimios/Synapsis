@@ -1,7 +1,7 @@
 // 两个画布原型共用的外壳：左大纲（真源）、面包屑、导出、快捷键、贴图。
 // 画布组件只负责「显示 view + 回报用户操作」，对比的是画布手感，不是外壳。
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, autoLayout, ROOT } from './outline.js';
+import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, autoLayout, lineOf, ROOT } from './outline.js';
 import { SAMPLE } from './sample.js';
 import './shell.css';
 
@@ -40,6 +40,8 @@ export function Shell({ name, Canvas }) {
   // 导航历史：像浏览器一样 Alt+← / Alt+→
   const hist = useRef({ back: [], fwd: [] });
   const taRef = useRef(null);
+  // >v<🔭视图投影-原地展开-不钻进去也能看子级：卡片里列出子节点（▸N 点一下 / 空格），双击子项跳进去并选中
+  const [expanded, setExpanded] = useState(() => load('syn.exp', {}));
 
   const graph = useMemo(() => parseOutline(text), [text]);
   const realScope = graph.nodes.has(scope) ? scope : ROOT;
@@ -49,10 +51,14 @@ export function Shell({ name, Canvas }) {
     const lab = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.label]));
     return {
       ...v,
-      nodes: v.nodes.map(n => ({ ...n, sub: wsData?.nodes[n.id]?.meta?.rate || '' })),
+      nodes: v.nodes.map(n => ({
+        ...n, sub: wsData?.nodes[n.id]?.meta?.rate || '',
+        open: !!expanded[n.id] && n.children.length > 0,
+        kids: n.children.map(c => { const k = graph.nodes.get(c); return { id: c, label: k.label, status: k.status, n: k.children.length }; }),
+      })),
       edges: v.edges.map(e => ({ ...e, text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '' })),
     };
-  }, [graph, realScope, wsData]);
+  }, [graph, realScope, wsData, expanded]);
   const images = useMemo(() => {
     if (local) return localImages;
     const m = {};
@@ -116,12 +122,36 @@ export function Shell({ name, Canvas }) {
     setPositions(p => ({ ...p, ...changes }));
     if (mode === 'ws') api('/layout', { method: 'PUT', body: JSON.stringify({ positions: changes }) }).catch(e => setSaveState('❌ 坐标保存失败：' + e.message));
   }, [mode]);
+  // >v<🌳大纲模型-新建节点-Enter 同级 / Tab 子级（父节点原地展开）/ 工具栏＋；建完光标跳到大纲那一行、名字选中，直接打字改名
+  const pendingRename = useRef(null);
   const addNode = asChild => {
-    const parent = sel && asChild ? sel : sel ? graph.nodes.get(sel).parent : realScope;
-    const r = withNode(graph, parent, asChild ? null : sel);
+    const s = sel && !sel.startsWith('@portal:') ? sel : null;
+    const parent = s && asChild ? s : s ? graph.nodes.get(s).parent : realScope;
+    const r = withNode(graph, parent, asChild ? null : s);
+    pendingRename.current = r.id;
     setText(r.text);
-    if (!asChild) setSelected(r.id); else go(sel);
+    if (asChild) setExpanded(x => ({ ...x, [s]: true })); else setSelected(r.id);
   };
+  useEffect(() => {
+    const id = pendingRename.current;
+    if (!id || !graph.nodes.has(id)) return;
+    pendingRename.current = null;
+    const ta = taRef.current, line = lineOf(graph, id);
+    if (!ta || line < 0) return;
+    const lines = text.split('\n');
+    const start = lines.slice(0, line).reduce((n, l) => n + l.length + 1, 0);
+    const lab = graph.nodes.get(id).label, at = lines[line].indexOf(lab);
+    ta.focus();
+    ta.setSelectionRange(start + at, start + at + lab.length);
+    // 让选中的那行滚到可见处
+    ta.scrollTop = Math.max(0, line * parseFloat(getComputedStyle(ta).lineHeight) - ta.clientHeight / 2);
+  }, [graph]);
+
+  useEffect(() => save('syn.exp', expanded), [expanded]);
+  const toggle = id => setExpanded(x => ({ ...x, [id]: !x[id] }));
+  cardActions.toggle = toggle;
+  cardActions.openChild = child => { const p = graph.nodes.get(child)?.parent; if (p == null) return; go(p); setSelected(child); };
+  const allOpen = view.nodes.filter(n => n.children.length).every(n => expanded[n.id]);
 
   // >v<🧭导航-快捷键-Enter 同级 / Tab 子级 / Esc / Alt+方向
   // 画布快捷键（焦点在大纲里时不触发）
@@ -135,6 +165,7 @@ export function Shell({ name, Canvas }) {
       else if (e.key === 'ArrowLeft' && e.altKey) { e.preventDefault(); back(); }
       else if (e.key === 'ArrowRight' && e.altKey) { e.preventDefault(); fwd(); }
       else if (e.key === 'Escape') setSelected(null);
+      else if (e.key === ' ' && sel && !sel.startsWith('@portal:')) { e.preventDefault(); e.stopPropagation(); toggle(sel); }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
@@ -187,7 +218,9 @@ export function Shell({ name, Canvas }) {
       <main>
         <div className="bar top">
           <span className="crumbs">{crumbs.map((c, i) => <span key={c.id}>{i > 0 && ' › '}<a onClick={() => { go(c.id); setSelected(null); }}>{c.label}</a></span>)}</span>
-          <span className="hint">双击=钻进　Alt+↑=上一层 Alt+←/→=后退/前进　Enter=同级　Tab=子级　选中+Ctrl+V=贴图　{name === 'tldraw' ? 'A=箭头工具连线 V=选择' : '从节点边缘拖=连线'}</span>
+          <span className="hint">双击=钻进 ▸N或空格=原地展开　Alt+↑=上一层 Alt+←/→=后退/前进　Enter=同级　Tab=子级　选中+Ctrl+V=贴图　{name === 'tldraw' ? 'A=箭头工具连线 V=选择' : '从节点边缘拖=连线'}</span>
+          <button onClick={() => addNode(false)} title="在当前层新建（选中节点时建在它后面）；建完直接打字改名">＋ 节点</button>
+          <button onClick={() => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; })}>{allOpen ? '全部收起' : '全部展开'}</button>
           <button onClick={() => setExportText(exportForLLM(graph, realScope))}>导出给 LLM</button>
           {local && <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>}
           <span className={'save' + (saveState.startsWith('❌') || saveState.startsWith('⚠') ? ' bad' : '')} title={wsData?.root || ''}>{mode === 'ws' ? '📁 ' + (wsData?.root || '').split(/[\/]/).slice(-2).join('/') + '　' : mode === 'demo' ? '🧪 样例　' : ''}{saveState}</span>
@@ -227,12 +260,21 @@ export function nodeDim(id, view, selected) {
   if (!selected || id === selected) return false;
   return !view.edges.some(e => (e.from === selected && e.to === id) || (e.to === selected && e.from === id));
 }
+// 卡片上的交互回调（外壳每次渲染时填好；画布组件不用逐层传）
+export const cardActions = { toggle: () => {}, openChild: () => {} };
+// pointerdown 也要拦住，否则 tldraw / React Flow 会把它当成选中或拖动的开始
+const stop = e => e.stopPropagation();
 export function NodeCard({ node, img, dim, isSel }) {
   return (
     <div className={'card' + (dim ? ' dim' : '') + (isSel ? ' sel' : '')}>
       <div className="title">{node.status && <span className="st">{STATUS_ICON[node.status]}</span>}{node.label}
-        {node.children.length > 0 && <span className="kids" title="双击钻进">▸ {node.children.length}</span>}</div>
+        {node.children.length > 0 && <span className="kids" title="展开/收起子级（空格）；双击卡片钻进" onPointerDown={stop} onMouseDown={stop}
+          onClick={e => { e.stopPropagation(); cardActions.toggle(node.id); }}>{node.open ? '▾' : '▸'} {node.children.length}</span>}</div>
       {node.sub && <div className="sub">{node.sub}</div>}
+      {node.open && node.kids && <ul className="kidlist">{node.kids.map(k => (
+        <li key={k.id} title="双击跳进去" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
+          <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span>{k.label}{k.n > 0 && <span className="kn">▸{k.n}</span>}
+        </li>))}</ul>}
       {img && <img src={img} draggable={false} />}
     </div>
   );

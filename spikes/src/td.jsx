@@ -50,7 +50,8 @@ function sync(editor, view, layout, images, selected) {
     const wantSet = new Set(want.map(sid));
     for (const id of want) {
       const s = editor.getShape(sid(id));
-      const h = images[id] ? H + IMG_H : H;
+      const vn = view.nodes.find(n => n.id === id);
+      const h = (images[id] ? H + IMG_H : H) + (vn?.open ? vn.kids.length * 19 + 12 : 0); // 原地展开的子级列表
       if (!s) editor.createShape({ id: sid(id), type: 'snode', x: layout[id].x, y: layout[id].y, props: { w: W, h, nid: id } });
       else if (s.props.h !== h) editor.updateShape({ id: s.id, type: 'snode', props: { h } });
     }

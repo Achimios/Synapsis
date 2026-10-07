@@ -40,6 +40,7 @@ grep -rn ">v<💾工作区" core spikes bootstrap --include=*.js --include=*.jsx
 
 - **解析** —— `parseOutline`：缩进 = 子级，`-> 名称` = 连线，行首 ✅◐○ = 状态。连线目标按名称**就近**解析（从自己的父开始逐级向上找子树里同名的），所以跨分组写名字就行；同名冲突时写完整路径。
 - **序列化** —— `toOutline`：能用名称唯一解析回去就写名称，否则写完整路径。⭐「parse(toOutline(g)) == g」是免费的必须相等量，自检里有。
+- **新建节点** —— `shell.jsx` 的 `addNode`：Enter 同级 / Tab 子级（父节点原地展开，不再钻进去）/ 工具栏「＋ 节点」；建完用 `lineOf` 找到大纲那一行，**名字选中、焦点进大纲**，直接打字就是改名（画布上没有原地改名，这是替代）。
 - **画布编辑** —— `withEdge` / `withNode`：画布上的操作不直接改画布，而是改图 → 生成新大纲 → 重新解析。大纲是唯一真源。
 - ⚠️ id = 名称路径（原型简化），**改名会丢坐标**；正式版 core/ 要换稳定 id。
 
@@ -48,6 +49,7 @@ grep -rn ">v<💾工作区" core spikes bootstrap --include=*.js --include=*.jsx
 小标题：
 
 - **范围投影** —— `projectView`：只显示当前范围的直接子节点；子孙之间的边提升到可见祖先上并聚合（`count`，画成 ×N）；端点在范围外 → `@portal:<id>` 节点，双击跳过去。
+- **原地展开** —— 卡片 `▸N` 点一下或选中后空格：子节点列在卡片里（状态 + 孙辈数）；双击子项 = 跳进去并选中；「全部展开/收起」。展开状态存 localStorage `syn.exp`。⚠️卡片里可点的元素要拦 `pointerdown`，否则 tldraw/RF 当成选中或拖动；tldraw 形状高度要跟着展开行数变。
 - **自动布局** —— `autoLayout`：最长路径分层（左→右）；⭐**大纲顺序 = 流向提示**：指向前面兄弟的边算回边（↺）忽略（DFS 断环曾把「内在」甩到最右）；奇数层下错 70px；没坐标的节点在自己那列找**空槽**，不压已有节点（新节点压住「兜底」导致拖错）。界面会把自动位置立即固定存盘。
 
 ## `>v<📤LLM导出`
@@ -104,7 +106,7 @@ grep -rn ">v<💾工作区" core spikes bootstrap --include=*.js --include=*.jsx
 小标题：
 
 - **核心** —— `npm test`（spikes/），纯 Node，18 项；`node core/test/workspace.test.js`，临时目录 19 项。
-- **界面** —— `npm run test:ui`（需先起 dev），playwright-core + 本机 Edge 无头：样例模式两画布各 19 项 + 工作区模式各 7 项（临时目录，不碰真文件）。`test/shot.mjs` 给真实工作区截图。
+- **界面** —— `npm run test:ui`（需先起 dev），playwright-core + 本机 Edge 无头：样例模式两画布各 29 项（含原地展开、空格、双击子项、新建后改名）+ 工作区模式各 7 项（临时目录，不碰真文件）。`test/shot.mjs` 给真实工作区截图。
 - **graph check** —— `checkWorkspace`：悬空边、叶子没 status、code 指向不存在的文件、done 却没 code（提示）。
 
 ## `>v<🏗️构建引导`

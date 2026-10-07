@@ -48,6 +48,22 @@ for (const kind of ['reactflow', 'tldraw']) {
   let c = await cards();
   ok(c.length === 3, '顶层 3 个节点, got ' + c.length);
 
+  // 原地展开：点 ▸N → 卡片里列出子级（不钻进）；双击子项 → 跳进去并选中
+  await page.click('.card:has-text("游戏AI") .kids'); await sleep(500);
+  let kl = await page.$$eval('.kidlist li', ls => ls.map(l => l.innerText.replace(/\s+/g, ' ')));
+  ok(kl.length === 5 && kl.some(t => t.includes('决策')), '点 ▸N 原地展开子级 ' + JSON.stringify(kl));
+  ok((await page.$eval('.crumbs', e => e.innerText)) === '根', '展开不钻进');
+  const kli = await page.$('.kidlist li:has-text("决策")');
+  const kb = await kli.boundingBox();
+  await page.mouse.dblclick(kb.x + kb.width / 2, kb.y + kb.height / 2); await sleep(800);
+  ok((await page.$eval('.crumbs', e => e.innerText)).includes('游戏AI'), '双击子项 → 跳进去');
+  ok((await page.$$eval('.card.sel', cs => cs.map(c => c.innerText.split('\n')[0]))).some(t => t.includes('决策')), '双击子项 → 选中它');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Alt+ArrowUp'); await sleep(800);
+  await page.click('.card:has-text("游戏AI") .kids'); await sleep(400);
+  ok((await page.$$('.kidlist li')).length === 0, '再点 ▸N 收起');
+  await page.keyboard.press('Escape'); await sleep(200);
+
   // 钻进
   let b = await cardBox('游戏AI');
   await page.mouse.dblclick(...center(b));
@@ -71,6 +87,10 @@ for (const kind of ['reactflow', 'tldraw']) {
   ok(es.filter(e => !inE.includes(e) && !outE.includes(e)).every(e => e.op < 0.2), '其余边淡化');
   const dims = await page.$$eval('.card.dim', cs => cs.map(c => c.innerText.split('\n')[0]));
   ok(dims.length === 1 && dims[0].includes('记忆与人格'), '无关节点淡化 ' + JSON.stringify(dims));
+  await page.keyboard.press(' '); await sleep(400);
+  ok((await page.$$eval('.kidlist li', ls => ls.length)) === 2, '选中后空格 → 原地展开（行动有 2 个子级）');
+  await page.keyboard.press(' '); await sleep(400);
+  ok((await page.$$('.kidlist li')).length === 0, '再按空格收起');
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${kind}_2_select.png` });
 
   // 拖动 → 刷新后坐标还在
@@ -107,6 +127,15 @@ for (const kind of ['reactflow', 'tldraw']) {
   await page.mouse.click(...center(b)); await sleep(300);
   await page.keyboard.press('Enter'); await sleep(400);
   ok((await cards()).some(t => t.includes('新节点')), 'Enter 新建同级节点');
+  // 建完光标在大纲里、名字选中 → 直接打字就是改名
+  const selTxt = () => page.evaluate(() => { const a = document.activeElement; return a.tagName === 'TEXTAREA' ? a.value.slice(a.selectionStart, a.selectionEnd) : '(焦点不在大纲：' + a.tagName + ')'; });
+  ok((await selTxt()) === '新节点', '新建后大纲选中名字 ' + await selTxt());
+  await page.keyboard.type('效用表'); await sleep(400);
+  ok((await cards()).some(t => t.includes('效用表')), '直接打字改名 → 画布同步');
+  await page.mouse.click(1000, 780); await sleep(200);
+  await page.click('button:has-text("＋ 节点")'); await sleep(400);
+  ok((await selTxt()).startsWith('新节点'), '工具栏 ＋节点 → 大纲选中名字 ' + await selTxt());
+  await page.keyboard.press('Escape'); await page.mouse.click(1000, 780); await sleep(200);
 
   // 导出
   await page.click('text=导出给 LLM'); await sleep(300);

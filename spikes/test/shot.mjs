@@ -10,6 +10,7 @@ for (const kind of ['reactflow', 'tldraw']) {
     for (const c of await p.$$('.card')) if ((await c.innerText()).split('\n')[0].includes(label)) { const bb = await c.boundingBox(); await p.mouse.dblclick(bb.x + bb.width / 2, bb.y + bb.height / 2); break; }
     await new Promise(r => setTimeout(r, 900));
   }
+  if (process.env.EXPAND) { await p.click('button:has-text("全部展开")'); await new Promise(r => setTimeout(r, 600)); }
   await p.screenshot({ path: `${out}/ws_${kind}.png` });
   console.log(kind, await p.$eval('.crumbs', e => e.innerText), '|', await p.$eval('.save', e => e.innerText));
   await p.close();

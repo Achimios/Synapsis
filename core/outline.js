@@ -223,3 +223,11 @@ export function autoLayout(view, positions) {
   }
   return out;
 }
+
+// 节点在 toOutline 输出里的行号（DFS 顺序，一节点一行）—— 新建后把大纲光标放到它的名字上
+export function lineOf(g, id) {
+  let i = 0, hit = -1;
+  const walk = cur => { for (const c of g.nodes.get(cur).children) { if (c === id) hit = i; i++; walk(c); } };
+  walk(ROOT);
+  return hit;
+}
