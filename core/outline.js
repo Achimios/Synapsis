@@ -231,3 +231,30 @@ export function lineOf(g, id) {
   walk(ROOT);
   return hit;
 }
+
+// >v<🌳大纲模型-删除/改状态/改名-右键菜单用；都返回新大纲文本（删除在工作区里 = 文件移进 _过期的/）
+export function withoutNode(g, id) {
+  const h = cloneGraph(g);
+  const gone = new Set();
+  const walk = x => { gone.add(x); for (const c of h.nodes.get(x).children) walk(c); };
+  walk(id);
+  const p = h.nodes.get(h.nodes.get(id).parent);
+  p.children = p.children.filter(c => c !== id);
+  for (const x of gone) h.nodes.delete(x);
+  h.edges = h.edges.filter(e => !gone.has(e.from) && !gone.has(e.to));
+  return toOutline(h);
+}
+export function withStatus(g, id, status) {
+  const h = cloneGraph(g);
+  h.nodes.get(id).status = status;
+  return toOutline(h);
+}
+export function withLabel(g, id, label) {
+  label = label.trim();
+  const n = g.nodes.get(id);
+  if (!label || label === n.label || /->|[,，]/.test(label)) return null;
+  if (g.nodes.get(n.parent).children.some(c => g.nodes.get(c).label === label)) return null; // 同级重名
+  const h = cloneGraph(g);
+  h.nodes.get(id).label = label;
+  return toOutline(h); // toOutline 按 label 输出，id 在重新解析时自然变成新路径
+}

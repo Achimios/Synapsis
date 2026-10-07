@@ -295,3 +295,42 @@ to:
 `);
   return true;
 }
+
+// >v<💾工作区-改正文-属性面板里改节点正文（Synapsis 唯一会写正文的地方：用户亲手改的）
+export function setNodeBody(root, id, body) {
+  const ws = loadWorkspace(root);
+  const n = ws.graph.nodes.get(id);
+  if (!n || id === ROOT) throw new Error('没有这个节点：' + id);
+  const meta = { ...n.meta, ...(fileName(n.label) !== n.label ? { label: n.label } : {}), ...(n.status ? { status: n.status } : {}), ...(n.order !== Infinity ? { order: String(n.order) } : {}) };
+  writeFileSync(n.file, serializeNode(meta, body));
+}
+
+// >v<🗂️外部区-文件树-项目根目录（__synapsis 之外）的只读文件树
+const SKIP = new Set(['.git', 'node_modules', '__pycache__', '.venv', 'venv', 'dist', 'build', DIR, '.synapsis', '.obsidian', 'Intermediate', 'Saved', 'DerivedDataCache', 'Binaries']);
+export function listTree(root, maxEntries = 3000) {
+  let count = 0;
+  const walk = (dir, rel) => {
+    const out = [];
+    let entries = [];
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+    entries.sort((a, b) => (b.isDirectory() - a.isDirectory()) || a.name.localeCompare(b.name, 'zh'));
+    for (const e of entries) {
+      if (SKIP.has(e.name) || count >= maxEntries) continue;
+      count++;
+      const r = rel ? rel + '/' + e.name : e.name;
+      if (e.isDirectory()) out.push({ name: e.name, path: r, dir: true, children: walk(join(dir, e.name), r) });
+      else out.push({ name: e.name, path: r });
+    }
+    return out;
+  };
+  return { tree: walk(root, ''), truncated: count >= maxEntries };
+}
+export function readProjectFile(root, rel, maxBytes = 300000) {
+  const f = join(root, rel);
+  if (!f.startsWith(join(root)) || rel.includes('..')) throw new Error('路径越界');
+  const st = statSync(f);
+  if (st.size > maxBytes) return { path: rel, size: st.size, text: null, note: `文件太大（${(st.size / 1e6).toFixed(1)} MB），不预览` };
+  const buf = readFileSync(f);
+  if (buf.subarray(0, 8000).includes(0)) return { path: rel, size: st.size, text: null, note: '二进制文件，不预览' };
+  return { path: rel, size: st.size, text: buf.toString('utf8') };
+}

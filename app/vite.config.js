@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve, join, normalize } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
-import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, DIR } from '../core/workspace.js';
+import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, DIR } from '../core/workspace.js';
 import { workspaceRoot } from '../core/cli.js';
 
 // >v<🚀启停-心跳-3 分钟没人 ping 就退出（SYN_IDLE_MS 可调）
@@ -46,6 +46,14 @@ function workspaceApi() {
             const r = saveOutline(root, (await body(req)).outline);
             return send(r.ok ? 200 : 400, { report: r, ...(r.ok ? payload(root) : {}) });
           }
+          if (url.pathname === '/node' && req.method === 'PATCH') {
+            const b = await body(req);
+            if (b.meta) setNodeMeta(root, b.id, b.meta);
+            if (typeof b.body === 'string') setNodeBody(root, b.id, b.body);
+            return send(200, payload(root));
+          }
+          if (url.pathname === '/tree' && req.method === 'GET') return send(200, listTree(root));
+          if (url.pathname === '/raw' && req.method === 'GET') return send(200, readProjectFile(root, url.searchParams.get('p') || ''));
           if (url.pathname === '/layout' && req.method === 'PUT') { saveLayout(root, (await body(req)).positions); return send(200, { ok: true }); }
           if (url.pathname === '/asset' && req.method === 'POST') { const b = await body(req); return send(200, { path: saveAsset(root, b.id, b.dataUrl) }); }
           if (url.pathname === '/file' && req.method === 'GET') {

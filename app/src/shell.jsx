@@ -1,7 +1,8 @@
 // 外壳：左大纲（真源）、面包屑、导出、快捷键、贴图、工作区读写。
 // 画布组件（main.jsx，React Flow）只负责「显示 view + 回报用户操作」。
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, autoLayout, lineOf, ROOT } from './outline.js';
+import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, autoLayout, lineOf, ROOT } from './outline.js';
+import { ContextMenu, PropsPanel, FileTree, FilePanel } from './panels.jsx';
 import { SAMPLE } from './sample.js';
 import './shell.css';
 
@@ -136,6 +137,11 @@ export function Shell({ name, Canvas }) {
     const id = pendingRename.current;
     if (!id || !graph.nodes.has(id)) return;
     pendingRename.current = null;
+    focusLabel(id);
+  }, [graph]);
+  // 大纲里选中某节点的名字（改名 = 直接打字）
+  const focusLabel = id => {
+    setLeftTab('outline');
     const ta = taRef.current, line = lineOf(graph, id);
     if (!ta || line < 0) return;
     const lines = text.split('\n');
@@ -145,7 +151,40 @@ export function Shell({ name, Canvas }) {
     ta.setSelectionRange(start + at, start + at + lab.length);
     // 让选中的那行滚到可见处
     ta.scrollTop = Math.max(0, line * parseFloat(getComputedStyle(ta).lineHeight) - ta.clientHeight / 2);
-  }, [graph]);
+  };
+
+  // >v<🎨画布-右键菜单-动作：删除（工作区里 = 移进 _过期的/）、改状态、改名、属性
+  const [menu, setMenu] = useState(null);       // {x, y, id|null}
+  const [propsOpen, setPropsOpen] = useState(false);
+  const [leftTab, setLeftTab] = useState('outline'); // outline | files
+  const [tree, setTree] = useState(null);
+  const [fileView, setFileView] = useState(null); // {path, text|null, note, error}
+  const remove = id => {
+    const n = graph.nodes.get(id);
+    if (!n || id.startsWith('@portal:')) return;
+    let k = 0; const cnt = x => { for (const c of graph.nodes.get(x).children) { k++; cnt(c); } }; cnt(id);
+    if (k && !confirm(`删除「${n.label}」和它下面 ${k} 个子孙？${mode === 'ws' ? '\n（文件会移进 __synapsis/_过期的/，不会真删）' : ''}`)) return;
+    setText(withoutNode(graph, id));
+    if (sel === id) setSelected(null);
+    setSaveState(`已删除「${n.label}」` + (mode === 'ws' ? '（移进 _过期的/）' : ''));
+  };
+  const setStatus = (id, s) => setText(withStatus(graph, id, s));
+  const menuActions = {
+    props: id => { setSelected(id); setPropsOpen(true); setFileView(null); },
+    rename: id => focusLabel(id),
+    status: setStatus,
+    addChild: id => { setSelected(id); const r = withNode(graph, id, null); pendingRename.current = r.id; setText(r.text); setExpanded(x => ({ ...x, [id]: true })); },
+    addSibling: id => { const r = withNode(graph, graph.nodes.get(id).parent, id); pendingRename.current = r.id; setText(r.text); setSelected(r.id); },
+    addHere: () => { const r = withNode(graph, realScope, null); pendingRename.current = r.id; setText(r.text); setSelected(r.id); },
+    toggle: id => toggle(id), drill: id => drill(id), remove,
+    up: () => up(), canUp: realScope !== ROOT,
+    toggleAll: () => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; }),
+  };
+  const onContextMenu = useCallback((id, x, y) => { if (id && !id.startsWith('@portal:')) setSelected(id); setMenu({ id: id && !id.startsWith('@portal:') ? id : null, x, y }); }, []);
+  // 文件页：切过去时取文件树；点文件 → 右侧预览
+  useEffect(() => { if (leftTab === 'files' && mode === 'ws' && !tree) api('/tree').then(setTree).catch(e => setTree({ tree: [], error: e.message })); }, [leftTab, mode]);
+  const openFile = p => { setPropsOpen(false); setFileView({ path: p }); api('/raw?p=' + encodeURIComponent(p)).then(setFileView).catch(e => setFileView({ path: p, error: e.message })); };
+  const saveBody = (id, body) => api('/node', { method: 'PATCH', body: JSON.stringify({ id, body }) }).then(d => { setWsData(d); setSaveState('正文已保存 ' + new Date().toLocaleTimeString()); }).catch(e => setSaveState('❌ 正文保存失败：' + e.message));
 
   useEffect(() => save('syn.exp', expanded), [expanded]);
   const toggle = id => setExpanded(x => ({ ...x, [id]: !x[id] }));
@@ -166,6 +205,9 @@ export function Shell({ name, Canvas }) {
       else if (e.key === 'ArrowRight' && e.altKey) { e.preventDefault(); fwd(); }
       else if (e.key === 'Escape') setSelected(null);
       else if (e.key === ' ' && sel && !sel.startsWith('@portal:')) { e.preventDefault(); e.stopPropagation(); toggle(sel); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); e.stopPropagation(); remove(sel); }
+      else if (e.key === 'F2' && sel) { e.preventDefault(); focusLabel(sel); }
+      else if ((e.key === 'i' || e.key === 'I') && !e.ctrlKey && !e.altKey) { e.preventDefault(); setFileView(null); setPropsOpen(o => !o); }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
@@ -211,26 +253,39 @@ export function Shell({ name, Canvas }) {
   return (
     <div className="shell">
       <aside className="outline">
-        <div className="bar"><b>大纲</b><span className="hint">缩进=子级　-&gt; 名称=连线　✅◐○=状态</span></div>
-        <textarea ref={taRef} value={text} spellCheck={false} onChange={e => setText(e.target.value)} onKeyDown={onTaKey} />
-        {graph.errors.length > 0 && <div className="errs">{graph.errors.map((er, i) => <div key={i}>第 {er.line} 行：{er.msg}</div>)}</div>}
+        <div className="bar tabs">
+          <a className={leftTab === 'outline' ? 'on' : ''} onClick={() => setLeftTab('outline')}>大纲</a>
+          <a className={leftTab === 'files' ? 'on' : ''} onClick={() => setLeftTab('files')} title="项目根目录里 __synapsis 之外的文件（只读）">文件</a>
+          <span className="hint">{leftTab === 'outline' ? '缩进=子级　-> 名称=连线　✅◐○=状态' : mode === 'ws' ? '点文件 → 右侧预览' : '样例模式没有项目文件'}</span>
+        </div>
+        <textarea ref={taRef} value={text} spellCheck={false} onChange={e => setText(e.target.value)} onKeyDown={onTaKey} style={{ display: leftTab === 'outline' ? '' : 'none' }} />
+        {leftTab === 'files' && mode === 'ws' && <FileTree tree={tree} onOpen={openFile} current={fileView?.path} />}
+        {leftTab === 'outline' && graph.errors.length > 0 && <div className="errs">{graph.errors.map((er, i) => <div key={i}>第 {er.line} 行：{er.msg}</div>)}</div>}
       </aside>
       <main>
         <div className="bar top">
           <span className="crumbs">{crumbs.map((c, i) => <span key={c.id}>{i > 0 && ' › '}<a onClick={() => { go(c.id); setSelected(null); }}>{c.label}</a></span>)}</span>
-          <span className="hint">双击=钻进 ▸N或空格=原地展开　Alt+↑=上一层 Alt+←/→=后退/前进　Enter=同级　Tab=子级　选中+Ctrl+V=贴图　从节点边缘拖=连线</span>
+          <span className="hint">右键=菜单　双击=钻进　▸N/空格=展开　Del=删除　F2=改名　I=属性　Enter/Tab=新建　Alt+↑←→=导航　边缘拖=连线</span>
           <button onClick={() => addNode(false)} title="在当前层新建（选中节点时建在它后面）；建完直接打字改名">＋ 节点</button>
           <button onClick={() => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; })}>{allOpen ? '全部收起' : '全部展开'}</button>
           <button onClick={() => setExportText(exportForLLM(graph, realScope))}>导出给 LLM</button>
           {local && <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>}
-          <span className={'save' + (saveState.startsWith('❌') || saveState.startsWith('⚠') ? ' bad' : '')} title={wsData?.root || ''}>{mode === 'ws' ? '📁 ' + (wsData?.root || '').split(/[\/]/).slice(-2).join('/') + '　' : mode === 'demo' ? '🧪 样例　' : ''}{saveState}</span>
+          <span className={'save' + (saveState.startsWith('❌') || saveState.startsWith('⚠') ? ' bad' : '')} title={wsData?.root || ''}>{mode === 'ws' ? '📁 ' + (wsData?.root || '').split(/[\\/]/).slice(-2).join('/') + '　' : mode === 'demo' ? '🧪 样例　' : ''}{saveState}</span>
         </div>
         {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className="canvas">
           <Canvas key={realScope} view={view} layout={layout} selected={sel} images={images}
-            onSelect={setSelected} onDrill={drill} onConnect={connect} onMove={move}
+            onSelect={setSelected} onDrill={drill} onConnect={connect} onMove={move} onContextMenu={onContextMenu}
             viewport={viewports[realScope]} onViewport={vp => onViewport(realScope, vp)} />
         </div>}
       </main>
+      {propsOpen && sel && !sel.startsWith('@portal:') && graph.nodes.has(sel) && (
+        <PropsPanel id={sel} graph={graph} wsNode={wsData?.nodes[sel]} edges={mode === 'ws' ? (wsData?.edges || []) : graph.edges}
+          editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)} />
+      )}
+      {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（I 开关）</div></aside>}
+      {fileView && <FilePanel file={fileView.text !== undefined || fileView.error || fileView.note ? fileView : null} onClose={() => setFileView(null)} />}
+      {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), open: !!expanded[menu.id], descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
+        actions={{ ...menuActions, allOpen }} onClose={() => setMenu(null)} />}
       {exportText !== null && (
         <div className="modal" onClick={() => setExportText(null)}>
           <div onClick={e => e.stopPropagation()}>

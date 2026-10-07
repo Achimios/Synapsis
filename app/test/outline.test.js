@@ -1,6 +1,6 @@
 // >v<✅自检-核心-纯 Node：解析/往返/投影/聚合/编辑/布局
 // node test/outline.test.js
-import { parseOutline, toOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, autoLayout, ROOT } from '../../core/outline.js';
+import { parseOutline, toOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, autoLayout, withoutNode, withStatus, withLabel, ROOT } from '../../core/outline.js';
 import { SAMPLE } from '../src/sample.js';
 let pass = 0, fail = 0;
 const ok = (c, m) => { c ? pass++ : (fail++, console.log('✗', m)); };
@@ -48,5 +48,11 @@ const lay = autoLayout(ai, {});
 ok(lay['游戏AI/感知'].x < lay['游戏AI/决策'].x && lay['游戏AI/决策'].x < lay['游戏AI/行动'].x, '分层布局 感知<决策<行动');
 const lay2 = autoLayout({ nodes: [{ id: 'a' }, { id: 'b' }], edges: [], portals: [] }, { a: { x: 0, y: 0 } });
 ok(!(lay2.b.x === 0 && lay2.b.y === 0), '自动布局避开已摆好的节点 ' + JSON.stringify(lay2));
+const gd = parseOutline(withoutNode(g, '游戏AI/感知'));
+ok(!gd.nodes.has('游戏AI/感知') && !gd.nodes.has('游戏AI/感知/敌方观察') && gd.errors.length === 0, '删除分组 = 连子节点一起删，悬空边一起去掉 ' + JSON.stringify(gd.errors));
+ok(parseOutline(withStatus(g, '外显/对话', 'done')).nodes.get('外显/对话').status === 'done', '改状态');
+const gl = parseOutline(withLabel(g, '游戏AI/决策/决策空间', '战术决策'));
+ok(gl.nodes.has('游戏AI/决策/战术决策') && gl.errors.length === 0 && gl.edges.some(e => e.to === '游戏AI/决策/战术决策'), '改名后指向它的边跟着改 ' + JSON.stringify(gl.errors));
+ok(withLabel(g, '游戏AI/感知', '决策') === null, '改名撞同级 → 拒绝');
 console.log(`outline: ${pass} 过 / ${fail} 挂`);
 process.exit(fail ? 1 : 0);

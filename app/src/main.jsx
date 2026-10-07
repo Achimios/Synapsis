@@ -16,7 +16,7 @@ function SNode({ data }) {
 const nodeTypes = { s: SNode };
 
 // >v<🎨画布-ReactFlow-显示 view + 回报选择/拖动/连线/视图
-function RFCanvas({ view, layout, selected, images, onSelect, onDrill, onConnect, onMove, viewport, onViewport }) {
+function RFCanvas({ view, layout, selected, images, onSelect, onDrill, onConnect, onMove, onContextMenu, viewport, onViewport }) {
   const build = () => [
     ...view.nodes.map(n => ({ id: n.id, type: 's', position: layout[n.id], data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: n.id === selected }, selected: n.id === selected })),
     ...view.portals.map(p => ({ id: p.id, type: 's', position: layout[p.id], data: { portal: p, dim: nodeDim(p.id, view, selected) }, selected: p.id === selected })),
@@ -48,6 +48,8 @@ function RFCanvas({ view, layout, selected, images, onSelect, onDrill, onConnect
     <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange}
       onNodeClick={(_, n) => onSelect(n.id === selected ? null : n.id)}
       onPaneClick={() => onSelect(null)}
+      onNodeContextMenu={(e, n) => { e.preventDefault(); onContextMenu(n.id, e.clientX, e.clientY); }}
+      onPaneContextMenu={e => { e.preventDefault(); onContextMenu(null, e.clientX, e.clientY); }}
       onNodeDoubleClick={(_, n) => onDrill(n.id)}
       onNodeDragStop={(_, n, dragged) => onMove(Object.fromEntries((dragged || [n]).map(d => [d.id, d.position])))}
       onConnect={c => onConnect(c.source, c.target)}

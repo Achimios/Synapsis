@@ -2,7 +2,7 @@
 // 界面验收（React Flow；tldraw 对比版已退役，见 _过期的/tldraw_spike）
 // 两个画布原型的同一套交互验收（无头 Edge）。先 npm run dev，再 node test/ui.test.js [截图目录]
 import { chromium } from 'playwright-core';
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { saveOutline } from '../../core/workspace.js';
@@ -161,6 +161,7 @@ for (const kind of ['reactflow']) {
   console.log('== 工作区', kind);
   const ws = mkdtempSync(join(tmpdir(), 'syn-ui-'));
   saveOutline(ws, SAMPLE);
+  writeFileSync(join(ws, 'README_测试.md'), '# 外部区的文件\n项目根目录里的普通文件。');
   const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
@@ -170,7 +171,8 @@ for (const kind of ['reactflow']) {
   ok((await saveTxt()).includes('已加载'), '工作区加载 ' + await saveTxt());
   ok((await page.$$('.card')).length === 3, '顶层 3 个节点');
   // 钻进 游戏AI → 选中 决策 → Enter 新建同级 → 文件出现
-  const box = async label => { for (const c of await page.$$('.card')) if ((await c.innerText()).split('\n')[0].includes(label)) return c.boundingBox(); };
+  // 按 .title 整体匹配：标题是 flex，带状态图标时 innerText 会把图标和名字拆成两行
+  const box = async label => { for (const c of await page.$$('.card')) { const t = await c.$eval('.title', e => e.textContent).catch(() => ''); if (t.includes(label)) return c.boundingBox(); } };
   let b = await box('游戏AI'); await page.mouse.dblclick(b.x + b.width / 2, b.y + b.height / 2); await sleep(800);
   b = await box('决策'); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await sleep(300);
   await page.keyboard.press('Enter'); await sleep(1800);
@@ -183,6 +185,33 @@ for (const kind of ['reactflow']) {
   const lay = JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'));
   ok(lay['游戏AI/兜底'] !== undefined, '拖动 → _layout.json ' + JSON.stringify(Object.keys(lay)) + ' moved=' + JSON.stringify(b) + ' now=' + JSON.stringify(await box('兜底')));
   ok(existsSync(join(ws, '__synapsis', '_synapsis.md')), '自动生成 _synapsis.md 说明');
+
+  // 右键菜单：改状态 → 文件；属性面板改正文 → 文件；删除 → _过期的/；Del 键
+  page.on('dialog', d => d.accept());
+  const rclick = async label => { const bb = await box(label); if (!bb) { console.log('  找不到卡片', label, await page.$$eval('.card', cs => cs.map(c => c.innerText.split('\n')[0])), await page.$eval('.crumbs', e => e.innerText)); } await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2, { button: 'right' }); await sleep(300); };
+  const nodeFile = rel => readFileSync(join(ws, '__synapsis', ...rel.split('/')), 'utf8');
+  await rclick('行动');
+  ok(await page.$('.ctx') !== null && (await page.$eval('.ctx .mh', e => e.innerText)) === '行动', '右键节点 → 菜单');
+  await page.click('.ctx .mi.row button:has-text("✅")'); await sleep(1500);
+  ok(/status: done/.test(nodeFile('游戏AI/行动/_node.md')), '右键改状态 → 文件 status: done');
+  await rclick('行动'); await page.click('.ctx .mi:has-text("属性")'); await sleep(400);
+  ok((await page.$eval('.side h3', e => e.innerText)) === '行动', '右键 属性 → 面板');
+  ok((await page.$$eval('.side .edges li', ls => ls.length)) > 0, '属性面板列出入/出边');
+  await page.fill('textarea.body', '行动层：从战术目标展开成动作序列。');
+  await page.mouse.click(1000, 780); await sleep(1200);
+  ok(nodeFile('游戏AI/行动/_node.md').includes('从战术目标展开成动作序列'), '属性面板改正文 → 写进文件');
+  await rclick('新节点'); await page.click('.ctx .mi.danger'); await sleep(1500);
+  ok(!existsSync(join(ws, '__synapsis', '游戏AI', '新节点.md')) && readdirSync(join(ws, '__synapsis', '_过期的')).some(n => n.includes('新节点')), '右键删除 → 移进 _过期的/');
+  b = await box('兜底'); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await page.keyboard.press('Delete'); await sleep(1500);
+  ok(!existsSync(join(ws, '__synapsis', '游戏AI', '兜底')), 'Del 键删除分组（确认框已接受）');
+  await page.mouse.click(1000, 500, { button: 'right' }); await sleep(300);
+  ok((await page.$$eval('.ctx .mi', ms => ms.map(m => m.innerText))).some(t => t.includes('新建节点')), '右键空白 → 新建节点菜单');
+  await page.keyboard.press('Escape');
+  // 文件页：项目根目录（__synapsis 之外）
+  await page.click('.bar.tabs a:has-text("文件")'); await sleep(800);
+  ok((await page.$$eval('.fi', fs => fs.map(f => f.innerText))).some(t => t.includes('README_测试.md')), '文件页列出根目录文件');
+  await page.click('.fi:has-text("README_测试.md")'); await sleep(800);
+  ok((await page.$eval('pre.raw', p => p.innerText)).includes('外部区的文件'), '点文件 → 右侧预览内容');
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });

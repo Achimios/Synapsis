@@ -29,6 +29,7 @@ grep -rn ">v<💾工作区" core app bootstrap --include=*.js --include=*.jsx
 | `>v<🧭导航` | `app/src/shell.jsx` | 钻进/退出、后退前进、视图记忆、快捷键 |
 | `>v<🎨画布` | `app/src/main.jsx` `app/src/td.jsx` `app/src/shell.jsx` | 两个画布实现、贴图 |
 | `>v<🚀启停` | `app/vite.config.js` `app/src/shell.jsx` `core/cli.js`(init) + `core/templates/Synapsis.vbs` `Synapsis_stop.bat` `Synapsis_init.vbs` `core/tools/init_picker.ps1` | 无窗口启动、按端口停止、心跳自动退出 |
+| `>v<🗂️外部区` | `core/workspace.js`(listTree/readProjectFile) `app/src/panels.jsx` | 左栏「文件」页：项目根目录里 __synapsis 之外的只读文件树 + 右侧预览 |
 | `>v<✅自检` | `app/test/` `core/test/` `core/workspace.js`(checkWorkspace) | 纯 Node 核心自检 + 无头 Edge 界面自检 |
 | `>v<🧪嵌入实验` | `core/tools/embed_probe.js` | 本地嵌入模型（LM Studio）× 工作区：有连线 vs 没连线的相似度效应量、最像但没连线的候选 |
 | `>v<🏗️构建引导` | `bootstrap/bootstrap.js` `bootstrap/template/` | 给新项目铺骨架，已有文件跳过 |
@@ -91,6 +92,8 @@ grep -rn ">v<💾工作区" core app bootstrap --include=*.js --include=*.jsx
 小标题：
 
 - **ReactFlow** —— 本地 nodes 状态 + 外部数据变时重建；⚠️重建要保留旧对象的 `measured`，否则节点被隐藏到重新测量完。
+- **右键菜单** —— `panels.jsx` 的 `ContextMenu`：节点（属性/改名/状态/新建子级·同级/展开/钻进/删除）、空白处（新建/全部展开/上一层）。删除 = `withoutNode` 改大纲 → 工作区里文件移进 `_过期的/`；有子孙时先确认。快捷键 Del / F2 / I。
+- **属性面板** —— `PropsPanel`：状态、frontmatter 属性、入/出边（**分组显示经由子节点的对外连接**，子树内部的边不算）、正文（工作区模式可改，失焦 `PATCH /api/node` 写回 = Synapsis 唯一写正文的地方，因为是用户亲手改的）。
 - **贴图** —— 选中节点时 Ctrl+V 图片 → dataURL 存 localStorage（原型；正式版存 `__synapsis/` 文件）。**没自动化测。**
 
 ## `>v<🚀启停`
@@ -105,7 +108,7 @@ grep -rn ">v<💾工作区" core app bootstrap --include=*.js --include=*.jsx
 小标题：
 
 - **核心** —— `npm test`（app/），纯 Node，18 项；`node core/test/workspace.test.js`，临时目录 19 项。
-- **界面** —— `npm run test:ui`（需先起 dev），playwright-core + 本机 Edge 无头：样例模式 29 项（含原地展开、空格、双击子项、新建后改名）+ 工作区模式 7 项（临时目录，不碰真文件）。`test/shot.mjs` 给真实工作区截图。
+- **界面** —— `npm run test:ui`（需先起 dev），playwright-core + 本机 Edge 无头：样例模式 29 项（含原地展开、空格、双击子项、新建后改名）+ 工作区模式 17 项（含右键改状态/属性改正文/删除进 _过期的/Del 键/文件页预览）（临时目录，不碰真文件）。`test/shot.mjs` 给真实工作区截图。
 - **graph check** —— `checkWorkspace`：悬空边、叶子没 status、code 指向不存在的文件、done 却没 code（提示）。
 
 ## `>v<🏗️构建引导`

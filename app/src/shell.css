@@ -34,3 +34,38 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .kidlist li:hover { background: #eef3fb; }
 .kidlist .st { font-size: 10px; width: 14px; text-align: center; flex: none; }
 .kidlist .kn { margin-left: auto; color: #9aa3b2; font-size: 10px; }
+/* 右键菜单 */
+.ctx { position: fixed; z-index: 2000; min-width: 200px; background: #fff; border: 1px solid #c7ccd6; border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.15); padding: 4px 0; font-size: 13px; }
+.ctx .mh { padding: 4px 12px 6px; font-weight: 600; color: #7a8394; border-bottom: 1px solid #eef0f3; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.ctx .mi { display: flex; align-items: center; gap: 6px; padding: 5px 12px; cursor: pointer; }
+.ctx .mi:hover { background: #eef3fb; }
+.ctx .mi kbd { margin-left: auto; font: 11px system-ui; color: #9aa3b2; }
+.ctx .mi.danger { color: #c0392b; }
+.ctx .mi.row { cursor: default; }
+.ctx .mi.row:hover { background: none; }
+.ctx button, .side .row button { font: inherit; border: 1px solid #d9dde4; background: #f6f7f9; border-radius: 4px; padding: 0 6px; cursor: pointer; }
+.ctx button.on, .side .row button.on { background: #dbe8ff; border-color: #2b7bff; }
+/* 右侧面板：属性 / 文件预览 */
+.side { width: 340px; flex: none; display: flex; flex-direction: column; border-left: 1px solid #d9dde4; background: #fff; min-height: 0; }
+.side.wide { width: 46vw; max-width: 760px; }
+.side .bar .hint { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebody { flex: 1; overflow: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.sidebody h3 { margin: 0; font-size: 16px; }
+.sidebody .row { display: flex; gap: 6px; align-items: center; }
+.meta { border-collapse: collapse; font-size: 12px; }
+.meta td { border-top: 1px solid #eef0f3; padding: 3px 6px; vertical-align: top; }
+.meta td:first-child { color: #7a8394; white-space: nowrap; }
+.edges ul { margin: 2px 0 6px; padding-left: 16px; font-size: 12px; }
+.edges a { color: #2b7bff; cursor: pointer; }
+.edges .el { color: #9aa3b2; margin-left: 6px; }
+.eh { font-size: 12px; font-weight: 600; color: #7a8394; }
+.eh.in { color: #2b7bff; } .eh.out { color: #ff8a1f; }
+textarea.body { min-height: 180px; flex: 1; border: 1px solid #d9dde4; border-radius: 4px; padding: 8px; font: 13px/1.6 "Microsoft YaHei", system-ui; resize: vertical; }
+pre.raw { margin: 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.55 Consolas, "Microsoft YaHei", monospace; }
+/* 左栏页签 + 文件树 */
+.bar.tabs a { cursor: pointer; padding: 2px 8px; border-radius: 4px; font-weight: 600; color: #7a8394; }
+.bar.tabs a.on { background: #eef1f5; color: #1d2330; }
+.files { flex: 1; overflow: auto; font-size: 13px; padding: 4px 0; }
+.fi { padding: 2px 8px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fi:hover { background: #eef3fb; }
+.fi.cur { background: #dbe8ff; }
