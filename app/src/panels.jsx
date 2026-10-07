@@ -79,7 +79,7 @@ function MetaTable({ id, meta, editable, onMeta, hints = [] }) {
   );
 }
 
-export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, tab, onTab, raw, onReveal, onRename, color, onColor }) {
+export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, tab, onTab, raw, onReveal, onRename, color, onColor, onEdgeKind }) {
   const n = graph.nodes.get(id);
   const [body, setBody] = useState(wsNode?.body || '');
   useEffect(() => setBody(wsNode?.body || ''), [id, wsNode?.body]);
@@ -90,7 +90,8 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
   const ins = edges.filter(e => sub.has(e.to) && !sub.has(e.from)), outs = edges.filter(e => sub.has(e.from) && !sub.has(e.to));
   const lab = id2 => graph.nodes.get(id2)?.label || id2;
   const via = (e, inner) => inner !== id ? <span className="el">经 {lab(inner)}</span> : null;
-  const edgeRow = (e, other, inner) => <li key={e.from + e.to}><a onClick={() => onSelect(other)}>{lab(other)}</a>{e.label && <span className="el">{e.label}{e.kind ? '·' + e.kind : ''}</span>}{via(e, inner)}</li>;
+  const kindBtn = e => onEdgeKind ? <button className={'ek' + (e.kind ? ' on' : '')} title="点一下换类型：普通 → 调节（◆ 从下往上连，不算数据流）→ 离散（虚线）→ 普通" onClick={() => onEdgeKind(e.from, e.to, e.label || '', e.kind || '')}>{e.kind || '普通'}</button> : e.kind ? <span className="el">{e.kind}</span> : null;
+  const edgeRow = (e, other, inner) => <li key={e.from + e.to}><a onClick={() => onSelect(other)}>{lab(other)}</a>{e.label && <span className="el">{e.label}</span>}{kindBtn(e)}{via(e, inner)}</li>;
   return (
     <aside className="side">
       <div className="bar tabs"><a className={tab !== 'raw' ? 'on' : ''} onClick={() => onTab('info')}>概览</a>
@@ -220,7 +221,7 @@ export function ScaffoldModal({ items, root, onCreate, onClose }) {
 export const KEYMAP = [
   ['选择与查看', [['单击卡片 / 大纲行', '选中，右侧显示概览'], ['I', '属性面板开关'], ['Tab', '左栏开关'], ['? / F1', '这一页']]],
   ['导航', [['双击卡片 / 大纲行的 →', '钻进去'], ['Alt+↑', '上一层'], ['鼠标侧键 / Alt+← →', '后退 / 前进'], ['大纲树里 ↑↓←→', '上下走 / 折叠展开'], ['▸N / 空格', '卡片里原地展开子级'], ['⊞ / F', '分组原地展开成框（子节点画在框里、线直连）']]],
-  ['编辑', [['Enter', '新建同级'], ['Insert / Ctrl+Enter', '新建子级'], ['F2 / 双击大纲行', '改名'], ['Del', '删除（进 _过期的/）'], ['卡片边缘拖到另一张', '连线'], ['右键', '菜单：状态（❌ = 弃用）、颜色、属性、原文……'], ['Ctrl+Z', '撤销（结构、连线、拖动；删除也能撤回）'], ['Ctrl+Shift+Z / Ctrl+Y', '重做']]],
+  ['编辑', [['Enter', '新建同级'], ['Insert / Ctrl+Enter', '新建子级'], ['F2 / 双击大纲行', '改名'], ['Del', '删除（进 _过期的/）'], ['卡片边缘拖到另一张', '连线'], ['卡片底下 ◆ 拖到另一张顶上', '调节线（参数 / 修改器，不算数据流）'], ['右键', '菜单：状态（❌ = 弃用）、颜色、属性、原文……'], ['Ctrl+Z', '撤销（结构、连线、拖动；删除也能撤回）'], ['Ctrl+Shift+Z / Ctrl+Y', '重做']]],
   ['复制', [['Ctrl+C', '复制选中的卡（连同子孙、属性、正文、图片、它们之间的边）'], ['Ctrl+V', '粘到当前页、鼠标处（同名加「 2」）；剪贴板里是图片 = 贴图']]],
   ['选择', [['Ctrl+单击', '加入 / 移出选择'], ['Shift+单击', '加上它和已选之间连线路径上的所有节点'], ['Ctrl+← / →', '沿入线 / 出线扩选一层'], ['Shift+← / →', '沿入线 / 出线一直扩到头']]],
   ['排列', [['Shift+拖空白', '框选多张卡'], ['拖框的边 / 角', '整体拉开或收紧间距'], ['收到底', '对齐；会重叠的依次排开']]],

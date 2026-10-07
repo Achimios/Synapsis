@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, DIR } from '../workspace.js';
+import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, linkNodes, DIR } from '../workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../scaffold.js';
 import { SAMPLE } from '../../app/src/sample.js';
 
@@ -172,6 +172,16 @@ try {
     const rep2 = pasteNodes(rPaste, ['小队/队长'], '目标页');
     ok(rep2.roots.join() === '目标页/队长 2', '同名（目标页里已有 队长）→ 加「 2」 ' + rep2.roots);
   } finally { rmSync(rPaste, { recursive: true, force: true }); }
+  // 连线带类型（界面拖调节口）：没边先加边，再写 kind
+  const rLink = mkdtempSync(join(tmpdir(), 'syn-link-'));
+  try {
+    saveOutline(rLink, '观察属性\n观察空间');
+    const lr = linkNodes(rLink, '观察属性', '观察空间', '', '调节');
+    const e = loadWorkspace(rLink).graph.edges.find(x => x.from === '观察属性' && x.to === '观察空间');
+    ok(e && e.kind === '调节' && lr.outline.includes('观察属性 -> 观察空间'), 'linkNodes：加边 + kind 调节 ' + JSON.stringify(e));
+    linkNodes(rLink, '观察属性', '观察空间', '', '离散');
+    ok(loadWorkspace(rLink).graph.edges.filter(x => x.from === '观察属性').length === 1 && loadWorkspace(rLink).graph.edges[0].kind === '离散', '已有的边只改类型，不重复加');
+  } finally { rmSync(rLink, { recursive: true, force: true }); }
   // 配色词表：没有文件 = null（用默认）；ensureColorWords 按默认建；写坏的行 check 报 warn
   const rWords = mkdtempSync(join(tmpdir(), 'syn-words-'));
   try {

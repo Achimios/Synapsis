@@ -6,18 +6,21 @@ import { expand, pathBetween } from './select.js';
 import '@xyflow/react/dist/style.css';
 import { Shell, cardActions, FrameCard, NodeCard, PortalCard, PicCard, AxesCard, MatrixChip, edgeLook, lengthFade, desat, nodeDim } from './shell.jsx';
 
+// 左进右出 = 数据流；顶上 mi / 底下 mo = 调节口（kind 调节：调节源从底下连到被调节者顶上）
+const ModHandles = () => (<><Handle type="target" position={Position.Top} id="mi" className="modh" title="调节口：把调节源（参数 / 修改器）连到这里" /><Handle type="source" position={Position.Bottom} id="mo" className="modh" title="从这里拖到别的节点顶上 = 调节它" /></>);
 function SNode({ data }) {
   return (
     <>
       <Handle type="target" position={Position.Left} />
       {data.portal ? <PortalCard portal={data.portal} dim={data.dim} /> : <NodeCard node={data.node} img={data.img} dim={data.dim} isSel={data.isSel} />}
       <Handle type="source" position={Position.Right} />
+      <ModHandles />
     </>
   );
 }
 const PNode = ({ data }) => <PicCard pic={data.pic} isSel={data.isSel} />;
 const ANode = ({ data }) => <AxesCard S={data.S} labels={data.labels} />;
-const FNode = ({ data }) => (<><Handle type="target" position={Position.Left} /><FrameCard node={data.node} dim={data.dim} isSel={data.isSel} /><Handle type="source" position={Position.Right} /></>);
+const FNode = ({ data }) => (<><Handle type="target" position={Position.Left} /><FrameCard node={data.node} dim={data.dim} isSel={data.isSel} /><Handle type="source" position={Position.Right} /><ModHandles /></>);
 const nodeTypes = { s: SNode, pic: PNode, axes: ANode, frame: FNode };
 // 框：子节点坐标 = 钻进分组那页的坐标 − 子节点里最小的 + 内边距（上面留标题栏）
 const FP = { x: 16, y: 34 }, FMIN = { w: 180, h: 80 };
@@ -40,7 +43,9 @@ function FlowEdge({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPo
   const op = look.opacity * f.opacity, col = look.hl ? look.color : desat(look.color, f.sat), mid = 'em' + idx;
   return (<>
     <defs>
-      <marker id={mid} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill={col} /></marker>
+      {look.mod
+        ? <marker id={mid} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,5 L5,0 L10,5 L5,10 z" fill={col} /></marker>
+        : <marker id={mid} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill={col} /></marker>}
     </defs>
     <BaseEdge path={path} markerEnd={`url(#${mid})`} style={{ stroke: col, strokeWidth: look.width, strokeDasharray: look.dash, opacity: op }} />
     {(mat || text) && <EdgeLabelRenderer>
@@ -131,7 +136,7 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
   // 选中一个框：框里的节点连出去的线也算「相连」
   const near = selected && view.parentOf?.size ? new Set([selected, ...view.nodes.filter(n => { for (let f = n.frame; f != null; f = view.parentOf.get(f)) if (f === selected) return true; return false; }).map(n => n.id)]) : null;
   const edges = view.edges.map((e, idx) => ({
-    id: e.id, source: e.from, target: e.to, type: 'flow', selectable: false,
+    id: e.id, source: e.from, target: e.to, type: 'flow', selectable: false, ...(e.mod ? { sourceHandle: 'mo', targetHandle: 'mi' } : {}),
     data: { look: edgeLook(e, selected, near), idx, text: e.text || '', mat: e.mat || null },
   }));
 
@@ -190,7 +195,7 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
       onPaneContextMenu={e => { e.preventDefault(); onContextMenu(null, e.clientX, e.clientY); }}
       onNodeDoubleClick={(_, n) => onDrill(n.id)}
       onNodeDragStop={(_, n, dragged) => onMove(Object.fromEntries((dragged || [n]).map(d => [d.id, toLayout(d.id, d.position)])))}
-      onConnect={c => onConnect(c.source, c.target)}
+      onConnect={c => onConnect(c.source, c.target, c.sourceHandle === 'mo' || c.targetHandle === 'mi')}
       zoomOnDoubleClick={false} deleteKeyCode={null} minZoom={0.1} colorMode="dark"
       // 记住的视图优先；第一次进这个范围才 fitView
       fitView={!viewport} fitViewOptions={{ padding: 0.2 }} defaultViewport={viewport}

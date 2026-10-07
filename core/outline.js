@@ -244,7 +244,8 @@ export function autoLayout(view, positions) {
   // 反馈环：大纲顺序就是人写下的流向提示 —— 指向前面兄弟的边算回边（↺），分层时忽略。
   // （以前用 DFS 顺序断环：观测→决策→行动→外部→内在 这条长路先被走到，「内在」被甩到最右，2026-10-07 研究工作区截图发现）
   const idx = new Map(ids.map((id, i) => [id, i]));
-  const forward = view.edges.filter(e => idx.has(e.from) && idx.has(e.to) && idx.get(e.to) > idx.get(e.from));
+  // 调节边（e.mod）不参与左→右分层：调节源不是数据流的上游（👤 2026-10-08）
+  const forward = view.edges.filter(e => !e.mod && idx.has(e.from) && idx.has(e.to) && idx.get(e.to) > idx.get(e.from));
   for (let it = 0; it < ids.length; it++) {
     let changed = false;
     for (const e of forward) {
@@ -265,6 +266,17 @@ export function autoLayout(view, positions) {
     do p = { x: r * 260, y: row++ * 120 + (r % 2) * 70 }; // 奇数层下错，免得反馈边穿过同一行的节点
     while (!free(p));
     out[id] = p; placed.push(p);
+  }
+  // 只往外发调节边的节点（纯调节源）：没摆过的放到它调节的那个节点上方
+  for (const id of ids) {
+    if (positions[id]) continue;
+    const mine = view.edges.filter(e => e.from === id || e.to === id);
+    const tgt = mine.length && mine.every(e => e.mod && e.from === id) ? mine[0].to : null;
+    if (tgt && out[tgt]) {
+      let p = { x: out[tgt].x, y: out[tgt].y - 110 };
+      while (placed.some(q => q !== out[id] && Math.abs(q.x - p.x) < 200 && Math.abs(q.y - p.y) < 90)) p = { x: p.x + 210, y: p.y };
+      out[id] = p;
+    }
   }
   const maxR = Math.max(0, ...rank.values());
   let li = 0, ri = 0;

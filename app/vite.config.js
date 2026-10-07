@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import { resolve, join, normalize, relative } from 'node:path';
 import { spawn } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
-import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, restoreRemoved, pasteNodes, ensureColorWords, DIR } from '../core/workspace.js';
+import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, restoreRemoved, pasteNodes, ensureColorWords, linkNodes, setEdgeLabel, DIR } from '../core/workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText } from '../core/cli.js';
 
@@ -67,6 +67,9 @@ function workspaceApi() {
           }
           // 配色词表：没有就按默认写一份，返回相对项目根的路径（前端接着用默认程序打开）
           if (url.pathname === '/color-words' && req.method === 'POST') return send(200, { file: relative(root, ensureColorWords(root)).split('\\').join('/') });
+          // 连线（带类型）/ 改已有边的标签类型
+          if (url.pathname === '/link' && req.method === 'POST') { const b = await body(req); const r = linkNodes(root, b.from, b.to, b.label || '', b.kind || ''); return send(200, { report: r, ...payload(root) }); }
+          if (url.pathname === '/edge' && req.method === 'PATCH') { const b = await body(req); setEdgeLabel(root, b.from, b.to, b.label || '', b.kind || ''); return send(200, payload(root)); }
           // 粘贴节点：复制子孙 / 属性 / 正文 / 图片 / 内部边到 parent 下
           if (url.pathname === '/paste' && req.method === 'POST') { const b = await body(req); const r = pasteNodes(root, b.ids, b.parent); return send(200, { report: r, ...payload(root) }); }
           // 撤销删除：把 _过期的/ 里的文件搬回去（随后前端写回删除前的大纲）

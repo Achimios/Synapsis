@@ -16,7 +16,7 @@
 //   正文（人写的，Synapsis 不动）
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, unlinkSync, rmdirSync, cpSync } from 'node:fs';
 import { join, dirname, relative, isAbsolute } from 'node:path';
-import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, withCopies, ROOT } from './outline.js';
+import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, withCopies, withEdge, ROOT } from './outline.js';
 import { checkSpaces } from './space.js';
 import { WORDS_FILE, DEFAULT_WORDS, parseColorWords } from './colors.js';
 
@@ -438,6 +438,20 @@ export function ensureWorkspaceReadme(root, content) {
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, body);
   return true;
+}
+
+// >v<🎨画布-调节连线-连线并写类型（界面拖调节口 = kind 调节）：没有这条边就先加进大纲，再写标签 / 类型
+export function linkNodes(root, from, to, label = '', kind = '') {
+  const ws = loadWorkspace(root);
+  let report = { ok: true, removed: [], restore: [] };
+  if (!ws.graph.edges.some(e => e.from === from && e.to === to)) {
+    const t = withEdge(ws.graph, from, to);
+    if (!t) throw new Error(`连不上：${from} -> ${to}`);
+    report = saveOutline(root, t);
+    if (!report.ok) throw new Error('连线失败：' + JSON.stringify(report.errors));
+  }
+  if (label || kind) setEdgeLabel(root, from, to, label, kind);
+  return { ...report, outline: workspaceOutline(loadWorkspace(root)) };
 }
 
 // >v<🤖LLM接口-边标签-给已有的边写标签 / 类型（大纲只表达「有没有边」，标签存在出发节点 frontmatter 的 to: 里）

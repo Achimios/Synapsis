@@ -582,6 +582,38 @@ for (const kind of ['reactflow']) {
   await page.close();
   rmSync(ws, { recursive: true, force: true });
 }
+// —— 调节连线（👤 2026-10-08：观察属性不是流进观察空间的数据）——
+{
+  console.log('== 调节线');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-mod-ui-'));
+  saveOutline(ws, '敌方 -> 观察空间\n观察空间\n观察属性');
+  writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 敌方: { x: 0, y: 200 }, 观察空间: { x: 300, y: 200 }, 观察属性: { x: 300, y: 0 } }));
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = [];
+  page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`);
+  await sleep(1800);
+  const md = f => readFileSync(join(ws, '__synapsis', f), 'utf8');
+  const hs = await (await page.$('.react-flow__node[data-id="观察属性"] .react-flow__handle.modh.source')).boundingBox();
+  const ht = await (await page.$('.react-flow__node[data-id="观察空间"] .react-flow__handle.modh.target')).boundingBox();
+  const c = b => [b.x + b.width / 2, b.y + b.height / 2];
+  await page.mouse.move(...c(hs)); await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(c(hs)[0] + (c(ht)[0] - c(hs)[0]) * i / 10, c(hs)[1] + (c(ht)[1] - c(hs)[1]) * i / 10);
+  await page.mouse.up(); await sleep(1800);
+  ok(/观察空间\s*\|\s*\|\s*调节/.test(md('观察属性.md')), '从底下 ◆ 拖到顶上 ◆ → 边写成 kind 调节 ' + md('观察属性.md'));
+  const ed = await page.$eval('.react-flow__edge[data-id="观察属性=>观察空间"] .react-flow__edge-path', p => p.style.strokeDasharray).catch(() => null);
+  ok(/^2(px)?,? 4(px)?$/.test(ed || ''), '调节线 = 点线 ' + ed);
+  ok((await page.$$eval('.react-flow__edges marker path', ps => ps.map(p => p.getAttribute('d')))).includes('M0,5 L5,0 L10,5 L5,10 z'), '调节线终点画 ◆');
+  // 属性面板里点边的类型：调节 → 离散 → 普通
+  await page.click('.react-flow__node[data-id="观察空间"] .lab'); await sleep(500);
+  const kb = async () => page.$eval('.side .edges li:has-text("观察属性") button.ek', b => b.textContent);
+  ok(await kb() === '调节', '属性面板显示边的类型');
+  await page.click('.side .edges li:has-text("观察属性") button.ek'); await sleep(1500);
+  ok(/观察空间\s*\|\s*\|\s*离散/.test(md('观察属性.md')) && await kb() === '离散', '点一下 → 离散');
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
 // —— 分组原地展开成框（👤 2026-10-08）——
 {
   console.log('== 展开成框');

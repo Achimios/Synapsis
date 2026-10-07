@@ -64,5 +64,8 @@ const vf = projectView(g, '游戏AI', new Set(['游戏AI/感知']));
 ok(vf.nodes.findIndex(n => n.id === '游戏AI/感知') < vf.nodes.findIndex(n => n.id === '游戏AI/感知/敌方观察') && vf.parentOf.get('游戏AI/感知/敌方观察') === '游戏AI/感知', '框在子节点前，parentOf 记所在框');
 ok(vf.edges.some(e => e.from === '游戏AI/感知/敌方观察' && e.to === '游戏AI/记忆与人格'), '框里的子节点直接连线（不再提升到分组）');
 ok(!vf.parentOf.has('游戏AI/决策') && projectView(g, '游戏AI').parentOf.size === 0, '没展开的照旧');
+// 调节边（👤 2026-10-08）：不参与左→右分层；纯调节源放到被调节者上方
+const ml = autoLayout({ nodes: [{ id: '敌方' }, { id: '观察空间' }, { id: '观察属性' }], edges: [{ from: '敌方', to: '观察空间' }, { from: '观察属性', to: '观察空间', mod: true }], portals: [] }, {});
+ok(ml['观察空间'].x > ml['敌方'].x && Math.abs(ml['观察属性'].x - ml['观察空间'].x) < 1 && ml['观察属性'].y < ml['观察空间'].y, '调节源摆在被调节者正上方，不算它的上游 ' + JSON.stringify(ml));
 console.log(`outline: ${pass} 过 / ${fail} 挂`);
 process.exit(fail ? 1 : 0);

@@ -73,6 +73,12 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .frame .fhead .kids:hover { background: #444; color: #fff; }
 .frame.dropped .lab { text-decoration: line-through; }
 .react-flow__node-frame { padding: 0; }
+/* 调节口：顶上 / 底下的小菱形，平时很淡，鼠标移到卡片上才明显 */
+.react-flow__handle.modh { width: 7px; height: 7px; border-radius: 1px; transform: translate(-50%, -50%) rotate(45deg); background: #555; border: 1px solid var(--bg); opacity: .25; }
+.react-flow__handle.modh.react-flow__handle-bottom { transform: translate(-50%, 50%) rotate(45deg); }
+.react-flow__node:hover .react-flow__handle.modh { opacity: .9; }
+.side .edges button.ek { font-size: 10px; padding: 0 4px; margin-left: 4px; color: var(--dim); }
+.side .edges button.ek.on { color: var(--text); border-color: var(--accent); }
 .card input.rename { font: inherit; font-weight: 600; color: var(--text); background: var(--bg); border: 1px solid var(--accent); border-radius: 2px; padding: 0 3px; min-width: 0; max-width: 100%; outline: none; }
 /* 弃用 ❌：灰、删除线（子孙跟着弃用） */
 .card.dropped { filter: grayscale(1); opacity: .55; }

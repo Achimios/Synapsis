@@ -104,7 +104,7 @@ export function Shell({ name, Canvas }) {
       })),
       portals: v.portals.map(p => ({ ...p, color: colOf(p.id), dropped: isDropped(graph, p.target) })),
       // 线 = 出发节点的颜色；kind 是「离散」→ 虚线（聚合的边要每条都离散才虚）
-      edges: v.edges.map(e => ({ ...e, text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e), color: colOf(e.from), dropped: [e.from, e.to].some(x => isDropped(graph, x.startsWith('@portal:') ? x.slice(8) : x)), dashed: e.raw.every(r => DISCRETE.test(kind.get(r) || '')) })),
+      edges: v.edges.map(e => ({ ...e, text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e), color: colOf(e.from), dropped: [e.from, e.to].some(x => isDropped(graph, x.startsWith('@portal:') ? x.slice(8) : x)), dashed: e.raw.every(r => DISCRETE.test(kind.get(r) || '')), mod: e.raw.every(r => MOD.test(kind.get(r) || '')) })),
     };
   }, [graph, realScope, wsData, expanded, picFold, localPicw, space, getMeta, colors, canvasRename, framed]);
   // >v<🖼️图片-卡片显示-节点的 _pics_名字/ 里所有图（旧版 frontmatter img: 也认）
@@ -206,11 +206,22 @@ export function Shell({ name, Canvas }) {
     } else { go(id); setSelected(null); }
   }, [graph, go]);
   const up = () => { const p = graph.nodes.get(realScope).parent; if (p !== null) { setSelected(realScope); go(p); } };
-  const connect = useCallback((from, to) => {
+  const connect = useCallback((from, to, mod) => {
     const resolve = id => id.startsWith('@portal:') ? id.slice(8) : id;
+    if (mod && mode === 'ws') { // 拖的是调节口：连线 + 写 kind 调节（一个请求做完）
+      api('/link', { method: 'POST', body: JSON.stringify({ from: resolve(from), to: resolve(to), kind: '调节' }) })
+        .then(d => { lastSaved.current = d.report.outline; setText(d.report.outline); setWsData(d); recordSave(d.report.outline, d.report); setSaveState('已连调节线：' + graph.nodes.get(resolve(from))?.label + ' ◆→ ' + graph.nodes.get(resolve(to))?.label); })
+        .catch(e => setSaveState('❌ ' + e.message));
+      return;
+    }
     const t = withEdge(graph, resolve(from), resolve(to));
     if (t) setText(t);
-  }, [graph]);
+  }, [graph, mode]);
+  // 属性面板里点边的类型：普通 → 调节 → 离散 → 普通
+  const cycleKind = (from, to, label, kind) => {
+    const next = MOD.test(kind) ? '离散' : DISCRETE.test(kind) ? '' : '调节';
+    api('/edge', { method: 'PATCH', body: JSON.stringify({ from, to, label, kind: next }) }).then(d => { setWsData(d); setSaveState('边的类型：' + (next || '普通')); }).catch(e => setSaveState('❌ ' + e.message));
+  };
   const move = useCallback((changes, opt = {}) => {
     // 空间页里拖成员 = 改它的 vec（只改投影的那两个方向上的分量），乐观更新后写回 frontmatter
     if (plane) {
@@ -646,7 +657,7 @@ export function Shell({ name, Canvas }) {
       {propsOpen && sel && !sel.startsWith('@') && graph.nodes.has(sel) && (
         <PropsPanel id={sel} graph={graph} wsNode={wsData?.nodes[sel]} edges={mode === 'ws' ? (wsData?.edges || []) : graph.edges}
           editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} onMeta={saveMeta} metaHints={mode === 'ws' ? metaHints(sel) : []} file={nodeFile(sel)} tab={propsTab} onTab={setPropsTab} raw={rawText} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)}
-          onRename={commitRename} color={colors.get(sel)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} />
+          onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} color={colors.get(sel)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} />
       )}
       {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（I 开关）</div></aside>}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
@@ -674,16 +685,18 @@ export function Shell({ name, Canvas }) {
 export const STATUS_ICON = { done: '✅', partial: '◐', todo: '○', dropped: '❌' };
 const PALETTE_IDLE = '#8a8a8a';
 export const DISCRETE = /离散|discrete|事件|event/i; // 边的 kind 是这些 → 虚线
+export const MOD = /调节|修改器|modifier|modulat/i; // 调节边：从下往上连到顶上的调节口，点线 + ◆（👤 2026-10-08 观察属性不是流进观察空间的数据）
 // >v<🎨画布-边的颜色-线 = 出发节点的颜色（core/colors.js），离散 = 虚线，箭头标方向（👤 2026-10-08 去掉进出渐变）；
 // 选中节点时颜色不变：相连的线变实变粗，其余变淡；没选中时越长越淡、越灰（有下限）—— 临时拖远的节点（待办）连线自然退到背景里
 // near = 算作「选中」的一组 id（选中一个框时 = 框 + 框里的节点）；不给就只看 selected
 export function edgeLook(e, selected, near = null) {
   const on = near ? near.has(e.to) || near.has(e.from) : e.to === selected || e.from === selected;
-  const w = 1.5 + Math.log2(e.count) * 1.5, color = e.dropped ? PALETTE_IDLE : e.color || PALETTE_IDLE, dash = e.dashed ? '6 4' : undefined;
-  if (e.dropped && !(selected && on)) return { hl: false, color, dash, opacity: selected ? 0.08 : 0.2, width: w }; // 连着弃用节点的线：灰、更淡
-  if (!selected) return { hl: false, color, dash, opacity: 0.6, width: w };
-  if (on) return { hl: true, color, dash, opacity: 1, width: w + 1.5 };
-  return { hl: false, color, dash, opacity: 0.14, width: w };
+  const w = (e.mod ? 1 : 1.5) + Math.log2(e.count) * 1.5, color = e.dropped ? PALETTE_IDLE : e.color || PALETTE_IDLE, dash = e.mod ? '2 4' : e.dashed ? '6 4' : undefined;
+  const mod = !!e.mod;
+  if (e.dropped && !(selected && on)) return { hl: false, color, dash, mod, opacity: selected ? 0.08 : 0.2, width: w }; // 连着弃用节点的线：灰、更淡
+  if (!selected) return { hl: false, color, dash, mod, opacity: 0.6, width: w };
+  if (on) return { hl: true, color, dash, mod, opacity: 1, width: w + 1.5 };
+  return { hl: false, color, dash, mod, opacity: 0.14, width: w };
 }
 export const FADE = { near: 350, far: 1600, minOpacity: 0.3, minSat: 0.15 }; // 画布坐标长度；短于 near 不衰减，长于 far 到下限
 export function lengthFade(len) {
