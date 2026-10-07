@@ -28,7 +28,7 @@ grep -rn ">v<💾工作区" core app bootstrap --include=*.js --include=*.jsx
 | `>v<🤖LLM接口` | `core/cli.js` | overview / outline / export / get / check / apply / init |
 | `>v<🧭导航` | `app/src/shell.jsx` | 钻进/退出、后退前进、视图记忆、快捷键 |
 | `>v<🎨画布` | `app/src/main.jsx` `app/src/td.jsx` `app/src/shell.jsx` | 两个画布实现、贴图 |
-| `>v<🚀启停` | `app/vite.config.js` `app/src/shell.jsx` `core/cli.js`(init) + `core/templates/Synapsis.vbs` `Synapsis_stop.bat` `Synapsis_init.bat` | 无窗口启动、按端口停止、心跳自动退出 |
+| `>v<🚀启停` | `app/vite.config.js` `app/src/shell.jsx` `core/cli.js`(init) + `core/templates/Synapsis.vbs` `Synapsis_stop.bat` `Synapsis_init.vbs` `core/tools/init_picker.ps1` | 无窗口启动、按端口停止、心跳自动退出 |
 | `>v<✅自检` | `app/test/` `core/test/` `core/workspace.js`(checkWorkspace) | 纯 Node 核心自检 + 无头 Edge 界面自检 |
 | `>v<🏗️构建引导` | `bootstrap/bootstrap.js` `bootstrap/template/` | 给新项目铺骨架，已有文件跳过 |
 
@@ -75,7 +75,7 @@ grep -rn ">v<💾工作区" core app bootstrap --include=*.js --include=*.jsx
 小标题：
 
 - **CLI** —— `node core/cli.js` 无参数看用法。LLM 先 `overview`（省 token）→ `get <id>` / `export <id>` → 改结构用 `apply` → `check`。
-- **init** —— 拖文件夹到 `Synapsis_init.bat`，或 `cli.js init <目录>`。给项目挂上 Synapsis（重跑安全：已有文件不动，只刷新生成的启动器）：`__synapsis/` + `_synapsis.md`、`.synapsis/`（自带 `*` gitignore，不碰项目原有 .gitignore）、`Synapsis.vbs`（VBScript 的 Escape 给 %uXXXX 浏览器不认 → 手写 UTF-8 编码，已与 encodeURIComponent 对过）。
+- **init** —— 双击 `Synapsis_init.vbs` 弹出系统选文件夹窗口（`init_picker.ps1`：IFileOpenDialog + FOS_PICKFOLDERS，资源管理器同款；.NET Framework 的 FolderBrowserDialog 是老式树形窗口所以不用；记住上次选的**上一级**目录在 `.synapsis/last_init_dir.txt`），或把文件夹拖到它上面，或 `cli.js init <目录>`。ps1 必须带 BOM（PS 5.1），读 node 输出前设 `[Console]::OutputEncoding = UTF8`；`SYN_QUIET=1` 不弹结果框（测试用），结果写 `.synapsis/last_init.log`。给项目挂上 Synapsis（重跑安全：已有文件不动，只刷新生成的启动器）：`__synapsis/` + `_synapsis.md`、`.synapsis/`（自带 `*` gitignore，不碰项目原有 .gitignore）、`Synapsis.vbs`（VBScript 的 Escape 给 %uXXXX 浏览器不认 → 手写 UTF-8 编码，已与 encodeURIComponent 对过）。
 
 ## `>v<🧭导航`
 

@@ -13,3 +13,4 @@
 11. `String.replace(a, b)` 的 b 里 `$$` `$&` `$1` 是替换模式（`$$` 变 `$`，playwright 的 `page.$$` 被吃）→ 用 `s.replace(a, () => b)` 或 split/join。
 12. Windows 上 git checkout 把文件转成 CRLF → 「内容没变就不写」必须先统一换行再比（`sameText`），否则一次 apply 重写全部文件。
 13. frontmatter 与正文之间固定空一行：不固定的话，人写的/导入的/工具写的格式不一致，往返会抖动（删掉空行也算改了正文）。
+14. PowerShell 5.1 的 `FolderBrowserDialog` 是老式树形窗口；要资源管理器同款得 Add-Type 调 `IFileOpenDialog` + `FOS_PICKFOLDERS`。PS 脚本含中文必须带 BOM；读 node 的 UTF-8 输出前设 `[Console]::OutputEncoding`。
