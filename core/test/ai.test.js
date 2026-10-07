@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { aiStatus, related, rerank, semColors, suggestWords, applyWords, explainRelation, embed } from '../ai.js';
+import { aiStatus, related, rerank, semColors, semPatterns, suggestWords, applyWords, explainRelation, embed } from '../ai.js';
 import { saveOutline, loadWorkspace, DIR } from '../workspace.js';
 import { colorMap, PALETTE } from '../colors.js';
 
@@ -21,7 +21,7 @@ const srv = createServer((req, res) => {
     const j = s ? JSON.parse(s) : {}, send = o => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(o)); };
     if (req.url === '/api/v0/models') return send({ data: [{ id: 'emb-x', type: 'embeddings', state: 'loaded' }, { id: 'chat-x', type: 'llm', state: 'not-loaded' }] });
     if (req.url === '/v1/embeddings') { embedCalls++; return send({ data: j.input.map((t, index) => ({ index, embedding: bag(t) })) }); }
-    if (req.url === '/v1/chat/completions') { chatCalls++; const sys = j.messages[0].content; return send({ choices: [{ message: { content: /归类配色/.test(sys) ? classify(j.messages[1].content) : chatReply } }] }); }
+    if (req.url === '/v1/chat/completions') { chatCalls++; const sys = j.messages[0].content; return send({ choices: [{ message: { content: /归类配色/.test(sys) ? classify(j.messages[1].content) : /底纹/.test(sys) ? j.messages[1].content.split(/\r?\n/).map(l => l.match(/^(\d+)\. (.*)$/)).filter(Boolean).map(m => `${m[1]}: ${/咕噜/.test(m[2]) ? 5 : 0}`).join('\n') : chatReply } }] }); }
     res.statusCode = 404; res.end();
   });
 });
@@ -72,6 +72,9 @@ try {
   const ws = loadWorkspace(root);
   const cm = colorMap(ws.graph, () => undefined, ws.colorWords, sc);
   ok(cm.get('情绪恐慌/子节点') === PALETTE.紫, 'colorMap 吃 sem：子节点跟着祖先变紫');
+  // 语义图案：词表没认出的才问（传感器组 含「传感」= 点阵，不问）；假模型把 咕噜人 归到第 5 行（波纹）
+  const sp = await semPatterns(root, cfg);
+  ok(sp['咕噜人'] === '波纹' && !('传感器组' in sp) && !sp['情绪恐慌'], '语义图案：只问词表没认出的，归「无」的不给 ' + JSON.stringify(sp));
   // 词表命中优先于语义：顶层被 AI 染了紫，下面词表命中「观测」的子节点仍是蓝
   const cm2 = colorMap(ws.graph, () => undefined, ws.colorWords, { 传感器组: PALETTE.紫 });
   ok(cm2.get('传感器组/观测台') === PALETTE.蓝 && cm2.get('传感器组/传感杂项') === PALETTE.紫, '词表命中排在语义配色前面');

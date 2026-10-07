@@ -810,6 +810,13 @@ for (const kind of ['reactflow']) {
   ok(!/生命/.test(gmd()) && !(await page.$('.meta.edit input.mk')), '✕ → 删掉属性');
   await page.fill('.addrow td:first-child input', '血量'); await page.fill('.addrow td:nth-child(2) input', '120'); await page.press('.addrow td:nth-child(2) input', 'Enter'); await sleep(1500);
   ok((await cardP()).includes('血量120'), '回车也能加');
+  // 底纹图案：词表认（传感器 → 点阵、情绪… → 波纹）；右键 → 图案 → 网格 写进 pattern:
+  const patOf = l => page.$$eval('.card', (cs, l) => [...(cs.find(c => c.querySelector('.lab')?.textContent === l)?.classList || [])].find(x => x.startsWith('pat-')) || '', l);
+  ok(await patOf('传感器') === 'pat-dots' && await patOf('情绪恐惧') === 'pat-wave', '图案词表：传感器 = 点阵，情绪恐惧 = 波纹 ' + await patOf('传感器') + ' ' + await patOf('情绪恐惧'));
+  ok(existsSync(join(ws, '__synapsis', '_图案.md')), '打开工作区就放出 _图案.md');
+  await page.mouse.click(...mid(await (await lab('吓坏了')).boundingBox()), { button: 'right' }); await sleep(300);
+  await page.click('.ctx .pats button.pat-grid'); await sleep(1500);
+  ok(/pattern: 网格/.test(readFileSync(join(ws, '__synapsis', '吓坏了.md'), 'utf8')) && await patOf('吓坏了') === 'pat-grid', '右键 → 图案 → 网格：写进 pattern:，卡片带网格底纹');
   // 📄 卡片里展开正文（md：标题 / 表格 / 列表）
   await page.mouse.click(700, 760); await sleep(200);
   const tb = await page.$$eval('.card', cs => cs.filter(c => c.querySelector('.textbadge')).map(c => c.querySelector('.lab').textContent));

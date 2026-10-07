@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { PALETTE } from './colors.js';
+import { PATTERNS, PATTERN_HINT } from './patterns.js';
 import { searchNodes, filterTree } from './search.js';
 const STATUS = [['done', '✅'], ['partial', '◐'], ['todo', '○'], ['dropped', '❌']];
 
@@ -53,6 +54,13 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         <button title="自动（按分组 / 名字配色，子节点跟着父节点）" className={!node.colorSet ? 'on auto' : 'auto'} onClick={() => { onClose(); actions.color(node.id, null); }}>自动</button>
         {actions.colorWords && <button title="自动配色按名字里的词认颜色：打开这个工作区的词表 __synapsis/_配色.md（没有就按默认建一份）" className="auto" onClick={() => { onClose(); actions.colorWords(); }}>词表…</button>}
       </div>}
+      {actions.pattern && <div className="mi row swatches pats" onPointerDown={e => e.stopPropagation()}>
+        <span>图案</span>
+        {Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (node.patternSet === k ? ' on' : !node.patternSet && node.pattern === k ? ' auto-on' : '')} style={{ '--c': node.color }} onClick={() => { onClose(); actions.pattern(node.id, k); }} />)}
+        <button title="自动（按图案词表 / AI 归类）" className={!node.patternSet ? 'on auto' : 'auto'} onClick={() => { onClose(); actions.pattern(node.id, null); }}>自动</button>
+        <button title="不要底纹" className={node.patternSet === '无' ? 'on auto' : 'auto'} onClick={() => { onClose(); actions.pattern(node.id, '无'); }}>无</button>
+        {actions.patternWords && <button title="打开图案词表 __synapsis/_图案.md" className="auto" onClick={() => { onClose(); actions.patternWords(); }}>词表…</button>}
+      </div>}
       {item('🔗 连线到…', () => actions.linkTo(node.id), { key: 'L' })}
       {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'Tab' })}
       {item('＋ 新建同级', () => actions.addSibling(node.id), { key: 'Enter' })}
@@ -101,7 +109,7 @@ function MetaTable({ id, meta, editable, onMeta, hints = [] }) {
   );
 }
 
-export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, tab, onTab, raw, onReveal, onRename, color, onColor, onColorWords, onEdgeKind, onEdgeRemove }) {
+export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, tab, onTab, raw, onReveal, onRename, color, onColor, onColorWords, pattern, onPattern, onPatternWords, onEdgeKind, onEdgeRemove }) {
   const n = graph.nodes.get(id);
   const [body, setBody] = useState(wsNode?.body || '');
   useEffect(() => setBody(wsNode?.body || ''), [id, wsNode?.body]);
@@ -136,6 +144,10 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
           {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={wsNode?.meta?.color === k ? 'on' : ''} style={{ background: c }} onClick={() => onColor(id, k)} />)}
           <button className={'auto' + (!wsNode?.meta?.color ? ' on' : '')} title="自动（按分组 / 词表配色）" onClick={() => onColor(id, null)}>自动</button>
           {onColorWords && <button className="auto" title="自动配色按名字里的词认颜色：打开这个工作区的词表 __synapsis/_配色.md" onClick={onColorWords}>词表…</button>}</div>}
+        {onPattern && <div className="row swatches pats">图案 {Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (wsNode?.meta?.pattern === k ? ' on' : !wsNode?.meta?.pattern && pattern === k ? ' auto-on' : '')} onClick={() => onPattern(id, k)} />)}
+          <button className={'auto' + (!wsNode?.meta?.pattern ? ' on' : '')} title="自动（按图案词表 / AI 归类）" onClick={() => onPattern(id, null)}>自动</button>
+          <button className={'auto' + (wsNode?.meta?.pattern === '无' ? ' on' : '')} title="不要底纹" onClick={() => onPattern(id, '无')}>无</button>
+          {onPatternWords && <button className="auto" title="打开图案词表 __synapsis/_图案.md" onClick={onPatternWords}>词表…</button>}</div>}
         <MetaTable id={id} meta={meta} editable={editable} onMeta={onMeta} hints={metaHints} />
         {(ins.length > 0 || outs.length > 0) && <div className="edges">
           {ins.length > 0 && <><div className="eh in">← 输入{sub.size > 1 ? '（含子节点）' : ''}</div><ul>{ins.map(e => edgeRow(e, e.from, e.to))}</ul></>}

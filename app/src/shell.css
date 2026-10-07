@@ -360,3 +360,12 @@ button.themebtn { padding: 1px 6px; }
 
 /* 拖到别的卡片上 = 放进去：目标高亮 */
 .react-flow__node.droptarget > .card, .react-flow__node.droptarget > .frame { outline: 2px dashed var(--accent); outline-offset: 3px; box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 50%, transparent); }
+
+/* 底纹图案（性质）：颜色 = 主题，图案 = 性质（core/patterns.js） */
+.pat-grid { background-image: linear-gradient(color-mix(in srgb, var(--c) 15%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--c) 15%, transparent) 1px, transparent 1px); background-size: 10px 10px; }
+.pat-dots { background-image: radial-gradient(color-mix(in srgb, var(--c) 45%, transparent) 1.1px, transparent 1.6px); background-size: 7px 7px; }
+.pat-hatch { background-image: repeating-linear-gradient(45deg, color-mix(in srgb, var(--c) 17%, transparent) 0 1px, transparent 1px 7px); }
+.pat-lines { background-image: repeating-linear-gradient(0deg, color-mix(in srgb, var(--c) 22%, transparent) 0 1px, transparent 1px 6px); }
+.pat-wave { background-image: radial-gradient(circle at 50% 100%, transparent 4px, color-mix(in srgb, var(--c) 30%, transparent) 4.5px, transparent 5.5px), radial-gradient(circle at 50% 0%, transparent 4px, color-mix(in srgb, var(--c) 30%, transparent) 4.5px, transparent 5.5px); background-size: 12px 10px; background-position: 0 0, 6px 5px; }
+button.patsw { width: 22px; height: 16px; border-radius: 3px; border: 1px solid var(--line2); background-color: var(--panel2); --c: var(--text); padding: 0; }
+button.patsw.on { outline: 2px solid var(--accent); } button.patsw.auto-on { outline: 1px dashed var(--accent); }

@@ -3,10 +3,10 @@ import react from '@vitejs/plugin-react';
 import { resolve, join, normalize, relative } from 'node:path';
 import { spawn } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
-import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, restoreRemoved, pasteNodes, ensureColorWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, DIR } from '../core/workspace.js';
+import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, restoreRemoved, pasteNodes, ensureColorWords, ensurePatternWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, DIR } from '../core/workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText } from '../core/cli.js';
-import { aiConfig, saveAiConfig, aiStatus, related, rerank, explainRelation, semColors, suggestWords, applyWords, readAiLog } from '../core/ai.js';
+import { aiConfig, saveAiConfig, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, readAiLog } from '../core/ai.js';
 import { runAgent, applyPlan, loadChat, clearChat } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
 const SYN_HOME = resolve(fileURLToPath(new URL('.', import.meta.url)), '..'); // AI 设置是本机的：<Synapsis>/.synapsis/ai.json
@@ -35,11 +35,12 @@ function workspaceApi() {
   const payload = root => {
     // 词表文件直接放出来（以前点「词表…」才建，👤 2026-10-08 根本找不到）
     if (existsSync(join(root, DIR)) && !existsSync(join(root, DIR, '_配色.md'))) { try { ensureColorWords(root); } catch { /* 只读目录就用默认 */ } }
+    if (existsSync(join(root, DIR)) && !existsSync(join(root, DIR, '_图案.md'))) { try { ensurePatternWords(root); } catch { /* 同上 */ } }
     const ws = loadWorkspace(root);
     const nodes = {};
     // file = 相对项目根的路径（文件树和「打开 md」用）；pics = 相对 __synapsis 的图片路径
     for (const [id, n] of ws.graph.nodes) if (id) nodes[id] = { meta: n.meta, body: n.body, file: relative(root, n.file).split('\\').join('/'), pics: n.pics };
-    return { root, outline: workspaceOutline(ws), layout: ws.layout, nodes, edges: ws.graph.edges, errors: ws.graph.errors, loose: ws.loose, colorWords: ws.colorWords };
+    return { root, outline: workspaceOutline(ws), layout: ws.layout, nodes, edges: ws.graph.edges, errors: ws.graph.errors, loose: ws.loose, colorWords: ws.colorWords, patternWords: ws.patternWords };
   };
   return {
     name: 'synapsis-workspace',
@@ -72,6 +73,7 @@ function workspaceApi() {
             return send(200, payload(root));
           }
           // 配色词表：没有就按默认写一份，返回相对项目根的路径（前端接着用默认程序打开）
+          if (url.pathname === '/pattern-words' && req.method === 'POST') return send(200, { file: relative(root, ensurePatternWords(root)).split('\\').join('/') });
           if (url.pathname === '/color-words' && req.method === 'POST') return send(200, { file: relative(root, ensureColorWords(root)).split('\\').join('/') });
           // 连线（带类型）/ 改已有边的标签类型
           if (url.pathname === '/link' && req.method === 'POST') { const b = await body(req); const r = linkNodes(root, b.from, b.to, b.label || '', b.kind || ''); return send(200, { report: r, ...payload(root) }); }
@@ -100,6 +102,7 @@ function workspaceApi() {
               if (url.pathname === '/ai/related') return send(200, { items: await related(root, url.searchParams.get('id') || '', cfg) });
               if (url.pathname === '/ai/rerank' && req.method === 'POST') { const b = await body(req); return send(200, { items: await rerank(root, b.id, b.items, cfg) }); }
               if (url.pathname === '/ai/explain' && req.method === 'POST') { const b = await body(req); return send(200, { text: await explainRelation(root, b.id, b.other, cfg) }); }
+              if (url.pathname === '/ai/patterns') return send(200, { patterns: cfg.semColors ? await semPatterns(root, cfg) : {} });
               if (url.pathname === '/ai/colors') return send(200, { colors: cfg.semColors ? await semColors(root, cfg) : {} });
               if (url.pathname === '/ai/words' && req.method === 'POST') return send(200, await suggestWords(root, cfg));
               if (url.pathname === '/ai/words/apply' && req.method === 'POST') { const f = applyWords(root, (await body(req)).text); return send(200, { file: relative(root, f).split('\\').join('/'), ...payload(root) }); }

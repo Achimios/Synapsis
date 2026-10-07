@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, autoLayout, lineOf, resolveLabel, isDropped, withCopies, withoutEdge, ROOT } from './outline.js';
 import { colorMap } from './colors.js';
+import { patternMap, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
 import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal, ScaffoldModal, SearchModal } from './panels.jsx';
 import { AiPanel, RelatedDock, AgentBox } from './ai.jsx';
@@ -91,6 +92,13 @@ export function Shell({ name, Canvas }) {
     return () => clearTimeout(t);
   }, [mode, aiStatus, wsData?.outline, wsData?.colorWords]);
   const colors = useMemo(() => colorMap(graph, getMeta, wsData?.colorWords, semCols), [graph, getMeta, wsData?.colorWords, semCols]);
+  const [semPats, setSemPats] = useState(null);
+  useEffect(() => {
+    if (mode !== 'ws' || !aiStatus?.ok || !aiStatus.cfg?.semColors) { setSemPats(null); return; }
+    const t = setTimeout(() => api('/ai/patterns').then(d => setSemPats(d.patterns)).catch(() => {}), 2500);
+    return () => clearTimeout(t);
+  }, [mode, aiStatus, wsData?.outline, wsData?.patternWords]);
+  const patterns = useMemo(() => patternMap(graph, getMeta, wsData?.patternWords, semPats), [graph, getMeta, wsData?.patternWords, semPats]);
   // 边标签 / 节点副标题来自工作区文件（大纲里没有）
   const view = useMemo(() => {
     const v = projectView(graph, realScope, space ? null : new Set(Object.keys(framed).filter(k => framed[k] && graph.nodes.get(k)?.children.length)));
@@ -110,7 +118,7 @@ export function Shell({ name, Canvas }) {
     return {
       ...v,
       nodes: v.nodes.map(n => ({
-        ...n, color: colOf(n.id), dropped: isDropped(graph, n.id), sub: wsData?.nodes[n.id]?.meta?.rate || '',
+        ...n, color: colOf(n.id), pattern: PATTERNS[patterns.get(n.id)] || '', dropped: isDropped(graph, n.id), sub: wsData?.nodes[n.id]?.meta?.rate || '',
         evidence: wsData?.nodes[n.id]?.meta?.evidence || '',
         props: cardProps(wsData?.nodes[n.id]?.meta),
         vec: getMeta(n.id)?.vec ? parseVec(getMeta(n.id).vec) : null, vecAxes: pAxes,
@@ -124,7 +132,7 @@ export function Shell({ name, Canvas }) {
       // 线 = 出发节点的颜色；kind 是「离散」→ 虚线（聚合的边要每条都离散才虚）
       edges: v.edges.map(e => ({ ...e, text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e), color: colOf(e.from), dropped: [e.from, e.to].some(x => isDropped(graph, x.startsWith('@portal:') ? x.slice(8) : x)), dashed: e.raw.every(r => DISCRETE.test(kind.get(r) || '')), mod: e.raw.every(r => MOD.test(kind.get(r) || '')) })),
     };
-  }, [graph, realScope, wsData, expanded, picFold, textOpen, localPicw, space, getMeta, colors, canvasRename, framed]);
+  }, [graph, realScope, wsData, expanded, picFold, textOpen, localPicw, space, getMeta, colors, patterns, canvasRename, framed]);
   // >v<🖼️图片-卡片显示-节点的 _pics_名字/ 里所有图（旧版 frontmatter img: 也认）
   const images = useMemo(() => {
     if (local) return localImages;
@@ -447,6 +455,8 @@ export function Shell({ name, Canvas }) {
     up: () => up(), canUp: realScope !== ROOT,
     // 只有 👤 在这里点了才写 color:；「自动」= 删掉 color:，回到按分组 / 关键词自动配色
     color: mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null,
+    pattern: mode === 'ws' ? (id, p) => saveMeta(id, { pattern: p }) : null,
+    patternWords: mode === 'ws' ? () => api('/pattern-words', { method: 'POST' }).then(d => { reveal(d.file, 'open'); setSaveState('图案词表：' + d.file + '（改完保存，Synapsis 会自动刷新）'); }).catch(e => setSaveState('❌ ' + e.message)) : null,
     colorWords: mode === 'ws' ? () => api('/color-words', { method: 'POST' }).then(d => { reveal(d.file, 'open'); setSaveState('配色词表：' + d.file + '（改完保存，Synapsis 会自动刷新）'); }).catch(e => setSaveState('❌ ' + e.message)) : null,
     toggleAll: () => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; }),
   };
@@ -765,7 +775,7 @@ export function Shell({ name, Canvas }) {
       {propsOpen && sel && !sel.startsWith('@') && graph.nodes.has(sel) && (
         <PropsPanel id={sel} graph={graph} wsNode={wsData?.nodes[sel]} edges={mode === 'ws' ? (wsData?.edges || []) : graph.edges}
           editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} onMeta={saveMeta} metaHints={mode === 'ws' ? metaHints(sel) : []} file={nodeFile(sel)} tab={propsTab} onTab={setPropsTab} raw={rawText} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)}
-          onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} onEdgeRemove={(from, to) => removeEdges([[from, to]])} color={colors.get(sel)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} onColorWords={menuActions.colorWords} />
+          onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} onEdgeRemove={(from, to) => removeEdges([[from, to]])} color={colors.get(sel)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} onColorWords={menuActions.colorWords} pattern={patterns.get(sel)} onPattern={menuActions.pattern} onPatternWords={menuActions.patternWords} />
       )}
       {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（I 开关）</div></aside>}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
@@ -784,7 +794,7 @@ export function Shell({ name, Canvas }) {
       {scaffold && <ScaffoldModal items={scaffold} root={wsData?.root || ''} onClose={() => setScaffold(null)}
         onCreate={files => api('/scaffold', { method: 'POST', body: JSON.stringify({ files }) }).then(d => { setScaffold(null); setTree(null); setSaveState(d.made.length ? '已创建 ' + d.made.join('、') : '没有新建（都已存在）'); }).catch(e => setSaveState('❌ ' + e.message))} />}
       {fileView && <FilePanel file={fileView.text !== undefined || fileView.error || fileView.note ? fileView : null} onClose={() => setFileView(null)} />}
-      {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), color: colors.get(menu.id), colorSet: getMeta(menu.id)?.color || null, open: !!expanded[menu.id], descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
+      {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), color: colors.get(menu.id), colorSet: getMeta(menu.id)?.color || null, patternSet: getMeta(menu.id)?.pattern || null, pattern: patterns.get(menu.id) || null, open: !!expanded[menu.id], descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
         actions={{ ...menuActions, allOpen }} onClose={() => setMenu(null)} />}
       {exportText !== null && (
         <div className="modal" onClick={() => setExportText(null)}>
@@ -868,7 +878,7 @@ export function NodeCard({ node, img, dim, isSel }) {
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
   };
   return (
-    <div className={'card' + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (showPics ? ' hasimg' : '') + (node.status ? ' s-' + node.status : '') + (node.dropped ? ' dropped' : '')}
+    <div className={'card' + (node.pattern ? ' pat-' + node.pattern : '') + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (showPics ? ' hasimg' : '') + (node.status ? ' s-' + node.status : '') + (node.dropped ? ' dropped' : '')}
       style={{ ...(node.color ? { '--c': node.color } : {}), ...(showPics && node.picw ? { width: node.picw, maxWidth: 'none' } : node.textOpen ? { width: 420, maxWidth: 'none' } : {}) }}>
       <div className="title">{node.status && <span className="st">{STATUS_ICON[node.status]}</span>}{node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
         {pics && <span className="picbadge" title={node.foldPics ? '显示图片' : '收起图片'} onPointerDown={stop} onMouseDown={stop}

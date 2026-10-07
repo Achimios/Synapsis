@@ -8,6 +8,7 @@ import { join, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { loadWorkspace, listTree, DIR } from './workspace.js';
 import { PALETTE, WORDS_FILE, DEFAULT_WORDS, parseColorWords, wordColor } from './colors.js';
+import { PATTERN_HINT, DEFAULT_PATTERN_WORDS, parsePatternWords, wordPattern } from './patterns.js';
 import { isDropped } from './outline.js';
 
 export const AI_DEFAULTS = { url: 'http://127.0.0.1:1234/v1', embed: 'text-embedding-qwen3-embedding-0.6b', chat: 'qwen3-8b', semColors: true };
@@ -175,23 +176,43 @@ export async function semColors(root, cfg) {
   if (!rules.length) return {};
   const chainHit = id => { for (let x = id; x; x = g.nodes.get(x)?.parent) if (wordColor(g.nodes.get(x).label, rules)) return true; return false; };
   const ids = [...g.nodes.keys()].filter(x => x && !isDropped(g, x) && !chainHit(x));
-  const file = join(root, '.synapsis', 'ai_colors.json'), key = h(cfg.chat + JSON.stringify(rules));
-  let cache = {};
-  try { const c = JSON.parse(readFileSync(file, 'utf8')); if (c.key === key) cache = c.map; } catch { /* 第一次 */ }
-  const todo = [...new Set(ids.map(x => g.nodes.get(x).label).filter(l => !(l in cache)))];
-  const rows = rules.map((r, i) => `${i + 1}. ${r.words.join('、')}`).join('\n');
-  for (let i = 0; i < todo.length; i += 60) {
-    const part = todo.slice(i, i + 60);
-    const raw = await chat(cfg, `你在帮人给思维导图的节点归类配色。类别（编号. 关键词）：
-${rows}
-对每个节点名，判断它最属于哪个类别；都不贴切就写 0。每行输出「节点序号: 类别编号」，不要别的文字。`, part.map((l, j) => `${j + 1}. ${l}`).join('\n'), 20 + part.length * 12, { kind: "语义配色", temperature: 0.1 });
-    const got = {};
-    for (const m of raw.matchAll(/(\d+)\s*[:：.、]\s*(\d+)/g)) got[+m[1] - 1] = +m[2] - 1;
-    part.forEach((l, j) => { const r = got[j]; cache[l] = r >= 0 && r < rules.length ? r : -1; });
-  }
-  if (todo.length) { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, JSON.stringify({ key, map: cache })); }
+  const cache = await classifyLabels(cfg, join(root, '.synapsis', 'ai_colors.json'), rules.map(r => r.words.join('、')), ids.map(x => g.nodes.get(x).label),
+    '你在帮人给思维导图的节点归类配色。', '语义配色');
   const out = {};
   for (const id of ids) { const r = cache[g.nodes.get(id).label]; if (r >= 0) out[id] = rules[r].color; }
+  return out;
+}
+
+// 通用：把一批名字归到 rows 的某一行（-1 = 都不贴切）。按名字缓存在 file（行或模型一变就作废），只问新名字
+async function classifyLabels(cfg, file, rows, labels, intro, kind) {
+  const key = h(cfg.chat + JSON.stringify(rows));
+  let cache = {};
+  try { const c = JSON.parse(readFileSync(file, 'utf8')); if (c.key === key) cache = c.map; } catch { /* 第一次 */ }
+  const todo = [...new Set(labels.filter(l => !(l in cache)))];
+  const list = rows.map((r, i) => `${i + 1}. ${r}`).join('\n');
+  for (let i = 0; i < todo.length; i += 60) {
+    const part = todo.slice(i, i + 60);
+    const raw = await chat(cfg, `${intro}类别（编号. 关键词）：
+${list}
+对每个节点名，判断它最属于哪个类别；都不贴切就写 0。每行输出「节点序号: 类别编号」，不要别的文字。`, part.map((l, j) => `${j + 1}. ${l}`).join('\n'), 20 + part.length * 12, { kind, temperature: 0.1 });
+    const got = {};
+    for (const m of raw.matchAll(/(\d+)\s*[:：.、]\s*(\d+)/g)) got[+m[1] - 1] = +m[2] - 1;
+    part.forEach((l, j) => { const r = got[j]; cache[l] = r >= 0 && r < rows.length ? r : -1; });
+  }
+  if (todo.length) { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, JSON.stringify({ key, map: cache })); }
+  return cache;
+}
+
+// >v<🤖AI辅助-语义图案-词表没认出、也没手动写 pattern: 的节点，让对话模型按「性质」归到图案词表某一行（可以归「无」）
+export async function semPatterns(root, cfg) {
+  const ws = loadWorkspace(root), g = ws.graph;
+  const { rules } = parsePatternWords(ws.patternWords ?? DEFAULT_PATTERN_WORDS);
+  if (!rules.length) return {};
+  const ids = [...g.nodes.keys()].filter(x => x && !isDropped(g, x) && !g.nodes.get(x).meta?.pattern && !wordPattern(g.nodes.get(x).label, rules));
+  const cache = await classifyLabels(cfg, join(root, '.synapsis', 'ai_patterns.json'), rules.map(r => `${r.pattern}（${PATTERN_HINT[r.pattern]}）：${r.words.join('、')}`), ids.map(x => g.nodes.get(x).label),
+    '你在帮人给节点标注「性质」底纹（不是主题，是这个东西是什么性质：几何空间、读数数据、结构流程、文档规则、情绪信号）。', '语义图案');
+  const out = {};
+  for (const id of ids) { const r = cache[g.nodes.get(id).label]; if (r >= 0) out[id] = rules[r].pattern; }
   return out;
 }
 
