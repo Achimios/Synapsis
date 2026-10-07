@@ -1,7 +1,7 @@
 # 开发进度（只写现状；流水账在 `_过期的/_DevProgress.md`）
 
 > 规矩见 `_ProjectRules.md` §2：修好的小 bug、技术过程当轮就剪去过期；机理进 `_LEARNINGS.md`。
-> 最近一次全量自检（2026-10-08）：workspace 50、cli 32、space 18、arrange 11、colors 11、outline 25、ui 129、desktop 9 —— 全过。
+> 最近一次全量自检（2026-10-08）：workspace 56、cli 32、space 18、arrange 11、colors 11、select 9、outline 25、ui 142、desktop 9 —— 全过。
 
 | 模块 | 状态 | ⚠️ 还没验到 |
 |---|---|---|

@@ -198,6 +198,35 @@ export function withNode(g, parent, after = null, base = '新节点') {
   return { text: toOutline(h), id };
 }
 
+// >v<🌳大纲模型-复制节点-把 ids（连同子孙、状态、它们之间的边）复制到 parent 下；同名加「 2」「 3」。
+// 返回 {text, map: [[旧id, 新id]…], roots: [新的顶层 id…]}；属性 / 正文 / 图片由 workspace.pasteNodes 跟着拷
+export function withCopies(g, ids, parent) {
+  if (!g.nodes.has(parent)) return null;
+  const inSet = new Set(ids.filter(id => g.nodes.has(id) && id !== ROOT));
+  const under = id => { for (let x = g.nodes.get(id).parent; x != null; x = g.nodes.get(x).parent) if (inSet.has(x)) return true; return false; };
+  const roots = [...inSet].filter(id => !under(id));
+  if (!roots.length) return null;
+  const h = cloneGraph(g), map = new Map(), newRoots = [];
+  const taken = new Set(h.nodes.get(parent).children.map(c => h.nodes.get(c).label));
+  const clone = (old, newParent, label) => {
+    const id = newParent === ROOT ? label : newParent + '/' + label;
+    h.nodes.set(id, { id, label, parent: newParent, status: g.nodes.get(old).status, children: [] });
+    h.nodes.get(newParent).children.push(id);
+    map.set(old, id);
+    for (const c of g.nodes.get(old).children) clone(c, id, g.nodes.get(c).label);
+    return id;
+  };
+  for (const r of roots) {
+    const base = g.nodes.get(r).label;
+    let label = base, i = 2;
+    while (taken.has(label)) label = base + ' ' + i++;
+    taken.add(label);
+    newRoots.push(clone(r, parent, label));
+  }
+  for (const e of g.edges) if (map.has(e.from) && map.has(e.to)) h.edges.push({ id: map.get(e.from) + '->' + map.get(e.to), from: map.get(e.from), to: map.get(e.to) });
+  return { text: toOutline(h), map: [...map], roots: newRoots };
+}
+
 // 初始自动布局：范围内按最长路径分层（左→右），已有坐标的不动
 // >v<🔭视图投影-自动布局-最长路径分层，回边忽略，奇数层下错；已有坐标不动
 export function autoLayout(view, positions) {

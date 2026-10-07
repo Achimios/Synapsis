@@ -1,7 +1,7 @@
 // 外壳：左大纲（真源）、面包屑、导出、快捷键、贴图、工作区读写。
 // 画布组件（main.jsx，React Flow）只负责「显示 view + 回报用户操作」。
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, autoLayout, lineOf, resolveLabel, isDropped, ROOT } from './outline.js';
+import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, autoLayout, lineOf, resolveLabel, isDropped, withCopies, ROOT } from './outline.js';
 import { colorMap } from './colors.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
 import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal, ScaffoldModal } from './panels.jsx';
@@ -464,8 +464,47 @@ export function Shell({ name, Canvas }) {
       setWsData(await api('/ws'));
     } catch (e) { setSaveState('❌ 贴图失败：' + e.message); }
   };
+  // >v<🌳大纲模型-复制粘贴节点-Ctrl+C 复制选中的卡（含框选 / Ctrl 多选）连同子孙、属性、正文、图片、它们之间的边；
+  // Ctrl+V 粘到当前页、落在鼠标处，同名加「 2」，能撤销（👤 2026-10-08）。剪贴板里写一行带标记的文本；不是节点才当图片贴
+  const CLIP = 'synapsis-nodes:';
+  const mouse = useRef(null);
+  useEffect(() => { const m = e => { mouse.current = { x: e.clientX, y: e.clientY }; }; window.addEventListener('pointermove', m); return () => window.removeEventListener('pointermove', m); }, []);
+  const pasteNodes = async ids => {
+    const r = withCopies(graph, ids, realScope);
+    if (!r) return setSaveState('剪贴板里的节点不在这个工作区');
+    let roots = r.roots;
+    if (mode === 'ws') {
+      try {
+        const d = await api('/paste', { method: 'POST', body: JSON.stringify({ ids, parent: realScope }) });
+        roots = d.report.roots;
+        lastSaved.current = d.report.outline; setText(d.report.outline); setWsData(d); recordSave(d.report.outline, d.report);
+      } catch (e) { return setSaveState('❌ 粘贴失败：' + e.message); }
+    } else setText(r.text);
+    const p = mouse.current && cardActions.toFlow ? cardActions.toFlow(mouse.current) : null;
+    if (p) move(Object.fromEntries(roots.map((id, i) => [id, { x: Math.round(p.x), y: Math.round(p.y + i * 50) }])), { silent: true });
+    setSelected(roots[0]);
+    setSaveState('已粘贴 ' + roots.map(id => graph.nodes.get(id)?.label || id.split('/').pop()).join('、') + '（Ctrl+Z 撤销）');
+  };
+  useEffect(() => {
+    const onCopy = e => {
+      if (e.target.closest?.('textarea, input, [contenteditable="true"]') || window.getSelection()?.toString()) return; // 在输入框里 / 选了文字 = 正常复制文字
+      const ids = (cardActions.multi?.length ? cardActions.multi : sel ? [sel] : []).filter(id => !id.startsWith('@'));
+      if (!ids.length) return;
+      e.preventDefault();
+      e.clipboardData.setData('text/plain', CLIP + JSON.stringify({ ids }));
+      setSaveState('已复制 ' + ids.length + ' 个节点（连同子孙）· 到目标页 Ctrl+V');
+    };
+    window.addEventListener('copy', onCopy);
+    return () => window.removeEventListener('copy', onCopy);
+  });
   useEffect(() => {
     const onPaste = e => {
+      const txt = e.clipboardData?.getData('text/plain') || '';
+      if (txt.startsWith(CLIP) && !e.target.closest?.('textarea, input, [contenteditable="true"]')) {
+        e.preventDefault(); e.stopPropagation();
+        try { pasteNodes(JSON.parse(txt.slice(CLIP.length)).ids); } catch { setSaveState('❌ 剪贴板内容坏了'); }
+        return;
+      }
       const files = [...(e.clipboardData?.items || [])].filter(i => i.type.startsWith('image/')).map(i => i.getAsFile());
       if (!files.length) return;
       e.preventDefault(); e.stopPropagation();

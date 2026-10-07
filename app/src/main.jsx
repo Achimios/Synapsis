@@ -4,7 +4,7 @@ import { ReactFlow, Background, Controls, MiniMap, Handle, Position, applyNodeCh
 import { dragScale } from './arrange.js';
 import { expand, pathBetween } from './select.js';
 import '@xyflow/react/dist/style.css';
-import { Shell, NodeCard, PortalCard, PicCard, AxesCard, MatrixChip, edgeLook, lengthFade, desat, nodeDim } from './shell.jsx';
+import { Shell, cardActions, NodeCard, PortalCard, PicCard, AxesCard, MatrixChip, edgeLook, lengthFade, desat, nodeDim } from './shell.jsx';
 
 function SNode({ data }) {
   return (
@@ -75,6 +75,9 @@ function ScaleFrame({ nodes, ids, setNodes, onMove }) {
   );
 }
 
+// 外壳要把屏幕坐标换成画布坐标（粘贴落在鼠标处）
+function FlowBridge() { const rf = useReactFlow(); cardActions.toFlow = p => rf.screenToFlowPosition(p); return null; }
+
 // >v<🎨画布-ReactFlow-显示 view + 回报选择/拖动/连线/视图
 function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, onDrill, onConnect, onMove, onContextMenu, viewport, onViewport }) {
   const centered = new Set(plane?.ids || []); // 空间成员：卡片中心对准坐标点
@@ -85,6 +88,7 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
   const setMulti = ids => { const next = ids.length > 1 ? [...new Set(ids)].sort() : []; setMultiRaw(m => m.join('|') === next.join('|') ? m : next); };
   const ms = new Set(multi);
   const isSel = id => id === selected || ms.has(id);
+  cardActions.multi = multi; // 外壳的 Ctrl+C 要知道多选了哪些
   const build = () => [
     ...(plane ? [{ id: '@axes', type: 'axes', position: { x: -plane.S * 1.25, y: -plane.S * 1.25 }, data: plane, draggable: false, selectable: false, focusable: false, zIndex: -1, style: { pointerEvents: 'none' } }] : []),
     ...view.nodes.map(n => ({ id: n.id, type: 's', position: layout[n.id], ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id) }, selected: isSel(n.id) })),
@@ -149,6 +153,7 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
       <Background gap={24} size={1} color="#333" />
       <Controls showInteractive={false} />
       <MiniMap pannable zoomable nodeColor={n => n.data?.node?.color || n.data?.portal?.color || "#444"} nodeStrokeColor="#666" maskColor="rgba(0,0,0,.55)" />
+      <FlowBridge />
       {multi.length > 1 && <ScaleFrame nodes={nodes} ids={multi} setNodes={setNodes} onMove={onMove} />}
     </ReactFlow>
   );

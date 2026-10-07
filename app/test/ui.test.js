@@ -490,6 +490,19 @@ for (const kind of ['reactflow']) {
   await page.mouse.click(...mid(await (await card('乙')).boundingBox()), { button: 'right' }); await sleep(300);
   await page.click('.ctx .mi.row button:has-text("—")'); await sleep(1500);
   ok(!/status:/.test(readFileSync(join(ws, '__synapsis', '乙.md'), 'utf8')) && !(await (await card('乙')).getAttribute('class')).includes('dropped'), '「—」清除状态');
+  // 复制粘贴节点（👤 2026-10-08：Ctrl+C 没反应）：选 甲 + Ctrl 选 乙 → Ctrl+C → 鼠标处 Ctrl+V → 甲 2、乙 2（正文、内部边都在）→ Ctrl+Z 撤掉
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.keyboard.press('Escape');
+  await page.mouse.click(...mid(await (await card('甲')).boundingBox())); await sleep(200);
+  await page.keyboard.down('Control'); await page.mouse.click(...mid(await (await card('乙')).boundingBox())); await page.keyboard.up('Control'); await sleep(300);
+  await page.keyboard.press('Control+c'); await sleep(300);
+  ok((await save()).includes('已复制 2 个节点'), 'Ctrl+C 复制多选 ' + await save());
+  await page.mouse.move(700, 650); await page.keyboard.press('Control+v'); await sleep(2000);
+  const j2 = join(ws, '__synapsis', '甲 2.md');
+  ok(existsSync(j2) && readFileSync(j2, 'utf8').includes('甲的正文') && /- 乙 2/.test(readFileSync(j2, 'utf8')) && existsSync(join(ws, '__synapsis', '乙 2.md')), 'Ctrl+V → 甲 2 / 乙 2，正文和内部边都跟着 ' + await save());
+  ok(!!(await card('甲 2')) && !!(await card('乙 2')), '画布上出现两张新卡');
+  await page.mouse.click(700, 760); await page.keyboard.press('Control+z'); await sleep(1800);
+  ok(!existsSync(j2) && !existsSync(join(ws, '__synapsis', '乙 2.md')) && existsSync(join(ws, '__synapsis', '甲.md')), 'Ctrl+Z 撤销粘贴（新卡进 _过期的/，原件在）');
   // 拖动 → 撤销 → 坐标回去
   const lay = () => JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'));
   const x丁 = lay()['丁'].x;

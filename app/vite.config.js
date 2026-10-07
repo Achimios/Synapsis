@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import { resolve, join, normalize, relative } from 'node:path';
 import { spawn } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
-import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, restoreRemoved, DIR } from '../core/workspace.js';
+import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, restoreRemoved, pasteNodes, DIR } from '../core/workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText } from '../core/cli.js';
 
@@ -65,6 +65,8 @@ function workspaceApi() {
             if (typeof b.body === 'string') setNodeBody(root, b.id, b.body);
             return send(200, payload(root));
           }
+          // 粘贴节点：复制子孙 / 属性 / 正文 / 图片 / 内部边到 parent 下
+          if (url.pathname === '/paste' && req.method === 'POST') { const b = await body(req); const r = pasteNodes(root, b.ids, b.parent); return send(200, { report: r, ...payload(root) }); }
           // 撤销删除：把 _过期的/ 里的文件搬回去（随后前端写回删除前的大纲）
           if (url.pathname === '/restore' && req.method === 'POST') return send(200, { restored: restoreRemoved(root, (await body(req)).pairs) });
           // 项目骨架（_DevProgress.md 那套）：GET = 检测清单，POST = 只写勾上且不存在的

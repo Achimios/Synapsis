@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, restoreRemoved, groupStatus, DIR } from '../workspace.js';
+import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, restoreRemoved, groupStatus, pasteNodes, setNodeBody, DIR } from '../workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../scaffold.js';
 import { SAMPLE } from '../../app/src/sample.js';
 
@@ -153,6 +153,25 @@ try {
     ok(g5.edges.some(e => e.from === '小队/队长' && e.to === '小队/步枪兵'), '跨父移动：边还在');
   } finally { rmSync(r5, { recursive: true, force: true }); }
 
+  // 粘贴节点：子孙、状态、内部边、属性、正文、节点图片都跟着拷；同名加「 2」；外部的边不拷；原件不动（👤 2026-10-08）
+  const rPaste = mkdtempSync(join(tmpdir(), 'syn-paste-'));
+  try {
+    saveOutline(rPaste, '小队\n  ✅ 队长 -> 斥候, 外人\n  斥候\n外人\n目标页\n  队长');
+    setNodeMeta(rPaste, '小队/队长', { 兵种: '精英', color: '粉' });
+    setNodeBody(rPaste, '小队/队长', '\n队长的正文\n');
+    saveAsset(rPaste, '小队/队长', 'data:image/png;base64,' + Buffer.from('fakepng').toString('base64'));
+    const before = readFileSync(join(rPaste, DIR, '小队', '队长.md'), 'utf8');
+    const rep = pasteNodes(rPaste, ['小队/队长', '小队/斥候', '小队'], '目标页');
+    const g = loadWorkspace(rPaste).graph;
+    ok(rep.roots.join() === '目标页/小队' && g.nodes.has('目标页/小队/队长') && g.nodes.has('目标页/小队/斥候'), '选了分组和它的子节点 → 只复制分组一次（含子孙） ' + rep.roots);
+    const cap = g.nodes.get('目标页/小队/队长');
+    ok(cap.status === 'done' && cap.meta.兵种 === '精英' && cap.meta.color === '粉' && cap.body.includes('队长的正文'), '状态、属性、正文跟着拷');
+    ok(g.edges.some(e => e.from === '目标页/小队/队长' && e.to === '目标页/小队/斥候') && !g.edges.some(e => e.from === '目标页/小队/队长' && e.to === '外人'), '内部边跟着拷（指向新斥候），外部边不拷');
+    ok(existsSync(join(rPaste, DIR, '目标页', '小队', '_pics_队长')) && readdirSync(join(rPaste, DIR, '目标页', '小队', '_pics_队长')).length === 1, '节点图片跟着拷');
+    { const after = readFileSync(join(rPaste, DIR, '小队', '队长.md'), 'utf8'), norm = s => s.replace(/\n+/g, '\n'); ok(norm(after) === norm(before) && g.nodes.has('小队/队长'), '原件不动（空行数不算） ' + JSON.stringify([before, after])); }
+    const rep2 = pasteNodes(rPaste, ['小队/队长'], '目标页');
+    ok(rep2.roots.join() === '目标页/队长 2', '同名（目标页里已有 队长）→ 加「 2」 ' + rep2.roots);
+  } finally { rmSync(rPaste, { recursive: true, force: true }); }
   // 弃用 ❌：frontmatter status: dropped 往返；分组汇总不算它；check 跳过它和子孙（👤 2026-10-08）
   const rDrop = mkdtempSync(join(tmpdir(), 'syn-drop-'));
   try {

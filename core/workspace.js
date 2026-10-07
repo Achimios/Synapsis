@@ -14,9 +14,9 @@
 //     - 决策空间 | 局势             （出边：目标 | 标签 | 类型）
 //   ---
 //   正文（人写的，Synapsis 不动）
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, unlinkSync, rmdirSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, unlinkSync, rmdirSync, cpSync } from 'node:fs';
 import { join, dirname, relative, isAbsolute } from 'node:path';
-import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, ROOT } from './outline.js';
+import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, withCopies, ROOT } from './outline.js';
 import { checkSpaces } from './space.js';
 
 export const DIR = '__synapsis';
@@ -309,6 +309,26 @@ export function setNodeMeta(root, id, patch) {
   const meta = { ...n.meta, ...(fileName(n.label) !== n.label ? { label: n.label } : {}), ...(n.status ? { status: n.status } : {}), ...(n.order !== Infinity ? { order: String(n.order) } : {}) };
   for (const [k, v] of Object.entries(patch)) { if (v === null) delete meta[k]; else meta[k] = v; }
   writeFileSync(n.file, serializeNode(meta, n.body));
+}
+
+// >v<💾工作区-粘贴节点-复制 ids（子孙、状态、内部边）到 parent 下，再把属性（除结构字段）、正文、节点图片跟着拷（👤 2026-10-08）
+export function pasteNodes(root, ids, parent) {
+  const ws = loadWorkspace(root);
+  const r = withCopies(ws.graph, ids, parent);
+  if (!r) throw new Error('没有可复制的节点（不在这个工作区？）');
+  const report = saveOutline(root, r.text);
+  if (!report.ok) throw new Error('粘贴失败：' + JSON.stringify(report.errors || report));
+  const now = loadWorkspace(root);
+  for (const [o, n] of r.map) {
+    const src = ws.graph.nodes.get(o), dst = now.graph.nodes.get(n);
+    if (!src || !dst) continue;
+    const extra = Object.fromEntries(Object.entries(src.meta).filter(([k]) => !['to', 'label', 'status', 'order'].includes(k)));
+    const meta = { ...dst.meta, ...extra, ...(fileName(dst.label) !== dst.label ? { label: dst.label } : {}), ...(dst.status ? { status: dst.status } : {}), ...(dst.order !== Infinity ? { order: String(dst.order) } : {}) };
+    writeFileSync(dst.file, serializeNode(meta, src.body));
+    const pf = picsDir(src.file, src.label), pt = picsDir(dst.file, dst.label);
+    if (existsSync(pf) && !existsSync(pt)) cpSync(pf, pt, { recursive: true });
+  }
+  return { ...report, map: r.map, roots: r.roots, outline: r.text };
 }
 
 // >v<🖼️图片-贴图落盘-存进节点旁边的 _pics_名字/（不写 frontmatter：文件夹就是真源）
