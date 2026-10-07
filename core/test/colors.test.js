@@ -1,6 +1,6 @@
 // >v<✅自检-节点配色-关键词认色、最上层关键词优先、顶层轮色、color: 覆盖并往下继承
 // node core/test/colors.test.js
-import { colorMap, parseColor, PALETTE } from '../colors.js';
+import { colorMap, parseColor, parseColorWords, PALETTE, DEFAULT_WORDS } from '../colors.js';
 import { parseOutline } from '../outline.js';
 
 let pass = 0, fail = 0;
@@ -35,6 +35,15 @@ ok(c.get('游戏NPC组/内在') === '#112233' && c.get('游戏NPC组/内在/情�
 ok(c.get('战术层/巡逻') === PALETTE.绿 && c.get('战术层') !== PALETTE.绿, '调色板名可用；只影响自己和子孙');
 ok(c.get('工具链') === colorMap(g).get('工具链'), '认不出的 color: 当没写');
 ok(parseColor(' #ABCDEF ') === '#abcdef' && parseColor('red') === null && parseColor(undefined) === null, 'parseColor');
+
+// 工作区词表（👤 2026-10-08：写死扩展性不行 → __synapsis/_配色.md）
+const words = '# 我的词表\n- 青: 战术, 巡逻\n- #123456: 工具\n- 乱色: 什么\n普通的一行\n- 紫：内在，情绪';
+const pw = parseColorWords(words);
+ok(pw.rules.length === 3 && pw.bad.length === 1 && pw.rules[2].words.join() === '内在,情绪', '词表解析：中文冒号 / 逗号也认，认不出的颜色进 bad ' + JSON.stringify(pw));
+c = colorMap(g, () => undefined, words);
+ok(c.get('战术层') === PALETTE.青 && c.get('战术层/巡逻') === PALETTE.青 && c.get('工具链') === '#123456', '自定义词表生效');
+ok(c.get('游戏NPC组/观测') !== PALETTE.蓝, '词表里没有的词（观测）不再认蓝');
+ok(parseColorWords(DEFAULT_WORDS).bad.length === 0 && parseColorWords(DEFAULT_WORDS).rules.length === 6, '默认词表自己能解析');
 
 console.log(`colors: ${pass} 过 / ${fail} 挂`);
 process.exit(fail ? 1 : 0);

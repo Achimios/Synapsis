@@ -31,7 +31,7 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
 5. **删除不真删**：`rm` 把文件移进 `__synapsis/_过期的/`。手动删文件也照此办理。
 6. **别碰**：`_layout.json`（人摆的位置）、`.synapsis/`（本机视图状态）。
 7. 说法要分清证据：`set <id> evidence=实测|设计|估计|未验`（界面卡片上会显示成标签）。
-   - 连线的 `--kind 离散`（或 事件）在界面上画成虚线，其余实线。**别写 `color:`**：颜色按分组 / 名字自动配，只有人在界面上改了才写。
+   - 连线的 `--kind 离散`（或 事件）在界面上画成虚线，其余实线。**别写 `color:`**：颜色按分组 / 名字自动配（词表在 `__synapsis/_配色.md`，人说要加词就改那里），只有人在界面上改了才写 `color:`。
 8. 优先用 CLI。直接改 md 文件也行，但要按 §5 的格式写，改完跑 `check`。
 
 ## 4. CLI
@@ -69,7 +69,7 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
 
 ## 5. 文件格式（文件夹 = 层级）
 - 叶子节点 `名字.md`；有子节点的 `名字/_node.md`。
-- 以 `_` 或 `.` 开头的都不是节点：`_黑板.md`（讨论区）、`_layout.json`（坐标）、`_过期的/`（删掉的）、`_pics_名字/`（这个节点的图片）、`_pics/`（这一页的散图）、`_synapsis.md`（本手册）。
+- 以 `_` 或 `.` 开头的都不是节点：`_黑板.md`（讨论区）、`_配色.md`（自动配色的词表）、`_layout.json`（坐标）、`_过期的/`（删掉的）、`_pics_名字/`（这个节点的图片）、`_pics/`（这一页的散图）、`_synapsis.md`（本手册）。
 - 名字里有 `/` 等非法字符时，文件名用全角，原名写在 frontmatter 的 `label:` 里。
 ```
 ---

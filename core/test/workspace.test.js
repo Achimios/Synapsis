@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, restoreRemoved, groupStatus, pasteNodes, setNodeBody, DIR } from '../workspace.js';
+import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, DIR } from '../workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../scaffold.js';
 import { SAMPLE } from '../../app/src/sample.js';
 
@@ -172,6 +172,16 @@ try {
     const rep2 = pasteNodes(rPaste, ['小队/队长'], '目标页');
     ok(rep2.roots.join() === '目标页/队长 2', '同名（目标页里已有 队长）→ 加「 2」 ' + rep2.roots);
   } finally { rmSync(rPaste, { recursive: true, force: true }); }
+  // 配色词表：没有文件 = null（用默认）；ensureColorWords 按默认建；写坏的行 check 报 warn
+  const rWords = mkdtempSync(join(tmpdir(), 'syn-words-'));
+  try {
+    saveOutline(rWords, '甲');
+    ok(loadWorkspace(rWords).colorWords === null, '没有 _配色.md → colorWords = null');
+    const wf = ensureColorWords(rWords);
+    ok(existsSync(wf) && loadWorkspace(rWords).colorWords.includes('- 蓝:'), 'ensureColorWords 按默认词表建一份');
+    writeFileSync(wf, '- 蓝: 甲\n- 不是颜色: 乙\n');
+    ok(checkWorkspace(loadWorkspace(rWords)).some(i => i.where === '_配色.md' && i.msg.includes('不是颜色')), 'check 报词表里认不出的行');
+  } finally { rmSync(rWords, { recursive: true, force: true }); }
   // 弃用 ❌：frontmatter status: dropped 往返；分组汇总不算它；check 跳过它和子孙（👤 2026-10-08）
   const rDrop = mkdtempSync(join(tmpdir(), 'syn-drop-'));
   try {

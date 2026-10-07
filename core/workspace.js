@@ -18,6 +18,7 @@ import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSy
 import { join, dirname, relative, isAbsolute } from 'node:path';
 import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, withCopies, ROOT } from './outline.js';
 import { checkSpaces } from './space.js';
+import { WORDS_FILE, DEFAULT_WORDS, parseColorWords } from './colors.js';
 
 export const DIR = '__synapsis';
 const NODE_FILE = '_node.md';
@@ -116,7 +117,8 @@ export function loadWorkspace(root) {
   }
   let layout = {};
   try { layout = JSON.parse(readFileSync(join(base, '_layout.json'), 'utf8')); } catch { /* 没有就空 */ }
-  return { root, base, graph: { nodes, edges, errors }, layout, loose };
+  const wf = join(base, WORDS_FILE), colorWords = existsSync(wf) ? readFileSync(wf, 'utf8') : null; // 配色词表（没有 = 用默认）
+  return { root, base, graph: { nodes, edges, errors }, layout, loose, colorWords };
 }
 
 export const workspaceOutline = ws => toOutline(ws.graph);
@@ -311,6 +313,13 @@ export function setNodeMeta(root, id, patch) {
   writeFileSync(n.file, serializeNode(meta, n.body));
 }
 
+// >v<🎨画布-配色词表-没有 _配色.md 就按默认词表写一份（界面「词表…」按钮），返回它的路径
+export function ensureColorWords(root) {
+  const f = join(root, DIR, WORDS_FILE);
+  if (!existsSync(f)) { mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, DEFAULT_WORDS); }
+  return f;
+}
+
 // >v<💾工作区-粘贴节点-复制 ids（子孙、状态、内部边）到 parent 下，再把属性（除结构字段）、正文、节点图片跟着拷（👤 2026-10-08）
 export function pasteNodes(root, ids, parent) {
   const ws = loadWorkspace(root);
@@ -400,6 +409,7 @@ export function checkWorkspace(ws) {
       if (agg && agg !== n.status) issues.push({ level: 'info', where: n.id, msg: `分组自己标的是 ${n.status}，子节点汇总是 ${agg}` });
     }
   }
+  if (ws.colorWords != null) for (const l of parseColorWords(ws.colorWords).bad) issues.push({ level: 'warn', where: WORDS_FILE, msg: '认不出的一行（颜色写 蓝/紫/… 或 #rrggbb）：' + l });
   const g = ws.graph;
   issues.push(...checkSpaces(g, id => g.nodes.get(id)?.meta, (from, ref) => resolveLabel(g.nodes, from, ref) || (g.nodes.has(ref) ? ref : null)));
   return issues;

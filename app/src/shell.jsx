@@ -69,7 +69,7 @@ export function Shell({ name, Canvas }) {
     const S = 260 / Math.max(1, ...pts.map(p => Math.max(Math.abs(p.x), Math.abs(p.y)))); // 1 个单位多少像素：坐标都在 ±1 内就固定 260
     return { keys, u, v, S, pts, angle: angleDeg(u, v), labels: keys.map(k => directionLabel(space, k)) };
   }, [space, spaceAxes, realScope]);
-  const colors = useMemo(() => colorMap(graph, getMeta), [graph, getMeta]);
+  const colors = useMemo(() => colorMap(graph, getMeta, wsData?.colorWords), [graph, getMeta, wsData?.colorWords]);
   // 边标签 / 节点副标题来自工作区文件（大纲里没有）
   const view = useMemo(() => {
     const v = projectView(graph, realScope);
@@ -356,6 +356,7 @@ export function Shell({ name, Canvas }) {
     up: () => up(), canUp: realScope !== ROOT,
     // 只有 👤 在这里点了才写 color:；「自动」= 删掉 color:，回到按分组 / 关键词自动配色
     color: mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null,
+    colorWords: mode === 'ws' ? () => api('/color-words', { method: 'POST' }).then(d => { reveal(d.file, 'open'); setSaveState('配色词表：' + d.file + '（改完保存，Synapsis 会自动刷新）'); }).catch(e => setSaveState('❌ ' + e.message)) : null,
     toggleAll: () => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; }),
   };
   const onContextMenu = useCallback((id, x, y) => { if (id && !id.startsWith('@')) setSelected(id); setMenu({ id: id && !id.startsWith('@') ? id : null, x, y }); }, []);

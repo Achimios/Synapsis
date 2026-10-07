@@ -28,6 +28,7 @@ export const USAGE = `用法：node core/cli.js <命令> [参数] [--ws <被规�
 其它：
   manual                       打印 AI 接入手册
   init <项目目录>              给项目挂上 Synapsis`;
+import { WORDS_FILE, DEFAULT_WORDS } from './colors.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -97,6 +98,7 @@ export function init(root) {
   mkdirSync(join(root, DIR), { recursive: true });
   if (ensureWorkspaceReadme(root, manualText(root))) made.push(DIR + '/_synapsis.md（AI 接入手册）');
   if (blackboardName(root) === '_黑板.md') put(DIR + '/_黑板.md', BLACKBOARD);
+  put(DIR + '/' + WORDS_FILE, DEFAULT_WORDS);
   put('.synapsis/.gitignore', '# 本机状态（视图、缓存），不进 git\n*\n');
   // 启动器是生成物：内容和最新模板不同就刷新（Synapsis 搬家/改目录后重跑 init 即可修好旧项目）
   const vbs = join(root, 'Synapsis.vbs');

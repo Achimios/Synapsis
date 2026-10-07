@@ -233,6 +233,7 @@ for (const kind of ['reactflow']) {
   const ws = mkdtempSync(join(tmpdir(), 'syn-ui-'));
   saveOutline(ws, SAMPLE);
   runBatch(ws, [['link', '游戏AI/行动/动作状态机', '游戏AI/感知/自身传感器', { label: '触发', kind: '离散' }]]);
+  writeFileSync(join(ws, '__synapsis', '_配色.md'), '- 绿: 行动\n- 黄: 兜底\n'); // 工作区词表：兜底改黄、观测词没了
   writeFileSync(join(ws, 'README_测试.md'), '# 外部区的文件\n项目根目录里的普通文件。');
   const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
   const errs = [];
@@ -269,6 +270,7 @@ for (const kind of ['reactflow']) {
   // 颜色：自动配色不写文件；右键点色块才写 color:，「自动」删掉（👤 2026-10-08）
   const cc = label => page.$$eval('.card', (cs, l) => { const c = cs.find(x => x.querySelector('.title')?.textContent.includes(l)); return c && c.style.getPropertyValue('--c'); }, label);
   ok(!nodeFile('游戏AI/行动/_node.md').includes('color:') && await cc('行动') === PALETTE.绿, '自动配色（行动绿）不写进文件');
+  ok(await cc('兜底') === PALETTE.黄, '工作区词表 _配色.md 生效（兜底 → 黄）');
   const dash = await page.$$eval('.react-flow__edge', es => Object.fromEntries(es.map(e => [e.dataset.id, e.querySelector('.react-flow__edge-path').style.strokeDasharray])));
   ok(dash['游戏AI/行动=>游戏AI/感知'] && !dash['游戏AI/决策=>游戏AI/行动'], 'kind 离散 的边 = 虚线，其余实线 ' + JSON.stringify(dash));
   await rclick('行动'); await page.click('.ctx .swatches button[title="粉"]'); await sleep(1500);

@@ -40,6 +40,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         <span>颜色</span>
         {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={node.colorSet === k ? 'on' : ''} style={{ background: c }} onClick={() => { onClose(); actions.color(node.id, k); }} />)}
         <button title="自动（按分组 / 名字配色，子节点跟着父节点）" className={!node.colorSet ? 'on auto' : 'auto'} onClick={() => { onClose(); actions.color(node.id, null); }}>自动</button>
+        {actions.colorWords && <button title="自动配色按名字里的词认颜色：打开这个工作区的词表 __synapsis/_配色.md（没有就按默认建一份）" className="auto" onClick={() => { onClose(); actions.colorWords(); }}>词表…</button>}
       </div>}
       {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'Tab' })}
       {item('＋ 新建同级', () => actions.addSibling(node.id), { key: 'Enter' })}
