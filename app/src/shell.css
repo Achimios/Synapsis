@@ -49,6 +49,7 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .card .title .lab { color: color-mix(in srgb, var(--c) 35%, var(--text)); }
 .card.sel { border-color: var(--sel); box-shadow: 0 0 0 1px var(--sel), 0 0 10px color-mix(in srgb, var(--c) 60%, transparent); }
 .card.dim { opacity: .25; }
+.card input.rename { font: inherit; font-weight: 600; color: var(--text); background: var(--bg); border: 1px solid var(--accent); border-radius: 2px; padding: 0 3px; min-width: 0; max-width: 100%; outline: none; }
 /* 弃用 ❌：灰、删除线（子孙跟着弃用） */
 .card.dropped { filter: grayscale(1); opacity: .55; }
 .card.dropped.dim { opacity: .18; }

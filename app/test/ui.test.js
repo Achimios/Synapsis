@@ -29,7 +29,7 @@ for (const kind of ['reactflow']) {
   await sleep(1500);
 
   // 画布无关的查询：卡片 DOM（两边都用 NodeCard）
-  const cards = () => page.$$eval('.card', cs => cs.map(c => c.querySelector('.title')?.innerText.replace(/\s+/g, ' ').trim() || c.innerText.trim()));
+  const cards = () => page.$$eval('.card', cs => cs.map(c => (c.querySelector('.title input.rename')?.value || '') + (c.querySelector('.title')?.innerText.replace(/\s+/g, ' ').trim() || c.innerText.trim()))); // 改名框里的字 innerText 读不到
   const cardBox = async label => {
     const all = await page.$$('.card');
     for (const c of all) if ((await c.innerText()).split('\n')[0].includes(label)) return c.boundingBox();
@@ -123,14 +123,23 @@ for (const kind of ['reactflow']) {
   // 建完光标在大纲里、名字选中 → 直接打字就是改名
   // 改名在大纲树里原地出输入框（👤：点大纲不该直接进编辑；改名 = 新建后 / F2 / 双击）
   const selTxt = () => page.evaluate(() => { const a = document.activeElement; return a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' ? a.value.slice(a.selectionStart, a.selectionEnd) : '(焦点不在改名框：' + a.tagName + ')'; });
-  ok((await selTxt()) === '新节点', '新建后大纲树里出改名框、名字选中 ' + await selTxt());
+  const inCard = () => page.evaluate(() => !!document.activeElement.closest('.card'));
+  ok((await selTxt()) === '新节点' && await inCard(), '新建后卡片上就地出改名框、名字选中（👤 2026-10-08：不跳左栏） ' + await selTxt());
   await page.keyboard.type('效用表'); await page.keyboard.press('Enter'); await sleep(400);
   ok((await cards()).some(t => t.includes('效用表')), '直接打字 + 回车改名 → 画布同步');
   ok((await page.$$eval('.card.sel', cs => cs.map(c => c.innerText))).some(t => t.includes('效用表')), '改名后仍选中它');
   // Insert = 新建子级（Tab 改给左栏开关了）
   await page.keyboard.press('Insert'); await sleep(400);
-  ok((await selTxt()) === '新节点', 'Insert 新建子级 → 改名框 ' + await selTxt());
+  ok((await selTxt()) === '新节点' && await inCard(), 'Insert 新建子级 → 父卡片展开的子级列表里就地改名 ' + await selTxt());
   await page.keyboard.press('Escape'); await sleep(200);
+  ok(!(await page.$('.card input.rename')), 'Esc 取消改名');
+  // F2 = 在卡片上改名；Delete 在改名框里只删字，不删节点
+  // 效用表 仍是选中的（Insert 不改选中）
+  await page.keyboard.press('F2'); await sleep(300);
+  ok((await selTxt()) === '效用表' && await inCard(), 'F2 → 卡片上改名框');
+  await page.keyboard.press('Delete'); await page.keyboard.type('效用表2'); await page.keyboard.press('Enter'); await sleep(400);
+  ok((await cards()).some(t => t.includes('效用表2')), 'F2 改名 → 画布同步，Delete 没删节点');
+  await page.keyboard.press('F2'); await sleep(300); await page.keyboard.type('效用表'); await page.keyboard.press('Enter'); await sleep(400);
   ok(/效用表\n\s+\S*\s*新节点/.test(await outline()), 'Insert 建在选中节点下面 ' + JSON.stringify((await outline()).split('\n').filter(l => l.includes('新节点') || l.includes('效用表'))));
   // Tab = 左栏开关；鼠标侧键 = 后退 / 前进
   await page.mouse.click(1000, 780); await sleep(200);

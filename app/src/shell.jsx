@@ -52,6 +52,7 @@ export function Shell({ name, Canvas }) {
   const [picFold, setPicFold] = useState(() => DEMO ? load('syn.pf', {}) : {});
   const [localPicw, setLocalPicw] = useState(() => load('syn.pw', {}));
   const [renaming, setRenaming] = useState(null); // 大纲树里正在改名的节点
+  const [canvasRename, setCanvasRename] = useState(null); // 画布卡片上正在改名的节点（👤 2026-10-08：跳到左栏改「太视觉跳跃」）
   const [localLoose, setLocalLoose] = useState(() => load('syn.loose', {})); // 样例模式的散图：scope -> [{id, url}]
 
   const graph = useMemo(() => parseOutline(text), [text]);
@@ -93,14 +94,14 @@ export function Shell({ name, Canvas }) {
         vec: getMeta(n.id)?.vec ? parseVec(getMeta(n.id).vec) : null, vecAxes: pAxes,
         spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
         picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id],
-        open: !!expanded[n.id] && n.children.length > 0,
-        kids: n.children.map(c => { const k = graph.nodes.get(c); return { id: c, label: k.label, status: k.status, n: k.children.length }; }),
+        open: !!expanded[n.id] && n.children.length > 0, renaming: canvasRename === n.id,
+        kids: n.children.map(c => { const k = graph.nodes.get(c); return { id: c, label: k.label, status: k.status, n: k.children.length, renaming: canvasRename === c }; }),
       })),
       portals: v.portals.map(p => ({ ...p, color: colOf(p.id), dropped: isDropped(graph, p.target) })),
       // 线 = 出发节点的颜色；kind 是「离散」→ 虚线（聚合的边要每条都离散才虚）
       edges: v.edges.map(e => ({ ...e, text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e), color: colOf(e.from), dropped: [e.from, e.to].some(x => isDropped(graph, x.startsWith('@portal:') ? x.slice(8) : x)), dashed: e.raw.every(r => DISCRETE.test(kind.get(r) || '')) })),
     };
-  }, [graph, realScope, wsData, expanded, picFold, localPicw, space, getMeta, colors]);
+  }, [graph, realScope, wsData, expanded, picFold, localPicw, space, getMeta, colors, canvasRename]);
   // >v<🖼️图片-卡片显示-节点的 _pics_名字/ 里所有图（旧版 frontmatter img: 也认）
   const images = useMemo(() => {
     if (local) return localImages;
@@ -286,7 +287,9 @@ export function Shell({ name, Canvas }) {
   }, [graph]);
   // 大纲里选中某节点的名字（改名 = 直接打字）
   const focusLabel = (id, again) => {
-    // 改名：默认在大纲树里原地出输入框；「文本」页里则选中那一行的名字
+    // 改名：卡片在画布上（或在展开的子级列表里）→ 就地输入；否则在大纲树里原地出输入框；「文本」页里则选中那一行的名字
+    const p = graph.nodes.get(id)?.parent;
+    if (view.nodes.some(n => n.id === id) || (p != null && expanded[p] && view.nodes.some(n => n.id === p))) { setCanvasRename(id); return; }
     if (leftHidden) setLeftHidden(false);
     if (leftTab !== 'text') { if (leftTab === 'files') setLeftTab('outline'); setRenaming(id); return; }
     if (leftHidden && !again) { requestAnimationFrame(() => focusLabel(id, true)); return; }
@@ -316,7 +319,7 @@ export function Shell({ name, Canvas }) {
     setSelected(id); setPropsOpen(true);
   };
   const commitRename = (id, label) => {
-    setRenaming(null);
+    setRenaming(null); setCanvasRename(null);
     const t = withLabel(graph, id, label);
     if (t) { setText(t); const p = graph.nodes.get(id).parent; setSelected(p === ROOT ? label.trim() : p + '/' + label.trim()); }
   };
@@ -390,6 +393,8 @@ export function Shell({ name, Canvas }) {
 
   const toggle = id => setExpanded(x => ({ ...x, [id]: !x[id] }));
   cardActions.toggle = toggle;
+  cardActions.commitRename = commitRename;
+  cardActions.cancelRename = () => setCanvasRename(null);
   cardActions.openChild = child => { const p = graph.nodes.get(child)?.parent; if (p == null) return; go(p); setSelected(child); };
   const allOpen = view.nodes.filter(n => n.children.length).every(n => expanded[n.id]);
 
@@ -630,6 +635,21 @@ export function nodeDim(id, view, selected) {
 export const cardActions = { toggle: () => {}, openChild: () => {}, foldPics: () => {}, resizePics: () => {} };
 // pointerdown 也要拦住，否则 React Flow 会把它当成选中或拖动的开始
 const stop = e => e.stopPropagation();
+// 卡片上就地改名：Enter / 失焦 = 确定，Esc = 取消；键盘和鼠标事件都不往画布冒（否则 Delete / 拖动会作用到卡片）
+function RenameInput({ id, label }) {
+  const done = useRef(false), el = useRef(null);
+  // 新卡片要等 React Flow 量完尺寸才可见，autoFocus 会落空 → 挂上后多试几帧
+  useEffect(() => {
+    let n = 0, t;
+    const go = () => { const i = el.current; if (!i) return; i.focus(); if (document.activeElement === i) i.select(); else if (n++ < 20) t = setTimeout(go, 25); };
+    go();
+    return () => clearTimeout(t);
+  }, []);
+  return <input ref={el} className="rename nodrag nopan" defaultValue={label} size={Math.max(4, label.length + 2)}
+    onPointerDown={stop} onMouseDown={stop} onClick={stop} onDoubleClick={stop}
+    onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') { done.current = true; cardActions.commitRename(id, e.target.value); } else if (e.key === 'Escape') { done.current = true; cardActions.cancelRename(); } }}
+    onBlur={e => { if (!done.current) cardActions.commitRename(id, e.target.value); }} />;
+}
 export function NodeCard({ node, img, dim, isSel }) {
   const pics = img?.length > 0, showPics = pics && !node.foldPics;
   // 拖图片右下角调宽度：屏幕位移 ÷ 当前缩放（从卡片实际尺寸反推，不依赖 React Flow 的 store）
@@ -645,7 +665,7 @@ export function NodeCard({ node, img, dim, isSel }) {
   return (
     <div className={'card' + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (showPics ? ' hasimg' : '') + (node.status ? ' s-' + node.status : '') + (node.dropped ? ' dropped' : '')}
       style={{ ...(node.color ? { '--c': node.color } : {}), ...(showPics && node.picw ? { width: node.picw, maxWidth: 'none' } : {}) }}>
-      <div className="title">{node.status && <span className="st">{STATUS_ICON[node.status]}</span>}<span className="lab">{node.label}</span>
+      <div className="title">{node.status && <span className="st">{STATUS_ICON[node.status]}</span>}{node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
         {pics && <span className="picbadge" title={node.foldPics ? '显示图片' : '收起图片'} onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.foldPics(node.id); }}>🖼{img.length > 1 ? img.length : ''}</span>}
         {node.children.length > 0 && <span className="kids" title="展开/收起子级（空格）；双击卡片钻进" onPointerDown={stop} onMouseDown={stop}
@@ -655,7 +675,7 @@ export function NodeCard({ node, img, dim, isSel }) {
       {node.vec && <VecBars vec={node.vec} axes={node.vecAxes} />}
       {node.open && node.kids && <ul className="kidlist">{node.kids.map(k => (
         <li key={k.id} title="双击跳进去" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
-          <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span><span className={k.status === 'dropped' ? 'strike' : ''}>{k.label}</span>{k.n > 0 && <span className="kn">▸{k.n}</span>}
+          <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span>{k.renaming ? <RenameInput id={k.id} label={k.label} /> : <span className={k.status === 'dropped' ? 'strike' : ''}>{k.label}</span>}{k.n > 0 && <span className="kn">▸{k.n}</span>}
         </li>))}</ul>}
       {showPics && <div className={'pics n' + Math.min(img.length, 3)}>{img.map(u => <img key={u} src={u} draggable={false} />)}
         <span className="picgrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} /></div>}
