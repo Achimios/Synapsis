@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, autoLayout, lineOf, resolveLabel, ROOT } from './outline.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
-import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal } from './panels.jsx';
+import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal, ScaffoldModal } from './panels.jsx';
 import { SAMPLE } from './sample.js';
 import './shell.css';
 
@@ -116,6 +116,7 @@ export function Shell({ name, Canvas }) {
     api('/ws').then(d => {
       const v = d.view || {};
       lastSaved.current = d.outline; setText(d.outline); setPositions(d.layout || {}); setWsData(d);
+      hist2.current.committed = { text: d.outline, positions: d.layout || {} };
       setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setPicFold(v.picFold || {}); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
       setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
     }).catch(e => { setMode('offline'); setText(load('syn.text', SAMPLE)); setPositions(load('syn.pos.' + name, {})); setSaveState('⚠️ 没连上工作区（' + e.message + '），本地离线模式'); });
@@ -127,7 +128,7 @@ export function Shell({ name, Canvas }) {
     const t = setTimeout(() => {
       setSaveState('保存中…');
       api('/outline', { method: 'PUT', body: JSON.stringify({ outline: text }) })
-        .then(d => { lastSaved.current = text; setWsData(d); setPositions(p => ({ ...p, ...Object.fromEntries(Object.entries(d.layout || {}).filter(([k]) => k.startsWith('@pic:'))) })); /* 分组改名后散图坐标键会变 */ const r = d.report; setSaveState('已保存 ' + new Date().toLocaleTimeString() + (r.removed.length ? '（' + r.removed.length + ' 个节点移进 _过期的/）' : '')); })
+        .then(d => { lastSaved.current = text; setWsData(d); recordSave(text, d.report); setPositions(p => ({ ...p, ...Object.fromEntries(Object.entries(d.layout || {}).filter(([k]) => k.startsWith('@pic:'))) })); /* 分组改名后散图坐标键会变 */ const r = d.report; setSaveState('已保存 ' + new Date().toLocaleTimeString() + (r.removed.length ? '（' + r.removed.length + ' 个节点移进 _过期的/）' : '')); })
         .catch(e => setSaveState('❌ 保存失败：' + e.message));
     }, 700);
     return () => clearTimeout(t);
@@ -148,7 +149,7 @@ export function Shell({ name, Canvas }) {
   // 自动排出来的位置立刻固定（存起来），之后加节点别的节点不会跟着跳（空间成员的位置由坐标决定，不存）
   useEffect(() => {
     const missing = Object.fromEntries(Object.entries(layout).filter(([id]) => !positions[id] && !inPlane(id)));
-    if (Object.keys(missing).length) move(missing);
+    if (Object.keys(missing).length) move(missing, { silent: true });
   }, [layout]);
   const sel = selected && (view.nodes.some(n => n.id === selected) || view.portals.some(p => p.id === selected) || loosePics.some(p => p.id === selected)) ? selected : null;
 
@@ -186,7 +187,7 @@ export function Shell({ name, Canvas }) {
     const t = withEdge(graph, resolve(from), resolve(to));
     if (t) setText(t);
   }, [graph]);
-  const move = useCallback(changes => {
+  const move = useCallback((changes, opt = {}) => {
     // 空间页里拖成员 = 改它的 vec（只改投影的那两个方向上的分量），乐观更新后写回 frontmatter
     if (plane) {
       const vecs = {};
@@ -203,9 +204,56 @@ export function Shell({ name, Canvas }) {
         if (!Object.keys(changes).length) return;
       }
     }
+    if (!opt.silent) recordMove(changes);
     setPositions(p => { const q = { ...p }; for (const [k, v] of Object.entries(changes)) q[k] = { ...p[k], ...v }; return q; }); // 按键合并：散图的 w 和 x/y 分开更新
     if (mode === 'ws') api('/layout', { method: 'PUT', body: JSON.stringify({ positions: changes }) }).catch(e => setSaveState('❌ 坐标保存失败：' + e.message));
   }, [mode, plane, space, graph]);
+
+  // >v<🧭导航-撤销重做-Ctrl+Z / Ctrl+Shift+Z（Ctrl+Y）：一步 = 一次大纲保存（增删改名、状态、连线）或一次拖动 / 框选缩放。
+  // 撤销删除 = 先把 _过期的/ 里的文件搬回原处，再写回删除前的大纲（正文、属性、图片都在）。
+  // 不在撤销范围：属性 / 正文的编辑、空间页拖动改 vec（这些直接写 frontmatter）。只在工作区模式。
+  const hist2 = useRef({ undo: [], redo: [], committed: null, applying: false });
+  const recordSave = (t, report) => {
+    const h = hist2.current, c = h.committed;
+    if (!c) return;
+    if (h.applying) { h.applying = false; if (report.restore?.length && h.undo.length) h.undo.at(-1).restore = report.restore; } // 重做了一次删除：撤销它要搬回的是这次的文件
+    else if (c.text !== t) { h.undo.push({ text: c.text, positions: c.positions, restore: report.restore?.length ? report.restore : null }); h.redo = []; }
+    h.committed = { text: t, positions: c.positions };
+  };
+  const recordMove = changes => {
+    const h = hist2.current, c = h.committed;
+    if (!c || h.applying) return;
+    h.undo.push({ text: c.text, positions: c.positions, restore: null }); h.redo = [];
+    const p = { ...c.positions };
+    for (const [k, v] of Object.entries(changes)) p[k] = { ...p[k], ...v };
+    h.committed = { text: c.text, positions: p };
+  };
+  const applyHist = async e => {
+    const h = hist2.current, c = h.committed;
+    if (e.restore?.length) await api('/restore', { method: 'POST', body: JSON.stringify({ pairs: e.restore }) }).catch(err => setSaveState('❌ 撤销删除失败：' + err.message));
+    h.applying = e.text !== lastSaved.current;
+    setText(e.text);
+    const diff = Object.fromEntries(Object.entries(e.positions).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(c.positions[k])));
+    if (Object.keys(diff).length) {
+      setPositions(p => ({ ...p, ...diff }));
+      api('/layout', { method: 'PUT', body: JSON.stringify({ positions: diff }) }).catch(() => {});
+    }
+    h.committed = { text: e.text, positions: e.positions };
+  };
+  const undo = () => {
+    const h = hist2.current;
+    if (mode !== 'ws' || !h.committed) return setSaveState('撤销只在工作区模式');
+    const e = h.undo.pop(); if (!e) return setSaveState('没有可撤销的');
+    h.redo.push({ text: h.committed.text, positions: h.committed.positions });
+    applyHist(e).then(() => setSaveState('已撤销' + (e.restore ? '（删掉的节点从 _过期的/ 搬回来了）' : '') + ' · 还能撤 ' + h.undo.length + ' 步'));
+  };
+  const redo = () => {
+    const h = hist2.current;
+    if (mode !== 'ws' || !h.committed) return;
+    const e = h.redo.pop(); if (!e) return setSaveState('没有可重做的');
+    h.undo.push({ text: h.committed.text, positions: h.committed.positions, restore: null });
+    applyHist(e).then(() => setSaveState('已重做'));
+  };
   // >v<🌳大纲模型-新建节点-Enter 同级 / Tab 子级（父节点原地展开）/ 工具栏＋；建完光标跳到大纲那一行、名字选中，直接打字改名
   const pendingRename = useRef(null);
   const addNode = asChild => {
@@ -245,6 +293,7 @@ export function Shell({ name, Canvas }) {
   const [propsTab, setPropsTab] = useState('info'); // info | raw
   const [rawText, setRawText] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [scaffold, setScaffold] = useState(null); // 项目文档对话框：检测结果
   const [leftTab, setLeftTab] = useState('outline'); // outline（树，导航用）| text（原始大纲文本）| files
   // >v<🌳大纲模型-大纲树-点一下 = 画布跳到那一页并选中、右侧显示内容；双击/F2 = 改名；钻进用 ▸
   const pick = id => {
@@ -335,6 +384,7 @@ export function Shell({ name, Canvas }) {
       const inText = e.target.closest && e.target.closest('textarea, input, [contenteditable="true"]');
       if (inText) return;
       if (helpOpen && e.key === 'Escape') { setHelpOpen(false); return; }
+      if (e.ctrlKey && !e.altKey && (e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y')) { e.preventDefault(); e.stopPropagation(); (e.key.toLowerCase() === 'y' || e.shiftKey ? redo : undo)(); return; }
       if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); setLeftHidden(h => !h); } // 👤 Tab = 侧栏开关
       else if ((e.key === 'Insert' || (e.key === 'Enter' && e.ctrlKey)) && sel) { e.preventDefault(); e.stopPropagation(); addNode(true); }
       else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); addNode(false); }
@@ -484,6 +534,7 @@ export function Shell({ name, Canvas }) {
           <button onClick={() => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; })}>{allOpen ? '全部收起' : '全部展开'}</button>
           {withPics.length > 0 && <button onClick={() => setPicFold(f => { const g = { ...f }; for (const n of withPics) g[n.id] = !allPicsFolded; return g; })} title="当前页所有卡片的图片一起收起 / 显示">{allPicsFolded ? '显示图片' : '收起图片'}</button>}
           <button onClick={() => setExportText(exportForLLM(graph, realScope))}>导出给 LLM</button>
+          {mode === 'ws' && <button className="ghost" title="给这个项目补开发进度 / 待办 / 规矩那套文档（先检测，已有的不覆盖）" onClick={() => api('/scaffold').then(d => setScaffold(d.items)).catch(e => setSaveState('❌ ' + e.message))}>项目文档…</button>}
           {local && <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>}
           <span className="hint keys" title="快捷键（? 或 F1）" onClick={() => setHelpOpen(true)}>?</span>
         </div>
@@ -511,6 +562,8 @@ export function Shell({ name, Canvas }) {
       )}
       {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（I 开关）</div></aside>}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+      {scaffold && <ScaffoldModal items={scaffold} root={wsData?.root || ''} onClose={() => setScaffold(null)}
+        onCreate={files => api('/scaffold', { method: 'POST', body: JSON.stringify({ files }) }).then(d => { setScaffold(null); setTree(null); setSaveState(d.made.length ? '已创建 ' + d.made.join('、') : '没有新建（都已存在）'); }).catch(e => setSaveState('❌ ' + e.message))} />}
       {fileView && <FilePanel file={fileView.text !== undefined || fileView.error || fileView.note ? fileView : null} onClose={() => setFileView(null)} />}
       {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), open: !!expanded[menu.id], descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
         actions={{ ...menuActions, allOpen }} onClose={() => setMenu(null)} />}

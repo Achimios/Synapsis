@@ -3,7 +3,8 @@ import react from '@vitejs/plugin-react';
 import { resolve, join, normalize, relative } from 'node:path';
 import { spawn } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
-import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, DIR } from '../core/workspace.js';
+import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, restoreRemoved, DIR } from '../core/workspace.js';
+import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText } from '../core/cli.js';
 
 // >v<🚀启停-心跳-3 分钟没人 ping 就退出（SYN_IDLE_MS 可调）
@@ -64,6 +65,11 @@ function workspaceApi() {
             if (typeof b.body === 'string') setNodeBody(root, b.id, b.body);
             return send(200, payload(root));
           }
+          // 撤销删除：把 _过期的/ 里的文件搬回去（随后前端写回删除前的大纲）
+          if (url.pathname === '/restore' && req.method === 'POST') return send(200, { restored: restoreRemoved(root, (await body(req)).pairs) });
+          // 项目骨架（_DevProgress.md 那套）：GET = 检测清单，POST = 只写勾上且不存在的
+          if (url.pathname === '/scaffold' && req.method === 'GET') return send(200, { items: scaffoldPlan(root).map(({ rel, exists, alike }) => ({ rel, exists, alike })) });
+          if (url.pathname === '/scaffold' && req.method === 'POST') { if (!existsSync(join(root, DIR))) return send(404, { error: '不是 Synapsis 工作区' }); return send(200, { made: scaffoldWrite(root, (await body(req)).files) }); }
           if (url.pathname === '/tree' && req.method === 'GET') return send(200, listTree(root));
           if (url.pathname === '/raw' && req.method === 'GET') return send(200, readProjectFile(root, url.searchParams.get('p') || ''));
           if (url.pathname === '/layout' && req.method === 'PUT') { saveLayout(root, (await body(req)).positions); return send(200, { ok: true }); }

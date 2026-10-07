@@ -401,6 +401,74 @@ for (const kind of ['reactflow']) {
   await page.close();
   rmSync(ws, { recursive: true, force: true });
 }
+// —— 撤销重做、框选缩放排列、项目文档骨架（👤 2026-10-08）——
+{
+  console.log('== 撤销 / 框选 / 项目文档');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-undo-ui-'));
+  saveOutline(ws, '甲 -> 乙\n乙\n丙\n丁');
+  writeFileSync(join(ws, '__synapsis', '甲.md'), readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8') + '\n甲的正文，人写的。\n');
+  writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 甲: { x: 0, y: 0 }, 乙: { x: 400, y: 0 }, 丙: { x: 800, y: 0 }, 丁: { x: 400, y: 300 } }));
+  writeFileSync(join(ws, '_开发进度.md'), '中文名的进度');
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = [];
+  page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`);
+  await sleep(1800);
+  const card = async label => { for (const c of await page.$$('.card')) { const t = await c.$eval('.title', e => e.textContent).catch(() => ''); if (t.includes(label)) return c; } };
+  const mid = b => [b.x + b.width / 2, b.y + b.height / 2];
+  const save = () => page.$eval('.save', e => e.innerText);
+  // 删除 → Ctrl+Z → 文件从 _过期的/ 搬回来，正文还在，边也在
+  await page.mouse.click(...mid(await (await card('甲')).boundingBox())); await sleep(200);
+  await page.keyboard.press('Delete'); await sleep(1600);
+  ok(!existsSync(join(ws, '__synapsis', '甲.md')), '删除：甲.md 进了 _过期的/');
+  await page.mouse.click(700, 700); await page.keyboard.press('Control+z'); await sleep(1800);
+  const ja = existsSync(join(ws, '__synapsis', '甲.md')) ? readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8') : '';
+  ok(ja.includes('甲的正文') && ja.includes('乙'), 'Ctrl+Z 撤销删除：正文和边都回来了 ' + await save());
+  await page.keyboard.press('Control+Shift+z'); await sleep(1600);
+  ok(!existsSync(join(ws, '__synapsis', '甲.md')), 'Ctrl+Shift+Z 重做删除');
+  await page.keyboard.press('Control+z'); await sleep(1800);
+  ok(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8').includes('甲的正文'), '再撤销一次：又搬回来了（重做时记下了新的 _过期的/ 路径）');
+  // 拖动 → 撤销 → 坐标回去
+  const lay = () => JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'));
+  const x丁 = lay()['丁'].x;
+  let [bx, by] = mid(await (await card('丁')).boundingBox());
+  await page.mouse.move(bx, by); await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(bx + i * 10, by + i * 5);
+  await page.mouse.up(); await sleep(800);
+  ok(lay()['丁'].x !== x丁, '拖动写进 _layout.json');
+  await page.mouse.click(700, 760); await page.keyboard.press('Control+z'); await sleep(1000);
+  ok(lay()['丁'].x === x丁, 'Ctrl+Z 撤销拖动');
+  // Shift 框选 甲乙丙（同一行）→ 出现缩放框 → 拖右边往左到底 → 左对齐、往下排开、不重叠
+  const boxes = await Promise.all(['甲', '乙', '丙'].map(async l => (await card(l)).boundingBox()));
+  const top = Math.min(...boxes.map(b => b.y)) - 20, left = Math.min(...boxes.map(b => b.x)) - 20;
+  const right = Math.max(...boxes.map(b => b.x + b.width)) + 20, bottom = Math.max(...boxes.map(b => b.y + b.height)) + 20;
+  await page.keyboard.down('Shift'); await page.mouse.move(left, top); await page.mouse.down();
+  await page.mouse.move(right, bottom, { steps: 8 }); await page.mouse.up(); await page.keyboard.up('Shift'); await sleep(500);
+  ok(!!(await page.$('.scaleframe')) && (await page.$$('.card.sel')).length === 3, 'Shift 框选 3 张 → 出现缩放框');
+  const eh = await (await page.$('.scaleframe .sh-e')).boundingBox();
+  await page.mouse.move(...mid(eh)); await page.mouse.down();
+  for (let i = 1; i <= 12; i++) await page.mouse.move(eh.x - (eh.x - left) * i / 12, eh.y);
+  const modeTxt = await page.$eval('.scaleframe .shmode', e => e.innerText).catch(() => '');
+  await page.mouse.up(); await sleep(900);
+  const L = lay(), xs = ['甲', '乙', '丙'].map(k => L[k].x), ys = ['甲', '乙', '丙'].map(k => L[k].y);
+  ok(modeTxt === '对齐' && xs.every(x => x === xs[0]), '拖到底 → 左对齐 ' + modeTxt + ' ' + xs);
+  ok(ys[0] < ys[1] && ys[1] < ys[2], '会重叠的往下依次排开（保持左右顺序） ' + ys);
+  const cb = await Promise.all(['甲', '乙', '丙'].map(async l => (await card(l)).boundingBox()));
+  ok(cb.every((b, i) => cb.slice(i + 1).every(q => b.y + b.height <= q.y || q.y + q.height <= b.y)), '排开后卡片互不重叠');
+  await page.keyboard.press('Control+z'); await sleep(1000);
+  ok(lay()['乙'].x === 400 && lay()['乙'].y === 0, '框选缩放也能 Ctrl+Z');
+  // 项目文档：先检测；同名中文的默认不勾；只建勾上的
+  await page.click('button:has-text("项目文档")'); await sleep(600);
+  ok((await page.$eval('.scaffold', e => e.innerText)).includes('已有同类：_开发进度.md'), '项目文档：检测到同类中文名');
+  ok(!(await page.$eval('.scaflist li:has-text("_DevProgress.md") input', e => e.checked)), '有同类的默认不勾');
+  for (const li of await page.$$('.scaflist li')) { const t = await li.innerText(); const cbx = await li.$('input'); if (!t.includes('_TODO.md') && await cbx.isChecked() && !(await cbx.isDisabled())) await cbx.uncheck(); }
+  await page.click('.scaffold button:has-text("创建勾选的")'); await sleep(800);
+  ok(existsSync(join(ws, '_TODO.md')) && !existsSync(join(ws, '_DevProgress.md')) && !existsSync(join(ws, 'AGENTS.md')), '只创建勾上的（_TODO.md）');
+  ok(readFileSync(join(ws, '_开发进度.md'), 'utf8') === '中文名的进度', '已有文件不动');
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
 await browser.close();
 console.log(`ui: ${pass} 过 / ${fail} 挂`);
 process.exit(fail ? 1 : 0);

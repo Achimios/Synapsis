@@ -33,6 +33,8 @@ grep -rn ">v<💾工作区" core app bootstrap --include=*.js --include=*.jsx
 | `>v<🖼️图片` | `core/workspace.js`(picsDir/saveAsset) `app/src/shell.jsx` | 节点图片 = 紧挨 md 的 `_pics_名字/` 文件夹；贴图 / 拖图进卡片；改名删除跟着走 |
 | `>v<🎨外观` | `app/src/shell.css` `app/src/launcher.css` | PureRef 风深色高密度主题（颜色全是 `:root` 变量） |
 | `>v<📐空间` | `core/space.js` `app/src/space.js` `app/src/shell.jsx`(VecBars/MatrixChip/AxesCard/plane) `app/src/main.jsx`(MatEdge) | 空间节点：axes / vec / 映射→；散点投影、换基、拖动改坐标、小横条、热力图 |
+| `>v<🎨画布-框选缩放排列` | `core/arrange.js` `app/src/main.jsx`(ScaleFrame) | 拖框选框的边 / 角调间距、对齐、排开 |
+| `>v<🧭导航-撤销重做` | `app/src/shell.jsx` `core/workspace.js`(restoreRemoved) | 一步 = 一次大纲保存或一次拖动；撤销删除从 _过期的/ 搬回 |
 | `>v<🖥️桌面` | `app/electron/` `app/src/launcher.jsx` `Synapsis_desktop.vbs` `core/templates/Synapsis.vbs` | 托盘程序：内置服务、托盘菜单、启动台、每个工作区一个窗口、单实例 |
 | `>v<✅自检` | `app/test/` `core/test/` `core/workspace.js`(checkWorkspace) | 纯 Node 核心自检 + 无头 Edge 界面自检 |
 | `>v<🧪嵌入实验` | `core/tools/embed_probe.js` | 本地嵌入模型（LM Studio）× 工作区：有连线 vs 没连线的相似度效应量、最像但没连线的候选 |

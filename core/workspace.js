@@ -15,7 +15,7 @@
 //   ---
 //   正文（人写的，Synapsis 不动）
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, unlinkSync, rmdirSync } from 'node:fs';
-import { join, dirname, relative } from 'node:path';
+import { join, dirname, relative, isAbsolute } from 'node:path';
 import { parseOutline, toOutline, resolveLabel, shortRef, ROOT } from './outline.js';
 import { checkSpaces } from './space.js';
 
@@ -156,7 +156,7 @@ export function saveOutline(root, text) {
   const cur = ws.graph, base = ws.base;
   const { map, used } = matchNodes(cur, next);
   const curEdge = new Map(cur.edges.map(e => [e.from + '->' + e.to, e]));
-  const report = { ok: true, written: [], moved: [], removed: [] };
+  const report = { ok: true, written: [], moved: [], removed: [], restore: [] }; // restore = [[过期的里的路径, 原路径]…]（相对 base），给撤销用
 
   // 目标路径与内容
   const pathOf = id => {
@@ -191,10 +191,11 @@ export function saveOutline(root, text) {
     const dst = join(graveyard, `${stamp()}_${id.replace(/\//g, '～')}.md`);
     renameSync(n.file, dst);
     report.removed.push(relative(base, dst));
+    report.restore.push([relative(base, dst), relative(base, n.file)]);
     const pd = picsDir(n.file, n.label);
-    if (existsSync(pd)) renameSync(pd, dst.slice(0, -3) + '_pics');
+    if (existsSync(pd)) { renameSync(pd, dst.slice(0, -3) + '_pics'); report.restore.push([relative(base, dst.slice(0, -3) + '_pics'), relative(base, pd)]); }
     const lp = n.isGroup ? join(dirname(n.file), '_pics') : null; // 删掉的分组页上的散图
-    if (lp && existsSync(lp)) renameSync(lp, dst.slice(0, -3) + '_散图');
+    if (lp && existsSync(lp)) { renameSync(lp, dst.slice(0, -3) + '_散图'); report.restore.push([relative(base, dst.slice(0, -3) + '_散图'), relative(base, lp)]); }
   }
   // 2) 写新内容（只写变了的）
   for (const [file, { content, old }] of writes) {
@@ -251,6 +252,23 @@ export function saveOutline(root, text) {
   }
   writeLayout(base, layout);
   return report;
+}
+
+// >v<💾工作区-撤销删除-把 saveOutline 移进 _过期的/ 的文件搬回原处（之后再写回删除前的大纲，正文和属性就都在）
+// 只搬 _过期的/ 里的东西、只搬回 __synapsis/ 里面、目标已存在就跳过
+export function restoreRemoved(root, pairs) {
+  const base = join(root, DIR), grave = join(base, '_过期的');
+  const inside = (p, dir) => { const r = relative(dir, p); return r && !r.startsWith('..') && !isAbsolute(r); };
+  const done = [];
+  for (const [from, to] of pairs || []) {
+    const src = join(base, from), dst = join(base, to);
+    if (!inside(src, grave) || !inside(dst, base) || inside(dst, grave)) continue;
+    if (!existsSync(src) || existsSync(dst)) continue;
+    mkdirSync(dirname(dst), { recursive: true });
+    renameSync(src, dst);
+    done.push(to);
+  }
+  return done;
 }
 
 function writeLayout(base, layout) {

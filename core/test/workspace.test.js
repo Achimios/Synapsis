@@ -3,7 +3,8 @@
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, DIR } from '../workspace.js';
+import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, restoreRemoved, DIR } from '../workspace.js';
+import { scaffoldPlan, scaffoldWrite } from '../scaffold.js';
 import { SAMPLE } from '../../app/src/sample.js';
 
 let pass = 0, fail = 0;
@@ -119,6 +120,36 @@ try {
     ok(existsSync(join(r2, '.synapsis', '.gitignore')), '.synapsis/ 自带 gitignore');
     ok(listTree(r2).tree.some(t => t.name === DIR) && !listTree(r2).tree.some(t => t.name === '.synapsis'), '文件树含 __synapsis、不含 .synapsis');
   } finally { rmSync(r2, { recursive: true, force: true }); }
+
+  // 撤销删除：删一个带正文 / 属性 / 图片的分组 → restoreRemoved + 写回原大纲 → 正文、属性、图片、子节点都回来
+  const r3 = mkdtempSync(join(tmpdir(), 'syn-undo-'));
+  try {
+    const before = '组 -> 别处\n  甲\n  乙\n别处';
+    saveOutline(r3, before);
+    setNodeMeta(r3, '组', { rate: '5 Hz' }); setNodeMeta(r3, '组/甲', { vec: '1, 2' });
+    writeFileSync(join(r3, DIR, '组', '甲.md'), readFileSync(join(r3, DIR, '组', '甲.md'), 'utf8') + '\n人写的正文\n');
+    saveAsset(r3, '组/甲', 'data:image/png;base64,' + Buffer.from('89504e470d0a1a0a', 'hex').toString('base64'));
+    const rep = saveOutline(r3, '别处');
+    ok(!loadWorkspace(r3).graph.nodes.has('组') && rep.restore.length >= 4, '删除报告带上 restore 对照 ' + rep.restore.length);
+    ok(restoreRemoved(r3, [['../../外面.md', '组/甲.md']]).length === 0, 'restoreRemoved 只搬 _过期的/ 里的东西');
+    const back = restoreRemoved(r3, rep.restore);
+    saveOutline(r3, before);
+    const g3 = loadWorkspace(r3).graph;
+    ok(back.length === rep.restore.length && g3.nodes.get('组')?.meta.rate === '5 Hz' && g3.nodes.get('组/甲')?.meta.vec === '1, 2', '撤销删除：属性回来了');
+    ok(g3.nodes.get('组/甲')?.body.includes('人写的正文') && g3.nodes.get('组/甲').pics.length === 1, '撤销删除：正文和图片回来了');
+    ok(g3.edges.some(e => e.from === '组' && e.to === '别处'), '撤销删除：边回来了');
+  } finally { rmSync(r3, { recursive: true, force: true }); }
+
+  // 项目骨架：检测已有 / 同类，只写勾上且不存在的
+  const r4 = mkdtempSync(join(tmpdir(), 'syn-scaffold-'));
+  try {
+    writeFileSync(join(r4, '_TODO.md'), '我自己的待办');
+    writeFileSync(join(r4, '_开发进度.md'), '中文名的进度');
+    const items = scaffoldPlan(r4);
+    ok(items.find(i => i.rel === '_TODO.md')?.exists && items.find(i => i.rel === '_DevProgress.md')?.alike.includes('_开发进度.md'), '骨架检测：同名已存在 / 同类中文名');
+    const made = scaffoldWrite(r4, ['_TODO.md', '_LEARNINGS.md']);
+    ok(made.join() === '_LEARNINGS.md' && readFileSync(join(r4, '_TODO.md'), 'utf8') === '我自己的待办' && !existsSync(join(r4, '_DevProgress.md')), '骨架只写勾上且不存在的，不覆盖');
+  } finally { rmSync(r4, { recursive: true, force: true }); }
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

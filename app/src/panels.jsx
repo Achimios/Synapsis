@@ -178,11 +178,36 @@ export function OutlineTree({ graph, selected, scope, renaming, status, onPick, 
 }
 
 // >v<🧭导航-快捷键页-? 或 F1 弹出；键位只在这张表里写一次（以后要自定义就从这里长出来）
+// >v<🏗️构建引导-项目文档对话框-先检测：已存在的灰掉；有同类中文名文件的默认不勾；其余默认勾上。只创建勾上的
+export function ScaffoldModal({ items, root, onCreate, onClose }) {
+  const [pick, setPick] = useState(() => new Set(items.filter(i => !i.exists && !i.alike.length).map(i => i.rel)));
+  const flip = rel => setPick(s => { const t = new Set(s); t.has(rel) ? t.delete(rel) : t.add(rel); return t; });
+  const missing = items.filter(i => !i.exists);
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="scaffold" onClick={e => e.stopPropagation()}>
+        <div className="bar"><b>项目文档骨架</b><span className="hint" style={{ flex: 1 }} title={root}>{root}</span><button onClick={onClose}>✕</button></div>
+        <div className="sidebody">
+          <p className="hint">开发进度、待办、规矩那一套（和新项目引导同一套模板）。<b>已有的不会覆盖</b>；只是做规划 / 研究的话可以都不要。</p>
+          <ul className="scaflist">{items.map(i => (
+            <li key={i.rel} className={i.exists ? 'has' : ''}>
+              <label><input type="checkbox" disabled={i.exists} checked={i.exists || pick.has(i.rel)} onChange={() => flip(i.rel)} />{i.rel}</label>
+              {i.exists ? <span className="hint">已存在</span> : i.alike.length ? <span className="warn">已有同类：{i.alike.join('、')}</span> : null}
+            </li>))}</ul>
+        </div>
+        <div className="bar"><span className="grow" /><button onClick={onClose}>取消</button>
+          <button disabled={!pick.size} onClick={() => onCreate([...pick])}>{missing.length ? `创建勾选的 ${pick.size} 个` : '都已存在'}</button></div>
+      </div>
+    </div>
+  );
+}
+
 export const KEYMAP = [
   ['选择与查看', [['单击卡片 / 大纲行', '选中，右侧显示概览'], ['I', '属性面板开关'], ['Tab', '左栏开关'], ['? / F1', '这一页']]],
   ['导航', [['双击卡片 / 大纲行的 →', '钻进去'], ['Alt+↑', '上一层'], ['鼠标侧键 / Alt+← →', '后退 / 前进'], ['大纲树里 ↑↓←→', '上下走 / 折叠展开'], ['▸N / 空格', '卡片里原地展开子级']]],
-  ['编辑', [['Enter', '新建同级'], ['Insert / Ctrl+Enter', '新建子级'], ['F2 / 双击大纲行', '改名'], ['Del', '删除（进 _过期的/）'], ['卡片边缘拖到另一张', '连线'], ['右键', '菜单：状态、属性、原文……']]],
-  ['图片', [['Ctrl+V', '贴进选中的卡；没选中 = 新建图片卡'], ['拖文件 / 网页图', '落在卡片上 = 进那张；空白处 = 新卡'], ['图片右下角拖', '调大小'], ['🖼 / 工具栏', '收起这张 / 全部收起']]],
+  ['编辑', [['Enter', '新建同级'], ['Insert / Ctrl+Enter', '新建子级'], ['F2 / 双击大纲行', '改名'], ['Del', '删除（进 _过期的/）'], ['卡片边缘拖到另一张', '连线'], ['右键', '菜单：状态、属性、原文……'], ['Ctrl+Z', '撤销（结构、连线、拖动；删除也能撤回）'], ['Ctrl+Shift+Z / Ctrl+Y', '重做']]],
+  ['排列', [['Shift+拖空白', '框选多张卡'], ['拖框的边 / 角', '整体拉开或收紧间距'], ['收到底', '对齐；会重叠的依次排开']]],
+  ['图片', [['Ctrl+V', '贴进选中的卡；没选中 = 散图'], ['拖文件 / 网页图', '落在卡片上 = 进那张；空白处 = 散图'], ['图片右下角拖', '调大小'], ['🖼 / 工具栏', '收起这张 / 全部收起']]],
 ];
 export function HelpModal({ onClose }) {
   return (

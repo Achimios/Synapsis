@@ -191,3 +191,17 @@ svg.axes text.al { fill: var(--dim); font-size: 12px; }
 .meta.edit .addrow input::placeholder { color: var(--faint); }
 .meta .metahints { border-top: 0; padding-top: 4px; }
 .meta .metahints button { font-size: 10px; margin: 0 4px 2px 0; }
+/* 框选后的缩放框（拖边 / 角调间距） */
+.scaleframe { position: absolute; left: 0; top: 0; border: 1px dashed var(--accent); pointer-events: none; z-index: 1000; }
+.scaleframe .sh { position: absolute; width: 10px; height: 10px; background: var(--panel); border: 1px solid var(--accent); pointer-events: all; }
+.sh-nw { left: -5px; top: -5px; cursor: nwse-resize; } .sh-se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+.sh-ne { right: -5px; top: -5px; cursor: nesw-resize; } .sh-sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
+.sh-n { left: calc(50% - 5px); top: -5px; cursor: ns-resize; } .sh-s { left: calc(50% - 5px); bottom: -5px; cursor: ns-resize; }
+.sh-w { top: calc(50% - 5px); left: -5px; cursor: ew-resize; } .sh-e { top: calc(50% - 5px); right: -5px; cursor: ew-resize; }
+.scaleframe .shmode { position: absolute; left: 0; top: -20px; font-size: 11px; color: var(--accent); background: var(--panel); padding: 0 4px; white-space: nowrap; }
+.modal > div.scaffold { width: min(560px, 94vw); display: flex; flex-direction: column; max-height: 80vh; }
+.scaffold .sidebody { overflow: auto; }
+.scaflist { list-style: none; margin: 6px 0; padding: 0; }
+.scaflist li { display: flex; gap: 8px; align-items: center; padding: 2px 0; font: var(--mono); }
+.scaflist li.has label { color: var(--faint); }
+.scaflist .warn { color: var(--warn); font-size: 11px; }
