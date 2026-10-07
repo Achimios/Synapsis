@@ -26,3 +26,6 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .modal pre { margin: 0; padding: 12px; overflow: auto; font: 12px/1.5 Consolas, "Microsoft YaHei", monospace; }
 /* tldraw：卡片填满形状，选中框与卡片对齐 */
 .fill > .card { width: 100%; height: 100%; max-width: none; }
+.save { color: #2f7d4f; font-size: 12px; }
+.save.bad { color: #c0392b; }
+.card .sub { font-size: 11px; color: #7a8394; margin-top: 2px; }

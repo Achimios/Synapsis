@@ -1,6 +1,11 @@
 // >v<✅自检-界面-无头 Edge 跑两个画布同一套交互
 // 两个画布原型的同一套交互验收（无头 Edge）。先 npm run dev，再 node test/ui.test.js [截图目录]
 import { chromium } from 'playwright-core';
+import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { saveOutline } from '../../core/workspace.js';
+import { SAMPLE } from '../src/sample.js';
 const BASE = 'http://localhost:5410';
 const SHOTS = process.argv[2] || null;
 let pass = 0, fail = 0;
@@ -15,7 +20,7 @@ for (const kind of ['reactflow', 'tldraw']) {
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
   page.on('console', m => { if (m.type() === 'error' && !m.text().includes('404')) errs.push(m.text()); });
-  await page.goto(`${BASE}/${kind}.html`);
+  await page.goto(`${BASE}/${kind}.html?demo`);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await sleep(1500);
@@ -139,6 +144,37 @@ for (const kind of ['reactflow', 'tldraw']) {
 
   ok(errs.length === 0, '无页面报错 ' + errs.slice(0, 3).join(' | '));
   await page.close();
+}
+// —— 工作区模式：临时目录，画布编辑 → 文件真的写进去 ——
+for (const kind of ['reactflow', 'tldraw']) {
+  console.log('== 工作区', kind);
+  const ws = mkdtempSync(join(tmpdir(), 'syn-ui-'));
+  saveOutline(ws, SAMPLE);
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = [];
+  page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/${kind}.html?ws=${encodeURIComponent(ws)}`);
+  await sleep(1800);
+  const saveTxt = () => page.$eval('.save', e => e.innerText);
+  ok((await saveTxt()).includes('已加载'), '工作区加载 ' + await saveTxt());
+  ok((await page.$$('.card')).length === 3, '顶层 3 个节点');
+  // 钻进 游戏AI → 选中 决策 → Enter 新建同级 → 文件出现
+  const box = async label => { for (const c of await page.$$('.card')) if ((await c.innerText()).split('\n')[0].includes(label)) return c.boundingBox(); };
+  let b = await box('游戏AI'); await page.mouse.dblclick(b.x + b.width / 2, b.y + b.height / 2); await sleep(800);
+  b = await box('决策'); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await sleep(300);
+  await page.keyboard.press('Enter'); await sleep(1800);
+  ok(existsSync(join(ws, '__synapsis', '游戏AI', '新节点.md')), '画布 Enter → __synapsis/游戏AI/新节点.md 写入');
+  ok((await saveTxt()).includes('已保存'), '显示已保存 ' + await saveTxt());
+  // 拖动 → _layout.json
+  b = await box('兜底'); await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(b.x + b.width / 2 + i * 8, b.y + b.height / 2 + i * 8);
+  await page.mouse.up(); await sleep(800);
+  const lay = JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'));
+  ok(lay['游戏AI/兜底'] !== undefined, '拖动 → _layout.json ' + JSON.stringify(Object.keys(lay)) + ' moved=' + JSON.stringify(b) + ' now=' + JSON.stringify(await box('兜底')));
+  ok(existsSync(join(ws, '__synapsis', '_synapsis.md')), '自动生成 _synapsis.md 说明');
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
 }
 await browser.close();
 console.log(`ui: ${pass} 过 / ${fail} 挂`);

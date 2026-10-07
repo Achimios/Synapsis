@@ -13,3 +13,9 @@
 - 📝 画布选型对比（含 Gemini 意见）：tldraw 自定义形状也能放任意 React（Gemini 说「中等」偏重），但胶水多（3 个坑 + 箭头绑定同步，~150 行 vs RF ~60 行）；RF 边即数据、MIT；tldraw 自由手绘强、有生产水印。倾向 RF 做主干，手绘以后叠一层。**等用户手感**
 - ✅ 项目构建引导 `bootstrap/`：规矩汇总（来自 ReadScreen / TTS / SimuWeb / Synapsis）+ 13 个模板 + `bootstrap.js` + 全局 skill `project-bootstrap`。【实测】临时目录生成：已有文件保留、二次运行全跳过、数字前缀去掉、git init
   - ✅ `_DevIndex` 格式改成用户范本（Underwater_Thruster）：标记包反引号 + 大标题一览表 + 每节小标题；代码补了 8 个大标题的锚点；引导与模板同步
+- ✅ **core/ 工作区读写**：`__synapsis/` 文件夹 = 层级、一节点一 .md（frontmatter：status/order/其余属性/to 出边带标签），正文永不改；改名搬文件、删除进 `_过期的/`、名字含 `/` 用全角文件名 + `label:`（往返自检抓到）。【实测】`core/test/workspace.test.js` 19/19
+- ✅ **CLI** `core/cli.js`：overview / outline / export / get / check / apply / init。【实测】研究与 Synapsis 自身两个工作区跑通；Synapsis 自身 check 0 错（12 个 code 路径都存在）
+- ✅ **界面接工作区**：自动保存（停手 0.7s）、坐标写 `_layout.json`、贴图存 `_assets/`、边标签与副标题（rate）来自文件；`?demo` 给测试。【实测】test:ui 52/52（含工作区模式：画布 Enter → 文件出现、拖动 → _layout.json）。【未验】贴图仍没自动化测
+- ✅ **七丘落地**（👤 比喻：NPC 状态空间组 = 罗马的发源地）：`Life Games/研究/__synapsis/游戏NPC状态空间组/`，从空间图.html 导入 15 节点 28 边（说明、频率、数学类型、Life Games 现状、边标签/离散/LLM），6 个原分组如实保留
+- ✅ **init + 启动器**：研究与 Synapsis 各有 `Synapsis.vbs` + `.synapsis/`（自带 `*` gitignore）。【实测】VBS 的 UTF-8 编码与 encodeURIComponent 逐字相等；【未验】双击 VBS 全流程（用户不在，没弹浏览器）
+- 🐛 修：新节点压住老节点（自动布局不避让 + RF 保留旧本地坐标）→ 找空槽 + 自动位置立即固定 + RF 只在拖动中用本地坐标；断环改按大纲顺序（DFS 顺序把「内在」甩到最右）

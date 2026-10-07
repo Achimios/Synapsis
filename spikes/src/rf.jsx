@@ -26,7 +26,8 @@ function RFCanvas({ view, layout, selected, images, onSelect, onDrill, onConnect
   useEffect(() => {
     setNodes(prev => {
       const old = new Map(prev.map(n => [n.id, n]));
-      return build().map(n => { const o = old.get(n.id); return o ? { ...o, ...n, position: o.position } : n; });
+      // 坐标以外壳的 layout 为准；只有正在拖的节点用本地坐标（否则旧坐标会和自动布局打架，新节点压住老节点）
+      return build().map(n => { const o = old.get(n.id); return o ? { ...o, ...n, position: o.dragging ? o.position : n.position } : n; });
     });
   }, [view, layout, selected, images]);
 
@@ -34,7 +35,7 @@ function RFCanvas({ view, layout, selected, images, onSelect, onDrill, onConnect
     const l = edgeLook(e, selected);
     return {
       id: e.id, source: e.from, target: e.to,
-      label: e.count > 1 ? '×' + e.count : undefined,
+      label: e.text || undefined,
       style: { stroke: l.color, strokeWidth: l.width, opacity: l.opacity },
       labelStyle: { fill: l.color, opacity: l.opacity }, labelBgStyle: { opacity: l.opacity * 0.8 },
       markerEnd: { type: MarkerType.ArrowClosed, color: l.color },

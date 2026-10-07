@@ -9,3 +9,5 @@
 7. **内置浏览器面板在后台时 `visibilityState=hidden`**，ResizeObserver 不触发、截图超时 → UI 验证改用 playwright-core + 本机 Edge 无头（`channel: 'msedge'`，不用下载浏览器）。
 8. Git Bash 里 `cat > 文件` 后面没接 heredoc 会一直等 stdin 卡死；跑 node 脚本时加 `< /dev/null`。
 9. sed 替换文本里含 Windows 路径时，`\U` `\a` `\L` 等会被当成转义/大小写指令，路径被吃掉 → 含反斜杠的内容用 Edit 工具或 node 写。
+10. Git Bash 的 heredoc（即使 `<<'EOF'`）写进 JS 时 `\` 仍可能被吃成 `\` → 含反斜杠的代码一律用 Edit/Write 工具写。
+11. `String.replace(a, b)` 的 b 里 `$$` `$&` `$1` 是替换模式（`$$` 变 `$`，playwright 的 `page.$$` 被吃）→ 用 `s.replace(a, () => b)` 或 split/join。

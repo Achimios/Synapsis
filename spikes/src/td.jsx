@@ -9,7 +9,7 @@ const data = atom('sdata', { view: { nodes: [], portals: [], edges: [] }, images
 const cb = { drill: () => {} };
 let syncing = false;
 
-const W = 200, H = 46, IMG_H = 130;
+const W = 200, H = 58, IMG_H = 130;
 const sid = id => createShapeId('n:' + encodeURIComponent(id));
 const aid = id => createShapeId('e:' + encodeURIComponent(id));
 
@@ -61,7 +61,7 @@ function sync(editor, view, layout, images, selected) {
     }
     for (const e of view.edges) {
       const l = edgeLook(e, selected);
-      const props = { color: TL_COLOR[l.color], size: SIZE(l.width), richText: toRichText(e.count > 1 ? '×' + e.count : '') };
+      const props = { color: TL_COLOR[l.color], size: SIZE(l.width), richText: toRichText(e.text || '') };
       const ex = editor.getShape(aid(e.id));
       if (!ex) {
         editor.createShape({ id: aid(e.id), type: 'arrow', isLocked: true, opacity: l.opacity, meta: { managed: true }, props: { ...props, arrowheadEnd: 'arrow' } });

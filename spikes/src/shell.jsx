@@ -13,12 +13,25 @@ const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } cat
 const ping = () => fetch('/__alive').catch(() => {});
 ping(); setInterval(ping, 20000);
 
+// >v<💾工作区-界面接入-默认读写被规划项目的 __synapsis/；?demo = 样例数据 + localStorage（自动化测试用，不碰真文件）；?ws=<目录> 指定工作区
+const Q = new URLSearchParams(location.search);
+const DEMO = Q.has('demo');
+const WSQ = Q.get('ws') ? 'ws=' + encodeURIComponent(Q.get('ws')) : '';
+const withWs = path => '/api' + path + (WSQ ? (path.includes('?') ? '&' : '?') + WSQ : '');
+const api = (path, opts) => fetch(withWs(path), opts && { ...opts, headers: { 'content-type': 'application/json' } })
+  .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || (j.report && j.report.errors && JSON.stringify(j.report.errors)) || r.status); return j; });
+
 export function Shell({ name, Canvas }) {
-  const [text, setText] = useState(() => load('syn.text', SAMPLE));
+  const [mode, setMode] = useState(DEMO ? 'demo' : 'loading'); // demo | loading | ws | offline
+  const [wsData, setWsData] = useState(null);
+  const [saveState, setSaveState] = useState('');
+  const lastSaved = useRef(null);
+  const local = mode === 'demo' || mode === 'offline';
+  const [text, setText] = useState(() => DEMO ? load('syn.text', SAMPLE) : '');
   const [scope, setScope] = useState(ROOT);
   const [selected, setSelected] = useState(null);
-  const [positions, setPositions] = useState(() => load('syn.pos.' + name, {}));
-  const [images, setImages] = useState(() => load('syn.img', {}));
+  const [positions, setPositions] = useState(() => DEMO ? load('syn.pos.' + name, {}) : {});
+  const [localImages, setImages] = useState(() => load('syn.img', {}));
   const [exportText, setExportText] = useState(null);
   // >v<🧭导航-视图记忆-每个范围各存平移+缩放
   // 每个范围各记一份视图（平移+缩放），返回上一级/再钻进来时还原
@@ -30,13 +43,52 @@ export function Shell({ name, Canvas }) {
 
   const graph = useMemo(() => parseOutline(text), [text]);
   const realScope = graph.nodes.has(scope) ? scope : ROOT;
-  const view = useMemo(() => projectView(graph, realScope), [graph, realScope]);
+  // 边标签 / 节点副标题来自工作区文件（大纲里没有）
+  const view = useMemo(() => {
+    const v = projectView(graph, realScope);
+    const lab = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.label]));
+    return {
+      ...v,
+      nodes: v.nodes.map(n => ({ ...n, sub: wsData?.nodes[n.id]?.meta?.rate || '' })),
+      edges: v.edges.map(e => ({ ...e, text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '' })),
+    };
+  }, [graph, realScope, wsData]);
+  const images = useMemo(() => {
+    if (local) return localImages;
+    const m = {};
+    for (const [id, n] of Object.entries(wsData?.nodes || {})) if (n.meta.img) m[id] = withWs('/file?p=' + encodeURIComponent(n.meta.img));
+    return m;
+  }, [local, localImages, wsData]);
+
+  // 启动：从工作区加载；失败 → 离线（localStorage）
+  useEffect(() => {
+    if (DEMO) return;
+    api('/ws').then(d => { lastSaved.current = d.outline; setText(d.outline); setPositions(d.layout || {}); setWsData(d); setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载'); })
+      .catch(e => { setMode('offline'); setText(load('syn.text', SAMPLE)); setPositions(load('syn.pos.' + name, {})); setSaveState('⚠️ 没连上工作区（' + e.message + '），本地离线模式'); });
+  }, []);
+  // 自动保存：大纲停手 0.7s 且无错误 → 写回文件
+  useEffect(() => {
+    if (mode !== 'ws' || text === lastSaved.current) return;
+    if (graph.errors.length) { setSaveState('大纲有错，暂不保存'); return; }
+    const t = setTimeout(() => {
+      setSaveState('保存中…');
+      api('/outline', { method: 'PUT', body: JSON.stringify({ outline: text }) })
+        .then(d => { lastSaved.current = text; setWsData(d); const r = d.report; setSaveState('已保存 ' + new Date().toLocaleTimeString() + (r.removed.length ? '（' + r.removed.length + ' 个节点移进 _过期的/）' : '')); })
+        .catch(e => setSaveState('❌ 保存失败：' + e.message));
+    }, 700);
+    return () => clearTimeout(t);
+  }, [text, mode]);
   const layout = useMemo(() => autoLayout(view, positions), [view, positions]);
+  // 自动排出来的位置立刻固定（存起来），之后加节点别的节点不会跟着跳
+  useEffect(() => {
+    const missing = Object.fromEntries(Object.entries(layout).filter(([id]) => !positions[id]));
+    if (Object.keys(missing).length) move(missing);
+  }, [layout]);
   const sel = selected && (view.nodes.some(n => n.id === selected) || view.portals.some(p => p.id === selected)) ? selected : null;
 
-  useEffect(() => save('syn.text', text), [text]);
-  useEffect(() => save('syn.pos.' + name, positions), [positions, name]);
-  useEffect(() => save('syn.img', images), [images]);
+  useEffect(() => { if (local) save('syn.text', text); }, [text, local]);
+  useEffect(() => { if (local) save('syn.pos.' + name, positions); }, [positions, name, local]);
+  useEffect(() => save('syn.img', localImages), [localImages]);
   useEffect(() => save('syn.vp.' + name, viewports), [viewports, name]);
   const onViewport = useCallback((sc, vp) => setViewports(v => ({ ...v, [sc]: vp })), []);
   const go = useCallback(next => {
@@ -60,7 +112,10 @@ export function Shell({ name, Canvas }) {
     const t = withEdge(graph, resolve(from), resolve(to));
     if (t) setText(t);
   }, [graph]);
-  const move = useCallback(changes => setPositions(p => ({ ...p, ...changes })), []);
+  const move = useCallback(changes => {
+    setPositions(p => ({ ...p, ...changes }));
+    if (mode === 'ws') api('/layout', { method: 'PUT', body: JSON.stringify({ positions: changes }) }).catch(e => setSaveState('❌ 坐标保存失败：' + e.message));
+  }, [mode]);
   const addNode = asChild => {
     const parent = sel && asChild ? sel : sel ? graph.nodes.get(sel).parent : realScope;
     const r = withNode(graph, parent, asChild ? null : sel);
@@ -94,12 +149,15 @@ export function Shell({ name, Canvas }) {
       if (!item) return;
       e.preventDefault(); e.stopPropagation();
       const r = new FileReader();
-      r.onload = () => setImages(m => ({ ...m, [sel]: r.result }));
+      r.onload = () => {
+        if (mode !== 'ws') return setImages(m => ({ ...m, [sel]: r.result }));
+        api('/asset', { method: 'POST', body: JSON.stringify({ id: sel, dataUrl: r.result }) }).then(() => api('/ws')).then(setWsData).catch(e => setSaveState('❌ 贴图失败：' + e.message));
+      };
       r.readAsDataURL(item.getAsFile());
     };
     window.addEventListener('paste', onPaste, true);
     return () => window.removeEventListener('paste', onPaste, true);
-  }, [sel]);
+  }, [sel, mode]);
 
   // 大纲里：Tab 缩进、Shift+Tab 反缩进、回车保持缩进
   const onTaKey = e => {
@@ -131,14 +189,15 @@ export function Shell({ name, Canvas }) {
           <span className="crumbs">{crumbs.map((c, i) => <span key={c.id}>{i > 0 && ' › '}<a onClick={() => { go(c.id); setSelected(null); }}>{c.label}</a></span>)}</span>
           <span className="hint">双击=钻进　Alt+↑=上一层 Alt+←/→=后退/前进　Enter=同级　Tab=子级　选中+Ctrl+V=贴图　{name === 'tldraw' ? 'A=箭头工具连线 V=选择' : '从节点边缘拖=连线'}</span>
           <button onClick={() => setExportText(exportForLLM(graph, realScope))}>导出给 LLM</button>
-          <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>
+          {local && <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>}
+          <span className={'save' + (saveState.startsWith('❌') || saveState.startsWith('⚠') ? ' bad' : '')} title={wsData?.root || ''}>{mode === 'ws' ? '📁 ' + (wsData?.root || '').split(/[\/]/).slice(-2).join('/') + '　' : mode === 'demo' ? '🧪 样例　' : ''}{saveState}</span>
           <a className="switch" href={name === 'tldraw' ? './reactflow.html' : './tldraw.html'}>换 {name === 'tldraw' ? 'React Flow' : 'tldraw'} →</a>
         </div>
-        <div className="canvas">
+        {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className="canvas">
           <Canvas key={realScope} view={view} layout={layout} selected={sel} images={images}
             onSelect={setSelected} onDrill={drill} onConnect={connect} onMove={move}
             viewport={viewports[realScope]} onViewport={vp => onViewport(realScope, vp)} />
-        </div>
+        </div>}
       </main>
       {exportText !== null && (
         <div className="modal" onClick={() => setExportText(null)}>
@@ -173,6 +232,7 @@ export function NodeCard({ node, img, dim, isSel }) {
     <div className={'card' + (dim ? ' dim' : '') + (isSel ? ' sel' : '')}>
       <div className="title">{node.status && <span className="st">{STATUS_ICON[node.status]}</span>}{node.label}
         {node.children.length > 0 && <span className="kids" title="双击钻进">▸ {node.children.length}</span>}</div>
+      {node.sub && <div className="sub">{node.sub}</div>}
       {img && <img src={img} draggable={false} />}
     </div>
   );

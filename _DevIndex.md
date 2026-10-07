@@ -8,7 +8,7 @@
 **怎么用**：想改哪块功能，先在本表找到大标题，再全局搜那个大标题字符串，所有相关位置一次列全。
 
 ```bash
-grep -rn ">v<🧭导航" spikes/src spikes/test bootstrap --include=*.js --include=*.jsx
+grep -rn ">v<💾工作区" core spikes bootstrap --include=*.js --include=*.jsx
 ```
 
 > ⚠️ 在本文件里写标记一律包反引号：行首的 `>` 会被 Markdown 当成引用块。
@@ -21,13 +21,15 @@ grep -rn ">v<🧭导航" spikes/src spikes/test bootstrap --include=*.js --inclu
 
 | 标记 | 涉及范围 | 说明 |
 |---|---|---|
-| `>v<🌳大纲模型` | `spikes/src/outline.js` | 大纲文本 ⇄ 图；画布编辑（加边/加节点）后回写大纲 |
-| `>v<🔭视图投影` | `spikes/src/outline.js` | 范围投影（跨层边聚合、portal）、自动布局 |
-| `>v<📤LLM导出` | `spikes/src/outline.js` | 节点卡格式的结构化文本 |
+| `>v<🌳大纲模型` | `core/outline.js` | 大纲文本 ⇄ 图；画布编辑（加边/加节点）后回写大纲 |
+| `>v<🔭视图投影` | `core/outline.js` | 范围投影（跨层边聚合、portal）、自动布局 |
+| `>v<📤LLM导出` | `core/outline.js` | 节点卡格式的结构化文本 |
+| `>v<💾工作区` | `core/workspace.js` `spikes/vite.config.js` `spikes/src/shell.jsx` `core/tools/` | `__synapsis/` 文件夹 ⇄ 图、HTTP 接口、界面自动保存、导入空间图 |
+| `>v<🤖LLM接口` | `core/cli.js` | overview / outline / export / get / check / apply / init |
 | `>v<🧭导航` | `spikes/src/shell.jsx` | 钻进/退出、后退前进、视图记忆、快捷键 |
 | `>v<🎨画布` | `spikes/src/rf.jsx` `spikes/src/td.jsx` `spikes/src/shell.jsx` | 两个画布实现、贴图 |
-| `>v<🚀启停` | `spikes/vite.config.js` `spikes/src/shell.jsx` + `Synapsis_start.vbs` `Synapsis_stop.bat` | 无窗口启动、按端口停止、心跳自动退出 |
-| `>v<✅自检` | `spikes/test/` | 纯 Node 核心自检 + 无头 Edge 界面自检 |
+| `>v<🚀启停` | `spikes/vite.config.js` `spikes/src/shell.jsx` `core/cli.js`(init) + `core/templates/Synapsis.vbs` `Synapsis_stop.bat` | 无窗口启动、按端口停止、心跳自动退出 |
+| `>v<✅自检` | `spikes/test/` `core/test/` `core/workspace.js`(checkWorkspace) | 纯 Node 核心自检 + 无头 Edge 界面自检 |
 | `>v<🏗️构建引导` | `bootstrap/bootstrap.js` `bootstrap/template/` | 给新项目铺骨架，已有文件跳过 |
 
 ---
@@ -46,13 +48,32 @@ grep -rn ">v<🧭导航" spikes/src spikes/test bootstrap --include=*.js --inclu
 小标题：
 
 - **范围投影** —— `projectView`：只显示当前范围的直接子节点；子孙之间的边提升到可见祖先上并聚合（`count`，画成 ×N）；端点在范围外 → `@portal:<id>` 节点，双击跳过去。
-- **自动布局** —— `autoLayout`：最长路径分层（左→右），先 DFS 找回边并忽略（否则反馈环会让层数爆掉，2026-10-07 自检抓到）；奇数层下错 70px，免得反馈边穿过同一行的节点。已有坐标不动。
+- **自动布局** —— `autoLayout`：最长路径分层（左→右）；⭐**大纲顺序 = 流向提示**：指向前面兄弟的边算回边（↺）忽略（DFS 断环曾把「内在」甩到最右）；奇数层下错 70px；没坐标的节点在自己那列找**空槽**，不压已有节点（新节点压住「兜底」导致拖错）。界面会把自动位置立即固定存盘。
 
 ## `>v<📤LLM导出`
 
 小标题：
 
 - **节点卡** —— `exportForLLM`：每个节点一节，带 `[id]`、状态、入边、出边、包含。完整规范见 `Life Games/研究/有向图软件_需求与方案.md` §0.6；格式优劣**还没测**（`_TODO.md` 里的小实验）。
+
+## `>v<💾工作区`
+
+小标题：
+
+- **读取 / 写回** —— `loadWorkspace` / `saveOutline`：文件夹 = 层级（叶子 `名字.md`，分组 `名字/_node.md`）；以 `_`/`.` 开头的不是节点。写回时按「同 id，或同父下 1:1 改名」配对旧节点，保留正文、其余属性、边标签；只写变了的文件；节点消失 → 移进 `_过期的/`（不真删）；空目录清掉；坐标跟着改名走。⭐往返逐字相等有自检。
+- **文件名** —— `fileName`：名字含 `/  : * ? " < > |` → 全角，原名存 `label:`（`NN/LLM` 曾被拆成两层，往返自检抓到）。
+- **frontmatter** —— 最小 YAML 子集（`key: value`、`key:` + `  - 项`），键顺序 label/status/order/其余(字母序)/to，稳定好 diff。出边 `目标 | 标签 | 类型`，目标按名字就近解析。
+- **说明文件** —— `ensureWorkspaceReadme`：每个 `__synapsis/` 一份 `_synapsis.md`（格式 + CLI 用法），给人和 LLM。
+- **HTTP接口** —— `vite.config.js` 的 `workspaceApi`：`GET /api/ws`、`PUT /api/outline`、`PUT /api/layout`、`POST /api/asset`、`GET /api/file`；工作区 `?ws=` > `SYN_WS` > `.synapsis/config.json`。
+- **界面接入** —— `shell.jsx`：启动加载、停手 0.7s 自动保存（大纲有错不存）、状态栏显示；`?demo` = 样例 + localStorage（测试专用）。
+- **导入空间图** —— `core/tools/import_spacegraph.js`：一次性，留作来源记录。
+
+## `>v<🤖LLM接口`
+
+小标题：
+
+- **CLI** —— `node core/cli.js` 无参数看用法。LLM 先 `overview`（省 token）→ `get <id>` / `export <id>` → 改结构用 `apply` → `check`。
+- **init** —— 给项目挂上 Synapsis：`__synapsis/` + `_synapsis.md`、`.synapsis/`（自带 `*` gitignore，不碰项目原有 .gitignore）、`Synapsis.vbs`（VBScript 的 Escape 给 %uXXXX 浏览器不认 → 手写 UTF-8 编码，已与 encodeURIComponent 对过）。
 
 ## `>v<🧭导航`
 
@@ -82,8 +103,9 @@ grep -rn ">v<🧭导航" spikes/src spikes/test bootstrap --include=*.js --inclu
 
 小标题：
 
-- **核心** —— `npm test`，纯 Node，17 项。
-- **界面** —— `npm run test:ui`（需先起 dev），playwright-core + 本机 Edge 无头，两个画布同一套交互各 19 项；可传截图目录。
+- **核心** —— `npm test`（spikes/），纯 Node，18 项；`node core/test/workspace.test.js`，临时目录 19 项。
+- **界面** —— `npm run test:ui`（需先起 dev），playwright-core + 本机 Edge 无头：样例模式两画布各 19 项 + 工作区模式各 7 项（临时目录，不碰真文件）。`test/shot.mjs` 给真实工作区截图。
+- **graph check** —— `checkWorkspace`：悬空边、叶子没 status、code 指向不存在的文件、done 却没 code（提示）。
 
 ## `>v<🏗️构建引导`
 

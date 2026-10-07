@@ -1,6 +1,6 @@
 // >v<✅自检-核心-纯 Node：解析/往返/投影/聚合/编辑/布局
 // node test/outline.test.js
-import { parseOutline, toOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, autoLayout, ROOT } from '../src/outline.js';
+import { parseOutline, toOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, autoLayout, ROOT } from '../../core/outline.js';
 import { SAMPLE } from '../src/sample.js';
 let pass = 0, fail = 0;
 const ok = (c, m) => { c ? pass++ : (fail++, console.log('✗', m)); };
@@ -46,5 +46,7 @@ const r2 = withNode(g4, '游戏AI/决策');
 ok(r2.id.endsWith('新节点2'), '新节点不重名');
 const lay = autoLayout(ai, {});
 ok(lay['游戏AI/感知'].x < lay['游戏AI/决策'].x && lay['游戏AI/决策'].x < lay['游戏AI/行动'].x, '分层布局 感知<决策<行动');
+const lay2 = autoLayout({ nodes: [{ id: 'a' }, { id: 'b' }], edges: [], portals: [] }, { a: { x: 0, y: 0 } });
+ok(!(lay2.b.x === 0 && lay2.b.y === 0), '自动布局避开已摆好的节点 ' + JSON.stringify(lay2));
 console.log(`outline: ${pass} 过 / ${fail} 挂`);
 process.exit(fail ? 1 : 0);

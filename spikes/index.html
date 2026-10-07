@@ -1,5 +1,15 @@
 <!doctype html>
-<html lang="zh"><head><meta charset="utf-8"><title>Synapsis spikes</title>
-<style>body{font:15px system-ui,"Microsoft YaHei";max-width:560px;margin:60px auto;line-height:1.7}a{display:block;font-size:20px}</style></head>
-<body><h2>Synapsis · 画布库对比</h2><p>同一份大纲、同一个外壳，只换画布。各玩 10 分钟。</p>
-<a href="./reactflow.html">React Flow（MIT）→</a><a href="./tldraw.html">tldraw 5（localhost 免 key，部署需许可）→</a></body></html>
+<html lang="zh"><head><meta charset="utf-8"><title>Synapsis</title>
+<style>body{font:15px system-ui,"Microsoft YaHei";max-width:600px;margin:60px auto;line-height:1.7;color:#1d2330}a{display:block;font-size:20px;color:#2b7bff}.ws{color:#7a8394;font-size:13px;word-break:break-all}</style></head>
+<body><h2>Synapsis · 画布库对比</h2>
+<p class="ws" id="ws"></p>
+<p>同一份数据、同一个外壳，只换画布。各玩 10 分钟，卡住的地方告诉 Claude（记进摩擦日志）。</p>
+<a class="go" href="./reactflow.html">React Flow（MIT）→</a>
+<a class="go" href="./tldraw.html">tldraw 5（localhost 免 key，部署需许可）→</a>
+<script>
+  // 启动器传来的 ?ws=<项目目录> 带到两个画布上
+  const q = location.search;
+  for (const a of document.querySelectorAll('a.go')) a.href += q;
+  const ws = new URLSearchParams(q).get('ws');
+  document.getElementById('ws').textContent = '📁 工作区：' + (ws || '默认（.synapsis/config.json）');
+</script></body></html>

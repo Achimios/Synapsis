@@ -10,7 +10,7 @@
 <项目根>/
   __synapsis/        图数据：节点 .md（一节点一文件）、图片、layout（坐标单独存，免得拖动污染语义 diff）—— 进 git
   .synapsis/         本机状态（窗口、缓存）—— gitignore
-  Synapsis.bat       启动快捷方式：只调用全局 Synapsis 打开本目录（纯 ASCII）
+  Synapsis.vbs       启动器：`node core/cli.js init <项目>` 生成；起全局服务（没在跑才起）并打开本目录（纯 ASCII，中文路径手动 UTF-8 编码）
 ```
 - **服务全局只有一个**（像 Obsidian：软件全局、工作区本地），多工作区；避免每个项目各起一个撞端口、两份代码版本。
 - `__synapsis/` 而不是 `.synapsis/`：ripgrep 与 Obsidian 都默认跳过点目录。

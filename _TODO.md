@@ -2,7 +2,10 @@
 
 ## 下一步
 - [ ] 用户试两个画布 → 选库（React Flow 倾向，见 `_DevProgress.md` 2026-10-07 对比）
-- [ ] 写 `core/`：`__synapsis/` 一节点一 .md 读写 + check + 导出；测试工作区 = `Life Games/研究`（👤）
+- [x] 写 `core/`：`__synapsis/` 一节点一 .md 读写 + check + 导出；测试工作区 = `Life Games/研究`（👤）
+- [ ] 视图记忆从浏览器 localStorage 搬进工作区 `.synapsis/`
+- [ ] 稳定 id：跨父移动 + 改名时保住正文关联（现在会进 _过期的，不丢内容但断了关联）
+- [ ] 界面显示节点正文 / 属性（侧栏），能直接改
 - [ ] 外部区：只读文件树 + 解析 `_DevIndex.md` / `_开发索引表.md`
 - [ ] 托盘图标（可选；现在是 VBS 无窗口启动 + 心跳自动退出 + `Synapsis_stop.bat`）
 

@@ -18,8 +18,10 @@
 |---|---|
 | `_Design/` | 哲学、规格、决定（长文） |
 | `__synapsis/` | Synapsis 规划它自己（自测） |
+| `core/` | ⭐数据核心：工作区读写、大纲、CLI（`node core/cli.js` 看用法） |
 | `bootstrap/` | ⭐**项目构建引导**：用户所有新项目的规矩 + 骨架模板 + 生成脚本（全局 skill `project-bootstrap` 指向这里） |
-| `spikes/` | 画布库对比原型（tldraw vs React Flow），选完后进 `_过期的/` |
+| `spikes/` | 界面（目前两个画布对比，共用外壳；dev 服务带工作区 API），选库后收敛 |
+| `Synapsis.vbs` / `Synapsis_stop.bat` | 打开 Synapsis 自己的工作区 / 停服务 |
 
 ## 规矩
 - 能在 Node 里跑的逻辑（解析、投影、check、导出）放纯函数，用 Node 自检，别靠浏览器验证
