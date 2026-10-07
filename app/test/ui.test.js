@@ -94,6 +94,23 @@ for (const kind of ['reactflow']) {
   ok((await page.$$eval('.kidlist li', ls => ls.length)) === 2, '选中后空格 → 原地展开（行动有 2 个子级）');
   await page.keyboard.press(' '); await sleep(400);
   ok((await page.$$('.kidlist li')).length === 0, '再按空格收起');
+  // 多选（👤 2026-10-08：Ctrl+单击 曾经死循环黑屏）
+  const selLabs = async () => (await page.$$eval('.card.sel .lab', ls => ls.map(l => l.textContent))).sort().join(',');
+  const nErr = errs.length;
+  await page.keyboard.down('Control'); await page.mouse.click(...center(await cardBox('决策'))); await page.keyboard.up('Control'); await sleep(400);
+  ok(await selLabs() === '决策,行动' && !!(await page.$('.scaleframe')) && errs.length === nErr, 'Ctrl+单击 = 加入选择（不崩），出缩放框 ' + await selLabs() + ' ' + errs.slice(nErr).join(' '));
+  await page.keyboard.down('Control'); await page.mouse.click(...center(await cardBox('决策'))); await page.keyboard.up('Control'); await sleep(400);
+  ok(await selLabs() === '行动', '再 Ctrl+单击 = 移出 ' + await selLabs());
+  await page.keyboard.press('Escape'); await page.mouse.click(...center(await cardBox('感知'))); await sleep(300);
+  await page.keyboard.down('Shift'); await page.mouse.click(...center(await cardBox('行动'))); await page.keyboard.up('Shift'); await sleep(400);
+  ok(await selLabs() === '决策,感知,行动,记忆与人格', 'Shift+单击 = 两点之间路径上的都选上（兜底不在路径上） ' + await selLabs());
+  await page.keyboard.press('Escape'); await page.mouse.click(...center(await cardBox('行动'))); await sleep(300);
+  await page.keyboard.press('Control+ArrowLeft'); await sleep(400);
+  ok(await selLabs() === '兜底,决策,行动', 'Ctrl+← = 沿入线扩一层 ' + await selLabs());
+  await page.keyboard.press('Shift+ArrowLeft'); await sleep(400);
+  ok((await page.$$('.card.sel')).length === 5, 'Shift+← = 一直扩到头 ' + await selLabs());
+  await page.keyboard.press('Escape'); await sleep(200);
+  ok((await page.$$('.card.sel')).length === 0, 'Esc 清空多选');
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${kind}_2_select.png` });
 
   // 拖动 → 刷新后坐标还在

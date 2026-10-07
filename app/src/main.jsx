@@ -1,7 +1,8 @@
 import { createRoot } from 'react-dom/client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { ReactFlow, Background, Controls, MiniMap, Handle, Position, applyNodeChanges, BaseEdge, EdgeLabelRenderer, getBezierPath, ViewportPortal, useReactFlow } from '@xyflow/react';
 import { dragScale } from './arrange.js';
+import { expand, pathBetween } from './select.js';
 import '@xyflow/react/dist/style.css';
 import { Shell, NodeCard, PortalCard, PicCard, AxesCard, MatrixChip, edgeLook, lengthFade, desat, nodeDim } from './shell.jsx';
 
@@ -77,7 +78,11 @@ function ScaleFrame({ nodes, ids, setNodes, onMove }) {
 // >v<🎨画布-ReactFlow-显示 view + 回报选择/拖动/连线/视图
 function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, onDrill, onConnect, onMove, onContextMenu, viewport, onViewport }) {
   const centered = new Set(plane?.ids || []); // 空间成员：卡片中心对准坐标点
-  const [multi, setMulti] = useState([]); // Shift 框选的多张卡（单选仍由外壳的 selected 管）
+  // >v<🎨画布-多选-选择由这里自己管（不用 React Flow 的 Ctrl 多选：两边各管一份会互相触发 → 死循环黑屏，👤 2026-10-08）：
+  // 单击 = 只选它；Ctrl+单击 = 加入 / 移出；Shift+单击 = 加上它和当前选中之间路径上的节点；Shift+拖空白 = 框选；
+  // Ctrl+← / → = 沿入线 / 出线扩一层，Shift+← / → = 扩到头（core/select.js）
+  const [multi, setMultiRaw] = useState([]); // 多选（≥2 张）；单选仍由外壳的 selected 管
+  const setMulti = ids => { const next = ids.length > 1 ? [...new Set(ids)].sort() : []; setMultiRaw(m => m.join('|') === next.join('|') ? m : next); };
   const ms = new Set(multi);
   const isSel = id => id === selected || ms.has(id);
   const build = () => [
@@ -102,15 +107,36 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
   }));
 
   const onNodesChange = useCallback(ch => setNodes(ns => applyNodeChanges(ch, ns)), []);
-  const onSelectionChange = useCallback(({ nodes: sel }) => {
-    const ids = sel.map(n => n.id).filter(id => id !== '@axes'); // 传送门（↗ 别处的节点）也能框选排列：它们的坐标同样存在 _layout.json
-    const next = ids.length > 1 ? ids : [];
-    setMulti(m => m.join('|') === next.join('|') ? m : next);
-  }, []);
+  const nodesRef = useRef(nodes); nodesRef.current = nodes;
+  // 框选结束：读 React Flow 选中的（传送门也算：它们的坐标同样存在 _layout.json）
+  const onSelectionEnd = () => setTimeout(() => setMulti(nodesRef.current.filter(n => n.selected && n.id !== '@axes').map(n => n.id)), 0);
+  const base = () => multi.length ? multi : selected ? [selected] : [];
+  const click = (e, n) => {
+    if (e.ctrlKey || e.metaKey) {
+      const cur = new Set(base());
+      if (cur.has(n.id)) cur.delete(n.id); else cur.add(n.id);
+      const arr = [...cur];
+      setMulti(arr); onSelect(cur.has(n.id) ? n.id : arr.at(-1) ?? null);
+    } else if (e.shiftKey && selected && selected !== n.id) {
+      setMulti([...base(), ...pathBetween(view.edges, selected, n.id)]); onSelect(n.id);
+    } else { onSelect(n.id === selected && !multi.length ? null : n.id); setMulti([]); }
+  };
+  useEffect(() => {
+    const key = e => {
+      if (e.target.closest?.('textarea, input, [contenteditable="true"]')) return;
+      if (e.key === 'Escape') { setMulti([]); return; }
+      if (e.altKey || !(e.ctrlKey || e.shiftKey) || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+      const b = base(); if (!b.length) return;
+      e.preventDefault(); e.stopPropagation();
+      setMulti([...expand(view.edges, b, e.key === 'ArrowLeft' ? 'in' : 'out', e.shiftKey)]);
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  });
   return (
-    <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChange} onSelectionChange={onSelectionChange}
-      onNodeClick={(_, n) => onSelect(n.id === selected ? null : n.id)}
-      onPaneClick={() => onSelect(null)}
+    <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChange} onSelectionEnd={onSelectionEnd}
+      onNodeClick={click} multiSelectionKeyCode={null} disableKeyboardA11y
+      onPaneClick={() => { onSelect(null); setMulti([]); }}
       onNodeContextMenu={(e, n) => { e.preventDefault(); onContextMenu(n.id, e.clientX, e.clientY); }}
       onPaneContextMenu={e => { e.preventDefault(); onContextMenu(null, e.clientX, e.clientY); }}
       onNodeDoubleClick={(_, n) => onDrill(n.id)}
