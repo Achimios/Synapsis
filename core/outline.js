@@ -4,8 +4,8 @@
 //   状态可选：✅ ◐ ○ ；目标按名称解析（同名时取最近的：兄弟 > 祖先的子 > 全局第一个）
 // id = 祖先名称路径（"AI空间/观测/敌方"）—— 原型简化：改名会丢坐标，见 _LEARNINGS
 
-const STATUS = { '✅': 'done', '◐': 'partial', '○': 'todo' };
-const STATUS_CH = { done: '✅', partial: '◐', todo: '○' };
+const STATUS = { '✅': 'done', '◐': 'partial', '○': 'todo', '❌': 'dropped' };
+const STATUS_CH = { done: '✅', partial: '◐', todo: '○', dropped: '❌' };
 export const ROOT = '';
 
 // >v<🌳大纲模型-解析-大纲文本→节点树+边，按名称就近解析连线目标
@@ -27,7 +27,7 @@ export function parseOutline(text) {
     }
     let status = null;
     const ch = [...body][0];
-    if (STATUS[ch]) { status = STATUS[ch]; body = body.slice(ch.length).trim(); }
+    if (STATUS[ch]) { status = STATUS[ch]; body = body.slice(ch.length).replace(/^\uFE0F/, '').trim(); } // ❌️ / ✅️ 带变体选择符也认
     if (!body) { errors.push({ line: i + 1, msg: '空名称' }); return; }
     while (stack.length > 1 && stack[stack.length - 1].indent >= indent) stack.pop();
     const parent = stack[stack.length - 1].id;
@@ -94,6 +94,12 @@ export function toOutline(graph) {
 export function shortRef(graph, from, to) {
   const label = graph.nodes.get(to).label;
   return resolveLabel(graph.nodes, from, label) === to ? label : to;
+}
+
+// >v<💾工作区-弃用-status: dropped（大纲里 ❌）：自己或任一祖先弃用 = 弃用；完成度汇总、check 都跳过，界面灰 + 删除线（👤 2026-10-08）
+export function isDropped(g, id) {
+  for (let x = id; x != null && x !== ROOT; x = g.nodes.get(x)?.parent) if (g.nodes.get(x)?.status === 'dropped') return true;
+  return false;
 }
 
 // 视图投影：当前范围 scope 下只显示直接子节点；

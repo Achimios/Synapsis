@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { PALETTE } from './colors.js';
-const STATUS = [['done', '✅'], ['partial', '◐'], ['todo', '○']];
+const STATUS = [['done', '✅'], ['partial', '◐'], ['todo', '○'], ['dropped', '❌']];
 
 // >v<🎨画布-右键菜单-节点：属性/改名/状态/新建/展开/钻进/删除；空白处：新建/全部展开/上一层
 export function ContextMenu({ menu, node, actions, onClose }) {
@@ -34,7 +34,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       <div className="mi row" onPointerDown={e => e.stopPropagation()}>
         <span>状态</span>
         {STATUS.map(([s, ic]) => <button key={s} className={node.status === s ? 'on' : ''} onClick={() => { onClose(); actions.status(node.id, s); }}>{ic}</button>)}
-        <button title="清除" onClick={() => { onClose(); actions.status(node.id, null); }}>✕</button>
+        <button title="清除状态（不标）" onClick={() => { onClose(); actions.status(node.id, null); }}>—</button>
       </div>
       {actions.color && <div className="mi row swatches" onPointerDown={e => e.stopPropagation()}>
         <span>颜色</span>
@@ -48,7 +48,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       {actions.hasFile(node.id) && item('看 md 原文', () => actions.openMd(node.id))}
       {actions.hasFile(node.id) && item('在资源管理器中显示', () => actions.reveal(node.id))}
       {item('贴图…', () => actions.pasteHint(node.id), { key: 'Ctrl+V' })}
-      {item('删除' + (node.children.length ? `（含 ${countAll(node)} 个子孙）` : ''), () => actions.remove(node.id), { danger: true, key: 'Del' })}
+      {item('🗑️ 删除' + (node.children.length ? `（含 ${countAll(node)} 个子孙）` : ''), () => actions.remove(node.id), { danger: true, key: 'Del' })}
     </div>
   );
 }
@@ -175,7 +175,7 @@ export function OutlineTree({ graph, selected, scope, renaming, status, onPick, 
             ? <input autoFocus defaultValue={n.label} onFocus={e => e.target.select()} onClick={e => e.stopPropagation()}
                 onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') { e.target.dataset.done = 1; onCommit(n.id, e.target.value); } else if (e.key === 'Escape') { e.target.dataset.done = 1; onCancel(); } }}
                 onBlur={e => { if (!e.target.dataset.done) onCommit(n.id, e.target.value); }} />
-            : <span className="olab">{n.label}</span>}
+            : <span className={'olab' + (n.status === 'dropped' ? ' strike' : '')}>{n.label}</span>}
           {n.children.length > 0 && renaming !== n.id && <span className="odrill" title="钻进这一层（画布显示它的子节点）" onClick={e => { e.stopPropagation(); onDrill(n.id); }}>→</span>}
         </div>
       ))}
@@ -211,7 +211,7 @@ export function ScaffoldModal({ items, root, onCreate, onClose }) {
 export const KEYMAP = [
   ['选择与查看', [['单击卡片 / 大纲行', '选中，右侧显示概览'], ['I', '属性面板开关'], ['Tab', '左栏开关'], ['? / F1', '这一页']]],
   ['导航', [['双击卡片 / 大纲行的 →', '钻进去'], ['Alt+↑', '上一层'], ['鼠标侧键 / Alt+← →', '后退 / 前进'], ['大纲树里 ↑↓←→', '上下走 / 折叠展开'], ['▸N / 空格', '卡片里原地展开子级']]],
-  ['编辑', [['Enter', '新建同级'], ['Insert / Ctrl+Enter', '新建子级'], ['F2 / 双击大纲行', '改名'], ['Del', '删除（进 _过期的/）'], ['卡片边缘拖到另一张', '连线'], ['右键', '菜单：状态、属性、原文……'], ['Ctrl+Z', '撤销（结构、连线、拖动；删除也能撤回）'], ['Ctrl+Shift+Z / Ctrl+Y', '重做']]],
+  ['编辑', [['Enter', '新建同级'], ['Insert / Ctrl+Enter', '新建子级'], ['F2 / 双击大纲行', '改名'], ['Del', '删除（进 _过期的/）'], ['卡片边缘拖到另一张', '连线'], ['右键', '菜单：状态（❌ = 弃用）、颜色、属性、原文……'], ['Ctrl+Z', '撤销（结构、连线、拖动；删除也能撤回）'], ['Ctrl+Shift+Z / Ctrl+Y', '重做']]],
   ['排列', [['Shift+拖空白', '框选多张卡'], ['拖框的边 / 角', '整体拉开或收紧间距'], ['收到底', '对齐；会重叠的依次排开']]],
   ['图片', [['Ctrl+V', '贴进选中的卡；没选中 = 散图'], ['拖文件 / 网页图', '落在卡片上 = 进那张；空白处 = 散图'], ['图片右下角拖', '调大小'], ['🖼 / 工具栏', '收起这张 / 全部收起']]],
 ];

@@ -79,6 +79,8 @@ try {
   writeFileSync(ops, JSON.stringify([['add', '行动', '翻滚'], ['add', '行动', '翻滚']]));
   r = run('batch', ops);
   ok(r.code === 1 && r.err.includes('第 2 条') && node('行动/翻滚'), 'batch 遇错停下并报第几条，前面的已写');
+  r = run('status', '感知/视觉', '❌');
+  ok(node('感知/视觉').status === 'dropped' && /❌1/.test(run('overview').out), 'status ❌ = dropped；overview 单独计数 ❌ ' + r.out + r.err);
   run('status', '感知/视觉', 'partial');
   ok(/◐ 感知/.test(run('overview').out), 'overview 分组状态 = 子节点汇总（有 ◐ 就是 ◐）');
   ok(run('manual').out.includes(root.split('\\').join('/')), 'manual 填好了工作区路径');

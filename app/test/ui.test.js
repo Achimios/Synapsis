@@ -445,6 +445,25 @@ for (const kind of ['reactflow']) {
   ok(!existsSync(join(ws, '__synapsis', '甲.md')), 'Ctrl+Shift+Z 重做删除');
   await page.keyboard.press('Control+z'); await sleep(1800);
   ok(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8').includes('甲的正文'), '再撤销一次：又搬回来了（重做时记下了新的 _过期的/ 路径）');
+  // 删除后页面刷新了（开发服务重启 / Ctrl+R）→ Ctrl+Z 仍能撤回（👤 2026-10-08 删了咕噜人，刷新后撤不回）
+  await page.mouse.click(...mid(await (await card('丙')).boundingBox())); await sleep(200);
+  await page.keyboard.press('Delete'); await sleep(1600);
+  await page.reload(); await sleep(1800);
+  await page.mouse.click(700, 700); await page.keyboard.press('Control+z'); await sleep(1800);
+  ok(existsSync(join(ws, '__synapsis', '丙.md')) && !!(await card('丙')), '删除 → 刷新页面 → Ctrl+Z 仍能撤回 ' + await save());
+  // 弃用 ❌：右键 → 文件 status: dropped，卡片灰 + 删除线，连着它的线变灰变淡；「—」清除；删除项带 🗑️
+  await page.mouse.click(...mid(await (await card('乙')).boundingBox()), { button: 'right' }); await sleep(300);
+  ok((await page.$eval('.ctx .mi.danger', e => e.innerText)).includes('🗑️'), '右键删除项是 🗑️');
+  await page.click('.ctx .mi.row button:has-text("❌")'); await sleep(1500);
+  ok(/^status: dropped$/m.test(readFileSync(join(ws, '__synapsis', '乙.md'), 'utf8')), '右键 ❌ → 文件 status: dropped');
+  const yi = await card('乙');
+  ok((await yi.getAttribute('class')).includes('dropped') && (await yi.$eval('.lab', e => getComputedStyle(e).textDecorationLine)) === 'line-through', '弃用卡片：.dropped + 删除线');
+  await page.mouse.click(700, 760); await sleep(400); // 取消选中（选中时相连的线本来就变实）
+  const eStyle = await page.$eval('.react-flow__edge[data-id="甲=>乙"] .react-flow__edge-path', p => ({ op: +p.style.opacity, stroke: p.style.stroke }));
+  ok(eStyle.op <= 0.2 && eStyle.stroke === 'rgb(138, 138, 138)', '连着弃用节点的线：灰、更淡 ' + JSON.stringify(eStyle));
+  await page.mouse.click(...mid(await (await card('乙')).boundingBox()), { button: 'right' }); await sleep(300);
+  await page.click('.ctx .mi.row button:has-text("—")'); await sleep(1500);
+  ok(!/status:/.test(readFileSync(join(ws, '__synapsis', '乙.md'), 'utf8')) && !(await (await card('乙')).getAttribute('class')).includes('dropped'), '「—」清除状态');
   // 拖动 → 撤销 → 坐标回去
   const lay = () => JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'));
   const x丁 = lay()['丁'].x;

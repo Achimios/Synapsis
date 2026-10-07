@@ -24,6 +24,7 @@ node "{{CLI}}" get "<节点id>" --ws "{{WS}}" # 读节点：属性 + 入边/出�
 2. **做完一块就回写状态**：`status <id> done|partial`；有对应代码就 `set <id> code=相对路径#符号`；最后跑 `check`（文件或 `#符号` 不存在都会报错，草稿不会悄悄变成谎言）。
    - ⚠️`code:` 的路径**相对 `--ws` 目录**（就是放 `__synapsis/` 的那一层），不是 git 仓库根。代码在上一层就写 `../tac.js#think`。
    - 分组不用标状态：`overview` 按子节点汇总（全 ✅ 才 ✅）。
+   - 不做了就 `status <id> dropped`（❌ 弃用，别删）：不算完成度，`check` 跳过它和它的子孙。
 3. **一次写很多节点用 `batch`**（一个 JSON 文件，一个进程跑完），别每个节点 spawn 好几次。`add` 撞名会报错；脚本可能重跑就加 `--if-missing`（batch 里是 `{"ifMissing":true}`）。
 4. **小结构改动可以直接做**（加子节点、连线、改错字）。**大改**（删分组、改名一片、重新分层）先问人。
 5. **删除不真删**：`rm` 把文件移进 `__synapsis/_过期的/`。手动删文件也照此办理。
@@ -45,7 +46,7 @@ node "{{CLI}}" get "<节点id>" --ws "{{WS}}" # 读节点：属性 + 入边/出�
 - 名字里有 `/` 等非法字符时，文件名用全角，原名写在 frontmatter 的 `label:` 里。
 ```
 ---
-status: done | partial | todo
+status: done | partial | todo | dropped
 order: 0                # 兄弟间顺序
 rate: 0.5–5 Hz          # 其余属性随便加，Synapsis 原样保留
 code: src/ai/think.js#decide

@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, restoreRemoved, DIR } from '../workspace.js';
+import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, restoreRemoved, groupStatus, DIR } from '../workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../scaffold.js';
 import { SAMPLE } from '../../app/src/sample.js';
 
@@ -153,6 +153,16 @@ try {
     ok(g5.edges.some(e => e.from === '小队/队长' && e.to === '小队/步枪兵'), '跨父移动：边还在');
   } finally { rmSync(r5, { recursive: true, force: true }); }
 
+  // 弃用 ❌：frontmatter status: dropped 往返；分组汇总不算它；check 跳过它和子孙（👤 2026-10-08）
+  const rDrop = mkdtempSync(join(tmpdir(), 'syn-drop-'));
+  try {
+    saveOutline(rDrop, '组\n  ✅ 做完\n  ❌ 不做了\n    孙子\n  ❌ 废叶');
+    const wDrop = loadWorkspace(rDrop);
+    ok(/^status: dropped$/m.test(readFileSync(join(rDrop, DIR, '组', '不做了', '_node.md'), 'utf8')) && workspaceOutline(wDrop).includes('❌ 不做了'), '弃用写成 status: dropped，读回来还是 ❌');
+    ok(groupStatus(wDrop.graph, '组') === 'done', '分组汇总不算弃用的（只剩 ✅ → ✅）');
+    const isDrop = checkWorkspace(wDrop);
+    ok(!isDrop.some(i => i.where.startsWith('组/不做了') || i.where === '组/废叶'), 'check 跳过弃用节点和它的子孙 ' + JSON.stringify(isDrop));
+  } finally { rmSync(rDrop, { recursive: true, force: true }); }
   // 项目骨架：检测已有 / 同类，只写勾上且不存在的
   const r4 = mkdtempSync(join(tmpdir(), 'syn-scaffold-'));
   try {

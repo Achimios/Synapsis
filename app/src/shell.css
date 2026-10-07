@@ -49,6 +49,12 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .card .title .lab { color: color-mix(in srgb, var(--c) 35%, var(--text)); }
 .card.sel { border-color: var(--sel); box-shadow: 0 0 0 1px var(--sel), 0 0 10px color-mix(in srgb, var(--c) 60%, transparent); }
 .card.dim { opacity: .25; }
+/* 弃用 ❌：灰、删除线（子孙跟着弃用） */
+.card.dropped { filter: grayscale(1); opacity: .55; }
+.card.dropped.dim { opacity: .18; }
+.card.dropped .title .lab, .card.portal.dropped, .strike { text-decoration: line-through; }
+.card.s-dropped { border-left-color: var(--faint); }
+.orow .olab.strike, .kidlist .strike { color: var(--faint); }
 .card .title { font-weight: 600; display: flex; gap: 4px; align-items: center; line-height: 1.3; }
 .card .st { font-size: 10px; }
 .card .kids { margin-left: auto; font-size: 10px; color: var(--dim); background: #353535; border-radius: 8px; padding: 0 5px; font-weight: 400; cursor: pointer; user-select: none; }

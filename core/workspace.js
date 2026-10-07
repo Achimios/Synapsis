@@ -16,12 +16,12 @@
 //   正文（人写的，Synapsis 不动）
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, unlinkSync, rmdirSync } from 'node:fs';
 import { join, dirname, relative, isAbsolute } from 'node:path';
-import { parseOutline, toOutline, resolveLabel, shortRef, ROOT } from './outline.js';
+import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, ROOT } from './outline.js';
 import { checkSpaces } from './space.js';
 
 export const DIR = '__synapsis';
 const NODE_FILE = '_node.md';
-const STATUS_IN = { done: 'done', partial: 'partial', todo: 'todo', '✅': 'done', '◐': 'partial', '○': 'todo' };
+const STATUS_IN = { done: 'done', partial: 'partial', todo: 'todo', dropped: 'dropped', '✅': 'done', '◐': 'partial', '○': 'todo', '❌': 'dropped' };
 const KEY_ORDER = ['label', 'status', 'order'];
 // 名字里有文件名非法字符（如 NN/LLM 的 /，会被当成路径）→ 文件名换全角，原名存 frontmatter label:
 const FW = { '/': '／', '\\': '＼', ':': '：', '*': '＊', '?': '？', '"': '＂', '<': '＜', '>': '＞', '|': '｜' };
@@ -366,7 +366,7 @@ export function saveView(root, patch) {
 export function checkWorkspace(ws) {
   const issues = [...ws.graph.errors.map(e => ({ level: 'error', where: e.file, msg: e.msg }))];
   for (const n of ws.graph.nodes.values()) {
-    if (n.id === ROOT) continue;
+    if (n.id === ROOT || isDropped(ws.graph, n.id)) continue; // 弃用的（含弃用分组的子孙）不查
     if (!n.status && !n.children.length) issues.push({ level: 'warn', where: n.id, msg: '没有 status' }); // 分组的状态由子节点汇总
     if (n.meta.code && n.meta.code !== 'null') {
       const [f, sym] = n.meta.code.split('#');
@@ -385,10 +385,10 @@ export function checkWorkspace(ws) {
   return issues;
 }
 
-// >v<💾工作区-分组状态汇总-看所有叶子：全 done = done，全 todo/未标 = todo，其余 partial（分组自己标的状态不算数，只做对照）
+// >v<💾工作区-分组状态汇总-看所有叶子：全 done = done，全 todo/未标 = todo，其余 partial（分组自己标的状态不算数，只做对照；弃用的不算）
 export function groupStatus(g, id) {
   const c = { done: 0, partial: 0, todo: 0 };
-  const walk = x => { for (const k of g.nodes.get(x).children) { const n = g.nodes.get(k); if (n.children.length) walk(k); else c[n.status || 'todo']++; } };
+  const walk = x => { for (const k of g.nodes.get(x).children) { const n = g.nodes.get(k); if (n.status === 'dropped') continue; if (n.children.length) walk(k); else c[n.status || 'todo']++; } };
   walk(id);
   const total = c.done + c.partial + c.todo;
   if (!total) return null;

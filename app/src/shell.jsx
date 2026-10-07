@@ -1,7 +1,7 @@
 // 外壳：左大纲（真源）、面包屑、导出、快捷键、贴图、工作区读写。
 // 画布组件（main.jsx，React Flow）只负责「显示 view + 回报用户操作」。
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, autoLayout, lineOf, resolveLabel, ROOT } from './outline.js';
+import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, autoLayout, lineOf, resolveLabel, isDropped, ROOT } from './outline.js';
 import { colorMap } from './colors.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
 import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal, ScaffoldModal } from './panels.jsx';
@@ -20,6 +20,7 @@ ping(); setInterval(ping, 20000);
 const Q = new URLSearchParams(location.search);
 const DEMO = Q.has('demo');
 const WSQ = Q.get('ws') ? 'ws=' + encodeURIComponent(Q.get('ws')) : '';
+const HIST_KEY = 'syn.hist.' + (WSQ || 'default'); // 撤销记录存 sessionStorage：刷新页面不丢，关掉窗口才清
 const withWs = path => '/api' + path + (WSQ ? (path.includes('?') ? '&' : '?') + WSQ : '');
 const api = (path, opts) => fetch(withWs(path), opts && { ...opts, headers: { 'content-type': 'application/json' } })
   .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || (j.report && j.report.errors && JSON.stringify(j.report.errors)) || r.status); return j; });
@@ -87,7 +88,7 @@ export function Shell({ name, Canvas }) {
     return {
       ...v,
       nodes: v.nodes.map(n => ({
-        ...n, color: colOf(n.id), sub: wsData?.nodes[n.id]?.meta?.rate || '',
+        ...n, color: colOf(n.id), dropped: isDropped(graph, n.id), sub: wsData?.nodes[n.id]?.meta?.rate || '',
         evidence: wsData?.nodes[n.id]?.meta?.evidence || '',
         vec: getMeta(n.id)?.vec ? parseVec(getMeta(n.id).vec) : null, vecAxes: pAxes,
         spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
@@ -95,9 +96,9 @@ export function Shell({ name, Canvas }) {
         open: !!expanded[n.id] && n.children.length > 0,
         kids: n.children.map(c => { const k = graph.nodes.get(c); return { id: c, label: k.label, status: k.status, n: k.children.length }; }),
       })),
-      portals: v.portals.map(p => ({ ...p, color: colOf(p.id) })),
+      portals: v.portals.map(p => ({ ...p, color: colOf(p.id), dropped: isDropped(graph, p.target) })),
       // 线 = 出发节点的颜色；kind 是「离散」→ 虚线（聚合的边要每条都离散才虚）
-      edges: v.edges.map(e => ({ ...e, text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e), color: colOf(e.from), dashed: e.raw.every(r => DISCRETE.test(kind.get(r) || '')) })),
+      edges: v.edges.map(e => ({ ...e, text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e), color: colOf(e.from), dropped: [e.from, e.to].some(x => isDropped(graph, x.startsWith('@portal:') ? x.slice(8) : x)), dashed: e.raw.every(r => DISCRETE.test(kind.get(r) || '')) })),
     };
   }, [graph, realScope, wsData, expanded, picFold, localPicw, space, getMeta, colors]);
   // >v<🖼️图片-卡片显示-节点的 _pics_名字/ 里所有图（旧版 frontmatter img: 也认）
@@ -123,6 +124,9 @@ export function Shell({ name, Canvas }) {
       const v = d.view || {};
       lastSaved.current = d.outline; setText(d.outline); setPositions(d.layout || {}); setWsData(d);
       hist2.current.committed = { text: d.outline, positions: d.layout || {} };
+      // 页面刷新（开发服务重启、Ctrl+R）后接上撤销记录：只在文件和上次记下的一致时接（外面改过就不接，免得撤销盖掉别人的改动）
+      const sv = (() => { try { return JSON.parse(sessionStorage.getItem(HIST_KEY)); } catch { return null; } })();
+      if (sv?.committed?.text === d.outline) { hist2.current.undo = sv.undo || []; hist2.current.redo = sv.redo || []; }
       setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setPicFold(v.picFold || {}); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
       setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
     }).catch(e => { setMode('offline'); setText(load('syn.text', SAMPLE)); setPositions(load('syn.pos.' + name, {})); setSaveState('⚠️ 没连上工作区（' + e.message + '），本地离线模式'); });
@@ -219,12 +223,14 @@ export function Shell({ name, Canvas }) {
   // 撤销删除 = 先把 _过期的/ 里的文件搬回原处，再写回删除前的大纲（正文、属性、图片都在）。
   // 不在撤销范围：属性 / 正文的编辑、空间页拖动改 vec（这些直接写 frontmatter）。只在工作区模式。
   const hist2 = useRef({ undo: [], redo: [], committed: null, applying: false });
+  const persistHist = () => { const h = hist2.current; try { sessionStorage.setItem(HIST_KEY, JSON.stringify({ undo: h.undo.slice(-50), redo: h.redo.slice(-50), committed: h.committed })); } catch { /* 配额满：只是刷新后接不上 */ } };
   const recordSave = (t, report) => {
     const h = hist2.current, c = h.committed;
     if (!c) return;
     if (h.applying) { h.applying = false; if (report.restore?.length && h.undo.length) h.undo.at(-1).restore = report.restore; } // 重做了一次删除：撤销它要搬回的是这次的文件
     else if (c.text !== t) { h.undo.push({ text: c.text, positions: c.positions, restore: report.restore?.length ? report.restore : null }); h.redo = []; }
     h.committed = { text: t, positions: c.positions };
+    persistHist();
   };
   const recordMove = changes => {
     const h = hist2.current, c = h.committed;
@@ -233,6 +239,7 @@ export function Shell({ name, Canvas }) {
     const p = { ...c.positions };
     for (const [k, v] of Object.entries(changes)) p[k] = { ...p[k], ...v };
     h.committed = { text: c.text, positions: p };
+    persistHist();
   };
   const applyHist = async e => {
     const h = hist2.current, c = h.committed;
@@ -245,6 +252,7 @@ export function Shell({ name, Canvas }) {
       api('/layout', { method: 'PUT', body: JSON.stringify({ positions: diff }) }).catch(() => {});
     }
     h.committed = { text: e.text, positions: e.positions };
+    persistHist();
   };
   const undo = () => {
     const h = hist2.current;
@@ -524,7 +532,7 @@ export function Shell({ name, Canvas }) {
           <a className={leftTab === 'outline' ? 'on' : ''} onClick={() => setLeftTab('outline')} title="点一下 = 画布跳过去并显示内容；双击 / F2 = 改名">大纲</a>
           <a className={leftTab === 'text' ? 'on' : ''} onClick={() => setLeftTab('text')} title="原始大纲文本：成片打字、批量改结构">文本</a>
           <a className={leftTab === 'files' ? 'on' : ''} onClick={() => setLeftTab('files')} title="项目根目录的文件（只读预览；点 __synapsis 里的节点 md → 画布跳过去）">文件</a>
-          <span className="hint" title={leftTab === 'text' ? '缩进 = 子级\n-> 名称 = 连线\n✅ ◐ ○ = 状态' : ''}>{leftTab === 'text' ? '?' : leftTab === 'files' && mode !== 'ws' ? '样例模式没有项目文件' : ''}</span>
+          <span className="hint" title={leftTab === 'text' ? '缩进 = 子级\n-> 名称 = 连线\n✅ ◐ ○ = 状态，❌ = 弃用' : ''}>{leftTab === 'text' ? '?' : leftTab === 'files' && mode !== 'ws' ? '样例模式没有项目文件' : ''}</span>
         </div>
         <textarea ref={taRef} value={text} spellCheck={false} onChange={e => setText(e.target.value)} onKeyDown={onTaKey} style={{ display: leftTab === 'text' ? '' : 'none' }} />
         {leftTab === 'outline' && <OutlineTree graph={graph} selected={selected} scope={realScope} renaming={renaming} status={STATUS_ICON}
@@ -591,13 +599,14 @@ export function Shell({ name, Canvas }) {
 
 
 // 两个画布共用的节点外观
-export const STATUS_ICON = { done: '✅', partial: '◐', todo: '○' };
+export const STATUS_ICON = { done: '✅', partial: '◐', todo: '○', dropped: '❌' };
 const PALETTE_IDLE = '#8a8a8a';
 export const DISCRETE = /离散|discrete|事件|event/i; // 边的 kind 是这些 → 虚线
 // >v<🎨画布-边的颜色-线 = 出发节点的颜色（core/colors.js），离散 = 虚线，箭头标方向（👤 2026-10-08 去掉进出渐变）；
 // 选中节点时颜色不变：相连的线变实变粗，其余变淡；没选中时越长越淡、越灰（有下限）—— 临时拖远的节点（待办）连线自然退到背景里
 export function edgeLook(e, selected) {
-  const w = 1.5 + Math.log2(e.count) * 1.5, color = e.color || PALETTE_IDLE, dash = e.dashed ? '6 4' : undefined;
+  const w = 1.5 + Math.log2(e.count) * 1.5, color = e.dropped ? PALETTE_IDLE : e.color || PALETTE_IDLE, dash = e.dashed ? '6 4' : undefined;
+  if (e.dropped && !(selected && (e.to === selected || e.from === selected))) return { hl: false, color, dash, opacity: selected ? 0.08 : 0.2, width: w }; // 连着弃用节点的线：灰、更淡
   if (!selected) return { hl: false, color, dash, opacity: 0.6, width: w };
   if (e.to === selected || e.from === selected) return { hl: true, color, dash, opacity: 1, width: w + 1.5 };
   return { hl: false, color, dash, opacity: 0.14, width: w };
@@ -634,7 +643,7 @@ export function NodeCard({ node, img, dim, isSel }) {
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
   };
   return (
-    <div className={'card' + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (showPics ? ' hasimg' : '') + (node.status ? ' s-' + node.status : '')}
+    <div className={'card' + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (showPics ? ' hasimg' : '') + (node.status ? ' s-' + node.status : '') + (node.dropped ? ' dropped' : '')}
       style={{ ...(node.color ? { '--c': node.color } : {}), ...(showPics && node.picw ? { width: node.picw, maxWidth: 'none' } : {}) }}>
       <div className="title">{node.status && <span className="st">{STATUS_ICON[node.status]}</span>}<span className="lab">{node.label}</span>
         {pics && <span className="picbadge" title={node.foldPics ? '显示图片' : '收起图片'} onPointerDown={stop} onMouseDown={stop}
@@ -646,7 +655,7 @@ export function NodeCard({ node, img, dim, isSel }) {
       {node.vec && <VecBars vec={node.vec} axes={node.vecAxes} />}
       {node.open && node.kids && <ul className="kidlist">{node.kids.map(k => (
         <li key={k.id} title="双击跳进去" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
-          <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span>{k.label}{k.n > 0 && <span className="kn">▸{k.n}</span>}
+          <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span><span className={k.status === 'dropped' ? 'strike' : ''}>{k.label}</span>{k.n > 0 && <span className="kn">▸{k.n}</span>}
         </li>))}</ul>}
       {showPics && <div className={'pics n' + Math.min(img.length, 3)}>{img.map(u => <img key={u} src={u} draggable={false} />)}
         <span className="picgrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} /></div>}
@@ -710,5 +719,5 @@ export function PicCard({ pic, isSel }) {
   );
 }
 export function PortalCard({ portal, dim }) {
-  return <div className={'card portal' + (dim ? ' dim' : '')} style={portal.color ? { '--c': portal.color } : undefined} title={'在别的层：' + portal.target + '（双击跳过去）'}>{portal.label}</div>;
+  return <div className={'card portal' + (dim ? ' dim' : '') + (portal.dropped ? ' dropped' : '')} style={portal.color ? { '--c': portal.color } : undefined} title={'在别的层：' + portal.target + '（双击跳过去）'}>{portal.label}</div>;
 }

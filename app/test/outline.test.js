@@ -1,6 +1,6 @@
 // >v<✅自检-核心-纯 Node：解析/往返/投影/聚合/编辑/布局
 // node test/outline.test.js
-import { parseOutline, toOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, autoLayout, withoutNode, withStatus, withLabel, ROOT } from '../../core/outline.js';
+import { parseOutline, toOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, autoLayout, withoutNode, withStatus, withLabel, isDropped, ROOT } from '../../core/outline.js';
 import { SAMPLE } from '../src/sample.js';
 let pass = 0, fail = 0;
 const ok = (c, m) => { c ? pass++ : (fail++, console.log('✗', m)); };
@@ -54,5 +54,10 @@ ok(parseOutline(withStatus(g, '外显/对话', 'done')).nodes.get('外显/对话
 const gl = parseOutline(withLabel(g, '游戏AI/决策/决策空间', '战术决策'));
 ok(gl.nodes.has('游戏AI/决策/战术决策') && gl.errors.length === 0 && gl.edges.some(e => e.to === '游戏AI/决策/战术决策'), '改名后指向它的边跟着改 ' + JSON.stringify(gl.errors));
 ok(withLabel(g, '游戏AI/感知', '决策') === null, '改名撞同级 → 拒绝');
+// 弃用 ❌（👤 2026-10-08）：带变体选择符的 ❌️ 也认；往返不变；子孙算弃用
+const gx = parseOutline('❌ 旧方案\n  细节\n❌\uFE0F 另一个\n○ 留着');
+ok(gx.nodes.get('旧方案').status === 'dropped' && gx.nodes.get('另一个').status === 'dropped' && gx.nodes.has('另一个') && gx.errors.length === 0, '❌ / ❌️ = dropped，名字里不留变体符 ' + [...gx.nodes.keys()]);
+ok(toOutline(gx).includes('❌ 旧方案') && parseOutline(toOutline(gx)).nodes.get('另一个').status === 'dropped', '弃用往返');
+ok(isDropped(gx, '旧方案/细节') && !isDropped(gx, '留着'), '弃用分组的子孙也算弃用');
 console.log(`outline: ${pass} 过 / ${fail} 挂`);
 process.exit(fail ? 1 : 0);

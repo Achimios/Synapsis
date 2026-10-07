@@ -14,7 +14,7 @@ export const USAGE = `用法：node core/cli.js <命令> [参数] [--ws <被规�
                                新建节点，打印新 id；同级已有同名 → 报错（--if-missing 则直接返回已有 id）
                                根用 . （Git Bash 会把单独的 / 改写成 Git 安装目录）
   rename <id> <新名字>
-  status <id> <done|partial|todo|none>
+  status <id> <done|partial|todo|dropped|none>   dropped = 弃用 ❌（不算完成度，check 跳过）
   link <从id> <到id> [--label 标签] [--kind 类型]   连线（已有则只改标签）
   unlink <从id> <到id>
   body <id> <文件|->           用文件（- = 标准输入）替换正文
@@ -36,7 +36,7 @@ import { spaceInfo, closestPairs } from './space.js';
 import { exportForLLM, withNode, withLabel, withStatus, withEdge, withoutEdge, withoutNode, ROOT } from './outline.js';
 
 const HOME = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const ICON = { done: '✅', partial: '◐', todo: '○' };
+const ICON = { done: '✅', partial: '◐', todo: '○', dropped: '❌' };
 
 export function workspaceRoot(argv = []) {
   const i = argv.indexOf('--ws');
@@ -49,14 +49,14 @@ export function workspaceRoot(argv = []) {
 
 function overview(ws) {
   const g = ws.graph, out = [];
-  const count = id => { const c = { done: 0, partial: 0, todo: 0, none: 0 }; const walk = x => { for (const k of g.nodes.get(x).children) { const n = g.nodes.get(k); if (!n.children.length) c[n.status || 'none']++; walk(k); } }; walk(id); return c; };
+  const count = id => { const c = { done: 0, partial: 0, todo: 0, none: 0, dropped: 0 }; const walk = x => { for (const k of g.nodes.get(x).children) { const n = g.nodes.get(k); if (n.status === 'dropped') { c.dropped++; continue; } if (!n.children.length) c[n.status || 'none']++; walk(k); } }; walk(id); return c; };
   const walk = (id, depth) => {
     for (const k of g.nodes.get(id).children) {
       const n = g.nodes.get(k);
       if (!n.children.length && depth > 1) continue; // 深层叶子不列，只给分组
       const c = n.children.length ? count(k) : null;
       const st = c ? groupStatus(g, k) : n.status; // 分组显示子节点汇总，不信分组自己标的
-      out.push('  '.repeat(depth) + (st ? ICON[st] + ' ' : '') + n.label + (c ? `  [✅${c.done} ◐${c.partial} ○${c.todo}${c.none ? ' ?' + c.none : ''}]` : ''));
+      out.push('  '.repeat(depth) + (st ? ICON[st] + ' ' : '') + n.label + (c ? `  [✅${c.done} ◐${c.partial} ○${c.todo}${c.none ? ' ?' + c.none : ''}${c.dropped ? ' ❌' + c.dropped : ''}]` : ''));
       walk(k, depth + 1);
     }
   };
@@ -135,8 +135,8 @@ export function runWrite(root, cmd, args, argv = []) {
   }
   if (cmd === 'rename') { need(a); commit(withLabel(g, a, b || '')); const p = g.nodes.get(a).parent; return p === ROOT ? b.trim() : p + '/' + b.trim(); }
   if (cmd === 'status') {
-    const s = { done: 'done', partial: 'partial', todo: 'todo', none: null, '✅': 'done', '◐': 'partial', '○': 'todo' }[b];
-    if (s === undefined) throw new Error('状态只能是 done / partial / todo / none');
+    const s = { done: 'done', partial: 'partial', todo: 'todo', dropped: 'dropped', none: null, '✅': 'done', '◐': 'partial', '○': 'todo', '❌': 'dropped' }[b?.replace(/\uFE0F/g, '')];
+    if (s === undefined) throw new Error('状态只能是 done / partial / todo / dropped / none');
     commit(withStatus(g, need(a), s)); return a + ' → ' + (s || '无状态');
   }
   if (cmd === 'link') {
