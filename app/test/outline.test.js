@@ -59,5 +59,10 @@ const gx = parseOutline('❌ 旧方案\n  细节\n❌\uFE0F 另一个\n○ 留�
 ok(gx.nodes.get('旧方案').status === 'dropped' && gx.nodes.get('另一个').status === 'dropped' && gx.nodes.has('另一个') && gx.errors.length === 0, '❌ / ❌️ = dropped，名字里不留变体符 ' + [...gx.nodes.keys()]);
 ok(toOutline(gx).includes('❌ 旧方案') && parseOutline(toOutline(gx)).nodes.get('另一个').status === 'dropped', '弃用往返');
 ok(isDropped(gx, '旧方案/细节') && !isDropped(gx, '留着'), '弃用分组的子孙也算弃用');
+// 分组原地展开成框（👤 2026-10-08）：框里的子节点可见、边直连不变传送门；框排在子节点前面
+const vf = projectView(g, '游戏AI', new Set(['游戏AI/感知']));
+ok(vf.nodes.findIndex(n => n.id === '游戏AI/感知') < vf.nodes.findIndex(n => n.id === '游戏AI/感知/敌方观察') && vf.parentOf.get('游戏AI/感知/敌方观察') === '游戏AI/感知', '框在子节点前，parentOf 记所在框');
+ok(vf.edges.some(e => e.from === '游戏AI/感知/敌方观察' && e.to === '游戏AI/记忆与人格'), '框里的子节点直接连线（不再提升到分组）');
+ok(!vf.parentOf.has('游戏AI/决策') && projectView(g, '游戏AI').parentOf.size === 0, '没展开的照旧');
 console.log(`outline: ${pass} 过 / ${fail} 挂`);
 process.exit(fail ? 1 : 0);

@@ -105,8 +105,16 @@ export function isDropped(g, id) {
 // 视图投影：当前范围 scope 下只显示直接子节点；
 // 子孙之间的边提升到「在范围内可见的祖先」上并聚合（count），范围外的端点显示为 portal。
 // >v<🔭视图投影-范围投影-只显示当前范围的子节点，子孙边提升聚合，范围外端点变 portal
-export function projectView(graph, scope) {
-  const visible = new Set(graph.nodes.get(scope).children);
+// frames = 展开成框的分组 id 集合（可嵌套）：框里的子节点也算可见，parentOf 记它在哪个框里（👤 2026-10-08）
+export function projectView(graph, scope, frames = null) {
+  const order = [], parentOf = new Map();
+  const add = (id, frame) => {
+    order.push(id);
+    if (frame != null) parentOf.set(id, frame);
+    if (frames?.has(id)) for (const c of graph.nodes.get(id).children) add(c, id);
+  };
+  for (const c of graph.nodes.get(scope).children) add(c, null);
+  const visible = new Set(order);
   const lift = id => {
     let cur = id;
     while (cur !== null && !visible.has(cur)) cur = graph.nodes.get(cur).parent;
@@ -125,9 +133,10 @@ export function projectView(graph, scope) {
     const x = agg.get(key); x.count++; x.raw.push(e.id);
   }
   return {
-    nodes: [...visible].map(id => graph.nodes.get(id)),
+    nodes: order.map(id => graph.nodes.get(id)), // 框（分组）排在它的子节点前面（React Flow 要求父节点先出现）
     portals: [...portals].map(([pid, target]) => ({ id: pid, target, label: '↗ ' + target })),
     edges: [...agg.values()],
+    parentOf,
   };
 }
 const portalId = target => '@portal:' + target;

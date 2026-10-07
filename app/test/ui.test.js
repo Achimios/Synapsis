@@ -30,9 +30,9 @@ for (const kind of ['reactflow']) {
 
   // 画布无关的查询：卡片 DOM（两边都用 NodeCard）
   const cards = () => page.$$eval('.card', cs => cs.map(c => (c.querySelector('.title input.rename')?.value || '') + (c.querySelector('.title')?.innerText.replace(/\s+/g, ' ').trim() || c.innerText.trim()))); // 改名框里的字 innerText 读不到
+  // 点卡片的名字（卡片中间可能正好是 ▸N / ⊞ 按钮）
   const cardBox = async label => {
-    const all = await page.$$('.card');
-    for (const c of all) if ((await c.innerText()).split('\n')[0].includes(label)) return c.boundingBox();
+    for (const l of await page.$$('.card .lab')) if ((await l.textContent()).includes(label)) return l.boundingBox();
     return null;
   };
   const center = b => [b.x + b.width / 2, b.y + b.height / 2];
@@ -123,7 +123,7 @@ for (const kind of ['reactflow']) {
   ok(Math.abs(moved.y - b.y) > 40, '拖动生效 dy=' + (moved.y - b.y).toFixed(0));
 
   // 连线：兜底 → 记忆与人格
-  const from = await cardBox('兜底'), to = await cardBox('记忆与人格');
+  const to = await (await page.$('.react-flow__node[data-id="游戏AI/记忆与人格"]')).boundingBox();
   const h = await page.$('.react-flow__node[data-id="游戏AI/兜底"] .react-flow__handle.source');
   const hb = await h.boundingBox();
   await page.mouse.move(...center(hb)); await page.mouse.down();
@@ -245,7 +245,7 @@ for (const kind of ['reactflow']) {
   ok((await page.$$('.card')).length === 3, '顶层 3 个节点');
   // 钻进 游戏AI → 选中 决策 → Enter 新建同级 → 文件出现
   // 按 .title 整体匹配：标题是 flex，带状态图标时 innerText 会把图标和名字拆成两行
-  const box = async label => { for (const c of await page.$$('.card')) { const t = await c.$eval('.title', e => e.textContent).catch(() => ''); if (t.includes(label)) return c.boundingBox(); } };
+  const box = async label => { for (const l of await page.$$('.card .lab')) if ((await l.textContent()).includes(label)) return l.boundingBox(); }; // 点名字（卡片中间可能是 ▸N / ⊞ 按钮）
   let b = await box('游戏AI'); await page.mouse.dblclick(b.x + b.width / 2, b.y + b.height / 2); await sleep(800);
   b = await box('决策'); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await sleep(300);
   await page.keyboard.press('Enter'); await sleep(1800);
@@ -560,6 +560,52 @@ for (const kind of ['reactflow']) {
   for (let i = 1; i <= 8; i++) await page.mouse.move(sh.x + 5, sh.y + 5 + i * 25);
   await page.mouse.up(); await sleep(900);
   ok(JSON.stringify(Object.entries(lay()).filter(([k]) => k.startsWith('@portal:'))) !== before, '拖缩放框 → 传送门坐标写进 _layout.json');
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
+// —— 分组原地展开成框（👤 2026-10-08）——
+{
+  console.log('== 展开成框');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-frame-ui-'));
+  saveOutline(ws, '组 -> 外\n  甲 -> 乙\n  乙\n外');
+  writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 组: { x: 0, y: 0 }, 外: { x: 220, y: 0 }, '组/甲': { x: 0, y: 0 }, '组/乙': { x: 300, y: 0 } }));
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = [];
+  page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`);
+  await sleep(1800);
+  const lab = async l => { for (const t of await page.$$('.card .lab, .frame .fhead .lab')) if ((await t.textContent()) === l) return t; };
+  const mid = b => [b.x + b.width / 2, b.y + b.height / 2];
+  const lay = () => JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'));
+  await page.mouse.click(...mid(await (await lab('组')).boundingBox())); await sleep(300);
+  await page.mouse.click(...mid(await (await lab('组')).boundingBox()), { button: 'right' }); await sleep(300);
+  ok(!!(await page.$('.ctx .mi:has-text("原地展开成框")')), '右键菜单有「原地展开成框」');
+  await page.keyboard.press('Escape'); await page.mouse.click(...mid(await (await lab('组')).boundingBox())); await sleep(300);
+  if (!(await page.$('.card.sel'))) await page.mouse.click(...mid(await (await lab('组')).boundingBox()));
+  await page.keyboard.press('f'); await sleep(1500);
+  const fr = await page.$('.react-flow__node-frame');
+  ok(!!fr, 'F → 分组变成框');
+  const fb = await fr.boundingBox();
+  const inF = async l => { const b = await (await lab(l)).boundingBox(); return b.x >= fb.x && b.x + b.width <= fb.x + fb.width && b.y >= fb.y && b.y + b.height <= fb.y + fb.height; };
+  ok(await inF('甲') && await inF('乙'), '子节点画在框里');
+  ok((await page.$$eval('.react-flow__edge', es => es.map(e => e.dataset.id))).includes('组/甲=>组/乙'), '框里的线直接连（不再是传送门）');
+  ok(lay()['外'].x > 220, '框压住的「外」被挪到右边 ' + JSON.stringify(lay()['外']));
+  const zoom = await page.$eval('.react-flow__viewport', v => new DOMMatrix(getComputedStyle(v).transform).a);
+  const [ax] = mid(await (await lab('甲')).boundingBox()), [bx0, by0] = mid(await (await lab('乙')).boundingBox());
+  const card乙 = await (await lab('乙')).evaluateHandle(e => e.closest('.card'));
+  const w甲 = await (await (await lab('甲')).evaluateHandle(e => e.closest('.card'))).evaluate(e => e.offsetWidth), w乙 = await card乙.evaluate(e => e.offsetWidth);
+  ok(Math.abs((bx0 - w乙 * zoom / 2) - (ax - w甲 * zoom / 2) - 300 * zoom) < 4, '框里的相对位置 = 钻进分组那页的坐标（甲 0、乙 300）');
+  const vb = await (await lab('乙')).boundingBox();
+  await page.mouse.move(...mid(vb)); await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(mid(vb)[0] - i * 10, mid(vb)[1] + i * 5); // 往左拖（往右会碰到画布边缘自动平移）
+  await page.mouse.up(); await sleep(900);
+  ok(Math.abs(lay()['组/乙'].x - (300 - 80 / zoom)) < 8, '在框里拖 乙 → 存的是分组页坐标 ' + JSON.stringify(lay()['组/乙']) + ' zoom=' + zoom.toFixed(2));
+  await sleep(800);
+  ok(JSON.parse(readFileSync(join(ws, '.synapsis', 'view.json'), 'utf8')).framed?.['组'] === true, '展开状态记进 view.json');
+  await page.keyboard.press('Escape'); await page.mouse.click(...mid(await (await lab('组')).boundingBox())); await sleep(300);
+  await page.keyboard.press('f'); await sleep(800);
+  ok(!(await page.$('.react-flow__node-frame')), '再按 F 收起框');
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });

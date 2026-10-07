@@ -1,10 +1,10 @@
 import { createRoot } from 'react-dom/client';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { ReactFlow, Background, Controls, MiniMap, Handle, Position, applyNodeChanges, BaseEdge, EdgeLabelRenderer, getBezierPath, ViewportPortal, useReactFlow } from '@xyflow/react';
 import { dragScale } from './arrange.js';
 import { expand, pathBetween } from './select.js';
 import '@xyflow/react/dist/style.css';
-import { Shell, cardActions, NodeCard, PortalCard, PicCard, AxesCard, MatrixChip, edgeLook, lengthFade, desat, nodeDim } from './shell.jsx';
+import { Shell, cardActions, FrameCard, NodeCard, PortalCard, PicCard, AxesCard, MatrixChip, edgeLook, lengthFade, desat, nodeDim } from './shell.jsx';
 
 function SNode({ data }) {
   return (
@@ -17,7 +17,21 @@ function SNode({ data }) {
 }
 const PNode = ({ data }) => <PicCard pic={data.pic} isSel={data.isSel} />;
 const ANode = ({ data }) => <AxesCard S={data.S} labels={data.labels} />;
-const nodeTypes = { s: SNode, pic: PNode, axes: ANode };
+const FNode = ({ data }) => (<><Handle type="target" position={Position.Left} /><FrameCard node={data.node} dim={data.dim} isSel={data.isSel} /><Handle type="source" position={Position.Right} /></>);
+const nodeTypes = { s: SNode, pic: PNode, axes: ANode, frame: FNode };
+// 框：子节点坐标 = 钻进分组那页的坐标 − 子节点里最小的 + 内边距（上面留标题栏）
+const FP = { x: 16, y: 34 }, FMIN = { w: 180, h: 80 };
+// 框的大小跟着子节点走（含嵌套：倒着算，里层的框先算好）
+function sizeFrames(nodes) {
+  const size = new Map();
+  const dim = n => size.get(n.id) || { w: n.measured?.width || 150, h: n.measured?.height || 40 };
+  for (const f of [...nodes].reverse()) {
+    if (f.type !== 'frame') continue;
+    const kids = nodes.filter(n => n.parentId === f.id);
+    size.set(f.id, { w: Math.max(FMIN.w, ...kids.map(k => k.position.x + dim(k).w + FP.x)), h: Math.max(FMIN.h, ...kids.map(k => k.position.y + dim(k).h + 16)) });
+  }
+  return size.size ? nodes.map(n => size.has(n.id) ? { ...n, style: { ...n.style, width: size.get(n.id).w, height: size.get(n.id).h } } : n) : nodes;
+}
 // 所有边：出发节点的颜色，离散 = 虚线；没高亮时按长度变淡变灰（edgeLook / lengthFade）。空间之间的边在标签处画矩阵热力图
 function FlowEdge({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data }) {
   const [path, lx, ly] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
@@ -43,7 +57,10 @@ function ScaleFrame({ nodes, ids, setNodes, onMove }) {
   const rf = useReactFlow();
   const [mode, setMode] = useState('');
   const set = new Set(ids);
-  const rectOf = n => { const w = n.measured?.width || 0, h = n.measured?.height || 0, o = n.origin || [0, 0]; return { id: n.id, x: n.position.x - o[0] * w, y: n.position.y - o[1] * h, w, h, o }; };
+  // 框里的子节点 position 是相对框的：换成绝对坐标再排，写回时再减掉（off = 父框的绝对位置）
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  const offOf = n => { let x = 0, y = 0; for (let p = byId.get(n.parentId); p; p = byId.get(p.parentId)) { x += p.position.x; y += p.position.y; } return { x, y }; };
+  const rectOf = n => { const w = n.measured?.width || n.style?.width || 0, h = n.measured?.height || n.style?.height || 0, o = n.origin || [0, 0], off = offOf(n); return { id: n.id, x: n.position.x + off.x - o[0] * w, y: n.position.y + off.y - o[1] * h, w, h, o, off }; };
   const rects = nodes.filter(n => set.has(n.id) && n.measured?.width).map(rectOf);
   if (rects.length < 2) return null;
   const x0 = Math.min(...rects.map(r => r.x)), y0 = Math.min(...rects.map(r => r.y));
@@ -56,11 +73,11 @@ function ScaleFrame({ nodes, ids, setNodes, onMove }) {
       const r = dragScale(base, h, (ev.clientX - cx) / z, (ev.clientY - cy) / z);
       last = r.rects; setMode(r.mode.includes('align') ? '对齐' : r.mode.includes('hold') ? '再拖就对齐' : r.mode.includes('spread') ? '摊开' : '');
       const m = new Map(last.map(q => [q.id, q]));
-      setNodes(ns => ns.map(n => { const q = m.get(n.id); return q ? { ...n, position: { x: q.x + q.o[0] * q.w, y: q.y + q.o[1] * q.h } } : n; }));
+      setNodes(ns => ns.map(n => { const q = m.get(n.id); return q ? { ...n, position: { x: q.x - q.off.x + q.o[0] * q.w, y: q.y - q.off.y + q.o[1] * q.h } } : n; }));
     };
     const up = () => {
       window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); setMode('');
-      onMove(Object.fromEntries(last.map(q => [q.id, { x: Math.round(q.x + q.o[0] * q.w), y: Math.round(q.y + q.o[1] * q.h) }])));
+      onMove(Object.fromEntries(last.map(q => [q.id, { x: Math.round(q.x - q.off.x + q.o[0] * q.w), y: Math.round(q.y - q.off.y + q.o[1] * q.h) }])));
     };
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
   };
@@ -89,9 +106,15 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
   const ms = new Set(multi);
   const isSel = id => id === selected || ms.has(id);
   cardActions.multi = multi; // 外壳的 Ctrl+C 要知道多选了哪些
+  // 框里子节点：画布坐标（相对框）↔ 存的坐标（钻进分组那页的坐标）
+  const fmin = {};
+  for (const n of view.nodes) if (n.framed) { const ks = n.children.map(c => layout[c]).filter(Boolean); fmin[n.id] = ks.length ? { x: Math.min(...ks.map(p => p.x)), y: Math.min(...ks.map(p => p.y)) } : { x: 0, y: 0 }; }
+  const frameOf = new Map(view.nodes.filter(n => n.frame != null).map(n => [n.id, n.frame]));
+  const posOf = n => { const p = layout[n.id], f = frameOf.get(n.id); return f != null && p && fmin[f] ? { x: p.x - fmin[f].x + FP.x, y: p.y - fmin[f].y + FP.y } : p; };
+  const toLayout = (id, p) => { const f = frameOf.get(id); return f != null && fmin[f] ? { x: Math.round(p.x - FP.x + fmin[f].x), y: Math.round(p.y - FP.y + fmin[f].y) } : p; };
   const build = () => [
     ...(plane ? [{ id: '@axes', type: 'axes', position: { x: -plane.S * 1.25, y: -plane.S * 1.25 }, data: plane, draggable: false, selectable: false, focusable: false, zIndex: -1, style: { pointerEvents: 'none' } }] : []),
-    ...view.nodes.map(n => ({ id: n.id, type: 's', position: layout[n.id], ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id) }, selected: isSel(n.id) })),
+    ...view.nodes.map(n => ({ id: n.id, type: n.framed ? 'frame' : 's', position: posOf(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(n.framed ? { style: { width: FMIN.w, height: FMIN.h } } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id) }, selected: isSel(n.id) })),
     ...view.portals.map(p => ({ id: p.id, type: 's', position: layout[p.id], data: { portal: p, dim: nodeDim(p.id, view, selected) }, selected: isSel(p.id) })),
     ...pics.map(p => ({ id: p.id, type: 'pic', position: layout[p.id] || { x: 0, y: 0 }, data: { pic: p, isSel: isSel(p.id) }, selected: isSel(p.id) })),
   ];
@@ -105,13 +128,35 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
     });
   }, [view, layout, selected, images, pics, plane, multi]);
 
+  // 选中一个框：框里的节点连出去的线也算「相连」
+  const near = selected && view.parentOf?.size ? new Set([selected, ...view.nodes.filter(n => { for (let f = n.frame; f != null; f = view.parentOf.get(f)) if (f === selected) return true; return false; }).map(n => n.id)]) : null;
   const edges = view.edges.map((e, idx) => ({
     id: e.id, source: e.from, target: e.to, type: 'flow', selectable: false,
-    data: { look: edgeLook(e, selected), idx, text: e.text || '', mat: e.mat || null },
+    data: { look: edgeLook(e, selected, near), idx, text: e.text || '', mat: e.mat || null },
   }));
 
   const onNodesChange = useCallback(ch => setNodes(ns => applyNodeChanges(ch, ns)), []);
   const nodesRef = useRef(nodes); nodesRef.current = nodes;
+  const shown = useMemo(() => sizeFrames(nodes), [nodes]);
+  // 刚展开成框：框比原来的卡大，压住的顶层卡片挪到框右边（只在展开那一刻做一次；打开页面时已经展开的不动）
+  const seenFrames = useRef(null);
+  useEffect(() => {
+    const frames = shown.filter(n => n.type === 'frame' && !n.parentId);
+    if (seenFrames.current === null) { seenFrames.current = new Set(frames.map(f => f.id)); return; }
+    const kidsReady = f => shown.filter(n => n.parentId === f.id).every(n => n.measured?.width);
+    const fresh = frames.filter(f => !seenFrames.current.has(f.id) && kidsReady(f));
+    seenFrames.current = new Set([...[...seenFrames.current].filter(id => frames.some(f => f.id === id)), ...fresh.map(f => f.id)]);
+    const ch = {};
+    for (const f of fresh) {
+      const fx = f.position.x, fy = f.position.y, fr = fx + f.style.width, fb = fy + f.style.height;
+      for (const n of shown) {
+        if (n.parentId || n.id === f.id || n.type === 'axes' || !n.measured?.width) continue;
+        const x = n.position.x, y = n.position.y, w = n.measured.width, h = n.measured.height;
+        if (x < fr + 12 && x + w > fx - 12 && y < fb + 12 && y + h > fy - 12) ch[n.id] = { x: Math.round(fr + 40), y: Math.round(y) };
+      }
+    }
+    if (Object.keys(ch).length) onMove(ch);
+  }, [shown]);
   // 框选结束：读 React Flow 选中的（传送门也算：它们的坐标同样存在 _layout.json）
   const onSelectionEnd = () => setTimeout(() => setMulti(nodesRef.current.filter(n => n.selected && n.id !== '@axes').map(n => n.id)), 0);
   const base = () => multi.length ? multi : selected ? [selected] : [];
@@ -138,13 +183,13 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
     return () => window.removeEventListener('keydown', key);
   });
   return (
-    <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChange} onSelectionEnd={onSelectionEnd}
+    <ReactFlow nodes={shown} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChange} onSelectionEnd={onSelectionEnd}
       onNodeClick={click} multiSelectionKeyCode={null} disableKeyboardA11y
       onPaneClick={() => { onSelect(null); setMulti([]); }}
       onNodeContextMenu={(e, n) => { e.preventDefault(); onContextMenu(n.id, e.clientX, e.clientY); }}
       onPaneContextMenu={e => { e.preventDefault(); onContextMenu(null, e.clientX, e.clientY); }}
       onNodeDoubleClick={(_, n) => onDrill(n.id)}
-      onNodeDragStop={(_, n, dragged) => onMove(Object.fromEntries((dragged || [n]).map(d => [d.id, d.position])))}
+      onNodeDragStop={(_, n, dragged) => onMove(Object.fromEntries((dragged || [n]).map(d => [d.id, toLayout(d.id, d.position)])))}
       onConnect={c => onConnect(c.source, c.target)}
       zoomOnDoubleClick={false} deleteKeyCode={null} minZoom={0.1} colorMode="dark"
       // 记住的视图优先；第一次进这个范围才 fitView
@@ -154,7 +199,7 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
       <Controls showInteractive={false} />
       <MiniMap pannable zoomable nodeColor={n => n.data?.node?.color || n.data?.portal?.color || "#444"} nodeStrokeColor="#666" maskColor="rgba(0,0,0,.55)" />
       <FlowBridge />
-      {multi.length > 1 && <ScaleFrame nodes={nodes} ids={multi} setNodes={setNodes} onMove={onMove} />}
+      {multi.length > 1 && <ScaleFrame nodes={shown} ids={multi} setNodes={setNodes} onMove={ch => onMove(Object.fromEntries(Object.entries(ch).map(([id, p]) => [id, toLayout(id, p)])))} />}
     </ReactFlow>
   );
 }

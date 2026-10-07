@@ -45,6 +45,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'Tab' })}
       {item('＋ 新建同级', () => actions.addSibling(node.id), { key: 'Enter' })}
       {node.children.length > 0 && item(node.open ? '收起子级' : '原地展开子级', () => actions.toggle(node.id), { key: '空格' })}
+      {node.children.length > 0 && item(actions.isFramed(node.id) ? '⊟ 收起框' : '⊞ 原地展开成框', () => actions.frame(node.id), { key: 'F' })}
       {item('钻进去', () => actions.drill(node.id), { key: '双击' })}
       {actions.hasFile(node.id) && item('看 md 原文', () => actions.openMd(node.id))}
       {actions.hasFile(node.id) && item('在资源管理器中显示', () => actions.reveal(node.id))}
@@ -211,7 +212,7 @@ export function ScaffoldModal({ items, root, onCreate, onClose }) {
 
 export const KEYMAP = [
   ['选择与查看', [['单击卡片 / 大纲行', '选中，右侧显示概览'], ['I', '属性面板开关'], ['Tab', '左栏开关'], ['? / F1', '这一页']]],
-  ['导航', [['双击卡片 / 大纲行的 →', '钻进去'], ['Alt+↑', '上一层'], ['鼠标侧键 / Alt+← →', '后退 / 前进'], ['大纲树里 ↑↓←→', '上下走 / 折叠展开'], ['▸N / 空格', '卡片里原地展开子级']]],
+  ['导航', [['双击卡片 / 大纲行的 →', '钻进去'], ['Alt+↑', '上一层'], ['鼠标侧键 / Alt+← →', '后退 / 前进'], ['大纲树里 ↑↓←→', '上下走 / 折叠展开'], ['▸N / 空格', '卡片里原地展开子级'], ['⊞ / F', '分组原地展开成框（子节点画在框里、线直连）']]],
   ['编辑', [['Enter', '新建同级'], ['Insert / Ctrl+Enter', '新建子级'], ['F2 / 双击大纲行', '改名'], ['Del', '删除（进 _过期的/）'], ['卡片边缘拖到另一张', '连线'], ['右键', '菜单：状态（❌ = 弃用）、颜色、属性、原文……'], ['Ctrl+Z', '撤销（结构、连线、拖动；删除也能撤回）'], ['Ctrl+Shift+Z / Ctrl+Y', '重做']]],
   ['复制', [['Ctrl+C', '复制选中的卡（连同子孙、属性、正文、图片、它们之间的边）'], ['Ctrl+V', '粘到当前页、鼠标处（同名加「 2」）；剪贴板里是图片 = 贴图']]],
   ['选择', [['Ctrl+单击', '加入 / 移出选择'], ['Shift+单击', '加上它和已选之间连线路径上的所有节点'], ['Ctrl+← / →', '沿入线 / 出线扩选一层'], ['Shift+← / →', '沿入线 / 出线一直扩到头']]],

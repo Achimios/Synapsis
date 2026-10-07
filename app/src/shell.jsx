@@ -48,6 +48,9 @@ export function Shell({ name, Canvas }) {
   const taRef = useRef(null);
   // >v<🔭视图投影-原地展开-不钻进去也能看子级：卡片里列出子节点（▸N 点一下 / 空格），双击子项跳进去并选中
   const [expanded, setExpanded] = useState(() => DEMO ? load('syn.exp', {}) : {});
+  // >v<🎨画布-分组展开成框-分组变半透明底框，子节点画在框里、线直连（👤 2026-10-08「这个好！值得做！」）；框里的坐标 = 钻进分组那一页的坐标
+  const [framed, setFramed] = useState(() => DEMO ? load('syn.frm', {}) : {});
+  const toggleFrame = id => setFramed(x => ({ ...x, [id]: !x[id] }));
   // >v<🖼️图片-折叠与大小-每个节点的图可单独收起（视图状态，进 view.json）；宽度 picw 是设计数据，进节点 frontmatter
   const [picFold, setPicFold] = useState(() => DEMO ? load('syn.pf', {}) : {});
   const [localPicw, setLocalPicw] = useState(() => load('syn.pw', {}));
@@ -72,7 +75,7 @@ export function Shell({ name, Canvas }) {
   const colors = useMemo(() => colorMap(graph, getMeta, wsData?.colorWords), [graph, getMeta, wsData?.colorWords]);
   // 边标签 / 节点副标题来自工作区文件（大纲里没有）
   const view = useMemo(() => {
-    const v = projectView(graph, realScope);
+    const v = projectView(graph, realScope, space ? null : new Set(Object.keys(framed).filter(k => framed[k] && graph.nodes.get(k)?.children.length)));
     const lab = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.label]));
     const kind = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.kind || '']));
     const colOf = id => colors.get(id.startsWith('@portal:') ? id.slice(8) : id) || PALETTE_IDLE;
@@ -94,14 +97,15 @@ export function Shell({ name, Canvas }) {
         vec: getMeta(n.id)?.vec ? parseVec(getMeta(n.id).vec) : null, vecAxes: pAxes,
         spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
         picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id],
-        open: !!expanded[n.id] && n.children.length > 0, renaming: canvasRename === n.id,
+        open: !!expanded[n.id] && n.children.length > 0 && !v.parentOf.has(n.id) && !(framed[n.id] && !space), renaming: canvasRename === n.id,
+        framed: !space && !!framed[n.id] && n.children.length > 0, frame: v.parentOf.get(n.id) ?? null,
         kids: n.children.map(c => { const k = graph.nodes.get(c); return { id: c, label: k.label, status: k.status, n: k.children.length, renaming: canvasRename === c }; }),
       })),
       portals: v.portals.map(p => ({ ...p, color: colOf(p.id), dropped: isDropped(graph, p.target) })),
       // 线 = 出发节点的颜色；kind 是「离散」→ 虚线（聚合的边要每条都离散才虚）
       edges: v.edges.map(e => ({ ...e, text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e), color: colOf(e.from), dropped: [e.from, e.to].some(x => isDropped(graph, x.startsWith('@portal:') ? x.slice(8) : x)), dashed: e.raw.every(r => DISCRETE.test(kind.get(r) || '')) })),
     };
-  }, [graph, realScope, wsData, expanded, picFold, localPicw, space, getMeta, colors, canvasRename]);
+  }, [graph, realScope, wsData, expanded, picFold, localPicw, space, getMeta, colors, canvasRename, framed]);
   // >v<🖼️图片-卡片显示-节点的 _pics_名字/ 里所有图（旧版 frontmatter img: 也认）
   const images = useMemo(() => {
     if (local) return localImages;
@@ -128,7 +132,7 @@ export function Shell({ name, Canvas }) {
       // 页面刷新（开发服务重启、Ctrl+R）后接上撤销记录：只在文件和上次记下的一致时接（外面改过就不接，免得撤销盖掉别人的改动）
       const sv = (() => { try { return JSON.parse(sessionStorage.getItem(HIST_KEY)); } catch { return null; } })();
       if (sv?.committed?.text === d.outline) { hist2.current.undo = sv.undo || []; hist2.current.redo = sv.redo || []; }
-      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setPicFold(v.picFold || {}); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
+      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); setPicFold(v.picFold || {}); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
       setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
     }).catch(e => { setMode('offline'); setText(load('syn.text', SAMPLE)); setPositions(load('syn.pos.' + name, {})); setSaveState('⚠️ 没连上工作区（' + e.message + '），本地离线模式'); });
   }, []);
@@ -145,7 +149,13 @@ export function Shell({ name, Canvas }) {
     return () => clearTimeout(t);
   }, [text, mode]);
   const layout = useMemo(() => {
-    const l = autoLayout(view, positions);
+    // 顶层按当前页排；框里的子节点按「钻进那个分组」那一页排（坐标相对框，和钻进去看到的一样）
+    const top = view.nodes.filter(n => !n.frame);
+    const l = autoLayout({ ...view, nodes: top }, positions);
+    for (const f of view.nodes.filter(n => n.framed)) {
+      const kids = f.children;
+      Object.assign(l, Object.fromEntries(Object.entries(autoLayout({ nodes: kids.map(id => ({ id })), edges: view.edges, portals: [] }, positions)).filter(([id]) => kids.includes(id))));
+    }
     // 散图没坐标时排在节点右边一列
     const maxX = Math.max(0, ...Object.values(l).map(p => p.x));
     loosePics.forEach((p, i) => { l[p.id] = positions[p.id] || { x: maxX + 320, y: i * 240 }; });
@@ -167,15 +177,16 @@ export function Shell({ name, Canvas }) {
   useEffect(() => { if (local) save('syn.text', text); }, [text, local]);
   useEffect(() => { if (local) save('syn.pos.' + name, positions); }, [positions, name, local]);
   useEffect(() => save('syn.img2', localImages), [localImages]);
+  useEffect(() => { if (local) save('syn.frm', framed); }, [framed, local]);
   useEffect(() => { if (local) { save('syn.vp.' + name, viewports); save('syn.exp', expanded); save('syn.lh', leftHidden); save('syn.pf', picFold); save('syn.po', propsOpen); } }, [viewports, expanded, leftHidden, picFold, propsOpen, name, local]);
   useEffect(() => save('syn.pw', localPicw), [localPicw]);
   useEffect(() => save('syn.loose', localLoose), [localLoose]);
   // 工作区：视图状态停手 0.6s 写进 .synapsis/view.json
   useEffect(() => {
     if (mode !== 'ws') return;
-    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, leftHidden, picFold, propsOpen, spaceAxes, scope: realScope }) }).catch(() => {}), 600);
+    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, framed, leftHidden, picFold, propsOpen, spaceAxes, scope: realScope }) }).catch(() => {}), 600);
     return () => clearTimeout(t);
-  }, [viewports, expanded, leftHidden, picFold, propsOpen, spaceAxes, realScope, mode]);
+  }, [viewports, expanded, framed, leftHidden, picFold, propsOpen, spaceAxes, realScope, mode]);
   const onViewport = useCallback((sc, vp) => setViewports(v => ({ ...v, [sc]: vp })), []);
   const go = useCallback(next => {
     if (next === realScope) return;
@@ -348,7 +359,7 @@ export function Shell({ name, Canvas }) {
     addChild: id => { setSelected(id); const r = withNode(graph, id, null); pendingRename.current = r.id; setText(r.text); setExpanded(x => ({ ...x, [id]: true })); },
     addSibling: id => { const r = withNode(graph, graph.nodes.get(id).parent, id); pendingRename.current = r.id; setText(r.text); setSelected(r.id); },
     addHere: () => { const r = withNode(graph, realScope, null); pendingRename.current = r.id; setText(r.text); setSelected(r.id); },
-    toggle: id => toggle(id), drill: id => drill(id), remove,
+    toggle: id => toggle(id), drill: id => drill(id), remove, frame: id => toggleFrame(id), isFramed: id => !!framed[id],
     hasFile: id => !!nodeFile(id),
     openMd: id => { setSelected(id); setPropsOpen(true); setPropsTab('raw'); },
     reveal: id => reveal(nodeFile(id), 'select'),
@@ -394,6 +405,8 @@ export function Shell({ name, Canvas }) {
 
   const toggle = id => setExpanded(x => ({ ...x, [id]: !x[id] }));
   cardActions.toggle = toggle;
+  cardActions.toggleFrame = toggleFrame;
+  cardActions.drill = id => drill(id);
   cardActions.commitRename = commitRename;
   cardActions.cancelRename = () => setCanvasRename(null);
   cardActions.openChild = child => { const p = graph.nodes.get(child)?.parent; if (p == null) return; go(p); setSelected(child); };
@@ -415,6 +428,7 @@ export function Shell({ name, Canvas }) {
       else if (e.key === 'ArrowRight' && e.altKey) { e.preventDefault(); fwd(); }
       else if (e.key === 'Escape') setSelected(null);
       else if (e.key === ' ' && sel && !sel.startsWith('@')) { e.preventDefault(); e.stopPropagation(); toggle(sel); }
+      else if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.altKey && sel && graph.nodes.get(sel)?.children.length) { e.preventDefault(); toggleFrame(sel); }
       else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); e.stopPropagation(); remove(sel); }
       else if (e.key === 'F2' && sel) { e.preventDefault(); focusLabel(sel); }
       else if ((e.key === 'i' || e.key === 'I') && !e.ctrlKey && !e.altKey) { e.preventDefault(); setPropsOpen(o => !o); }
@@ -649,11 +663,13 @@ const PALETTE_IDLE = '#8a8a8a';
 export const DISCRETE = /离散|discrete|事件|event/i; // 边的 kind 是这些 → 虚线
 // >v<🎨画布-边的颜色-线 = 出发节点的颜色（core/colors.js），离散 = 虚线，箭头标方向（👤 2026-10-08 去掉进出渐变）；
 // 选中节点时颜色不变：相连的线变实变粗，其余变淡；没选中时越长越淡、越灰（有下限）—— 临时拖远的节点（待办）连线自然退到背景里
-export function edgeLook(e, selected) {
+// near = 算作「选中」的一组 id（选中一个框时 = 框 + 框里的节点）；不给就只看 selected
+export function edgeLook(e, selected, near = null) {
+  const on = near ? near.has(e.to) || near.has(e.from) : e.to === selected || e.from === selected;
   const w = 1.5 + Math.log2(e.count) * 1.5, color = e.dropped ? PALETTE_IDLE : e.color || PALETTE_IDLE, dash = e.dashed ? '6 4' : undefined;
-  if (e.dropped && !(selected && (e.to === selected || e.from === selected))) return { hl: false, color, dash, opacity: selected ? 0.08 : 0.2, width: w }; // 连着弃用节点的线：灰、更淡
+  if (e.dropped && !(selected && on)) return { hl: false, color, dash, opacity: selected ? 0.08 : 0.2, width: w }; // 连着弃用节点的线：灰、更淡
   if (!selected) return { hl: false, color, dash, opacity: 0.6, width: w };
-  if (e.to === selected || e.from === selected) return { hl: true, color, dash, opacity: 1, width: w + 1.5 };
+  if (on) return { hl: true, color, dash, opacity: 1, width: w + 1.5 };
   return { hl: false, color, dash, opacity: 0.14, width: w };
 }
 export const FADE = { near: 350, far: 1600, minOpacity: 0.3, minSat: 0.15 }; // 画布坐标长度；短于 near 不衰减，长于 far 到下限
@@ -669,6 +685,9 @@ export function desat(hex, s) {
 }
 export function nodeDim(id, view, selected) {
   if (!selected || id === selected) return false;
+  // 框和它里面的节点：选中框 → 里面的不变暗；选中框里的节点 → 外面那层框不变暗
+  const inFrame = (x, f) => { for (let p = view.parentOf?.get(x); p != null; p = view.parentOf.get(p)) if (p === f) return true; return false; };
+  if (inFrame(id, selected) || inFrame(selected, id)) return false;
   return !view.edges.some(e => (e.from === selected && e.to === id) || (e.to === selected && e.from === id));
 }
 // 卡片上的交互回调（外壳每次渲染时填好；画布组件不用逐层传）
@@ -709,7 +728,9 @@ export function NodeCard({ node, img, dim, isSel }) {
         {pics && <span className="picbadge" title={node.foldPics ? '显示图片' : '收起图片'} onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.foldPics(node.id); }}>🖼{img.length > 1 ? img.length : ''}</span>}
         {node.children.length > 0 && <span className="kids" title="展开/收起子级（空格）；双击卡片钻进" onPointerDown={stop} onMouseDown={stop}
-          onClick={e => { e.stopPropagation(); cardActions.toggle(node.id); }}>{node.open ? '▾' : '▸'} {node.children.length}</span>}</div>
+          onClick={e => { e.stopPropagation(); cardActions.toggle(node.id); }}>{node.open ? '▾' : '▸'} {node.children.length}</span>}
+        {node.children.length > 0 && <span className="kids fr" title="原地展开成框（F）：子节点画在框里，线直连" onPointerDown={stop} onMouseDown={stop}
+          onClick={e => { e.stopPropagation(); cardActions.toggleFrame(node.id); }}>⊞</span>}</div>
       {(node.sub || node.evidence) && <div className="sub">{node.evidence && <span className={'ev ev-' + (EVIDENCE[node.evidence] || 'x')} title="证据等级（evidence:）">{node.evidence}</span>}{node.sub}</div>}
       {node.spaceAxes && <div className="axchips" title="空间节点：双击进去看成员的坐标投影">⊹ {node.spaceAxes.join(' · ')}</div>}
       {node.vec && <VecBars vec={node.vec} axes={node.vecAxes} />}
@@ -775,6 +796,18 @@ export function PicCard({ pic, isSel }) {
     <div className={'loosepic' + (isSel ? ' sel' : '')} style={{ width: pic.w || 240 }} title={pic.path || ''}>
       <img src={pic.url} draggable={false} />
       <span className="picgrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} />
+    </div>
+  );
+}
+// 展开成框的分组：半透明底框 + 标题栏（⊟ 收起；双击标题 = 钻进去）。大小由 main.jsx 按子节点算好传进来
+export function FrameCard({ node, dim, isSel }) {
+  return (
+    <div className={'frame' + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (node.dropped ? ' dropped' : '')} style={{ '--c': node.color }}>
+      <div className="fhead" onDoubleClick={e => { e.stopPropagation(); cardActions.drill(node.id); }} title="双击钻进去">
+        {node.status && <span className="st">{STATUS_ICON[node.status]}</span>}
+        {node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
+        <span className="kids" title="收起框（F）" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggleFrame(node.id); }}>⊟</span>
+      </div>
     </div>
   );
 }
