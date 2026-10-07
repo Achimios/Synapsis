@@ -26,7 +26,7 @@
 
 ## 规矩
 - ⭐**详细规则在 `_ProjectRules.md`**（过期怎么做、进度写什么、改了要同步哪）
-- 别的 AI 怎么用 Synapsis → `_AI_Manual.md`；它们的留言 → `_Blackboard.md`（开工先看）
+- 别的 AI 怎么用 Synapsis → `_AI接入手册.md`；它们的留言 → `_Blackboard.md`（开工先看）
 - 能在 Node 里跑的逻辑（解析、投影、check、导出）放纯函数，用 Node 自检，别靠浏览器验证
 - 报告里分开写「实测」和「推测」，没验到的写出来
 - 回复与文档用中文

@@ -84,8 +84,8 @@ try {
   run('status', '感知/视觉', 'partial');
   ok(/◐ 感知/.test(run('overview').out), 'overview 分组状态 = 子节点汇总（有 ◐ 就是 ◐）');
   ok(run('manual').out.includes(root.split('\\').join('/')), 'manual 填好了工作区路径');
-  // 必须相等的量：仓库根目录的 _AI_Manual.md = 模板渲染结果（改了模板忘了 manual --write 就会挂）
-  ok(existsSync(ROOT_MANUAL) && readFileSync(ROOT_MANUAL, 'utf8').replace(/\r\n/g, '\n') === rootManualText(), '_AI_Manual.md 与模板一致（不一致就跑 node core/cli.js manual --write）');
+  // 必须相等的量：仓库根目录的 _AI接入手册.md = 模板渲染结果（改了模板忘了 manual --write 就会挂）
+  ok(existsSync(ROOT_MANUAL) && readFileSync(ROOT_MANUAL, 'utf8').replace(/\r\n/g, '\n') === rootManualText(), '_AI接入手册.md 与模板一致（不一致就跑 node core/cli.js manual --write）');
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

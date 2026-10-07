@@ -7,7 +7,7 @@
 |---|---|---|
 | **core/ 工作区读写** | ✅ `__synapsis/` 一节点一 md（文件夹 = 层级、frontmatter、正文不动）；改名搬文件、删除进 `_过期的/`；图片 `_pics_名字/` 跟着走；视图 `.synapsis/view.json` | 跨父移动已保留正文（全图同名唯一时）；同名多处 + 移动仍会断，需稳定 id |
 | **CLI**（LLM 接口）`core/cli.js` | ✅ 读：overview / outline / export / get / find / check；写：add（撞名报错，`--if-missing` 幂等）/ rename / status / link（带标签）/ unlink / body / set / rm / batch（一进程一批）/ apply；check 查 `#符号`；overview 分组按子节点汇总 | 包成 MCP（见 TODO） |
-| **AI 接入手册** | ✅ 源头 `core/templates/AI_Manual.md` → 根目录 `_AI_Manual.md`（通用）+ 每个工作区 `__synapsis/_synapsis.md`（填好路径，打开工作区 / init 时自动刷新）；工具问题写 Synapsis 的 `_Blackboard.md`，**项目讨论**写各工作区 `__synapsis/_Blackboard.md`（init 建）| 第一次被另一个 Claude 真用（Life Games，2026-10-08） |
+| **AI 接入手册** | ✅ 源头 `core/templates/AI_Manual.md` → 根目录 `_AI接入手册.md`（通用）+ 每个工作区 `__synapsis/_synapsis.md`（填好路径，打开工作区 / init 时自动刷新）；工具问题写 Synapsis 的 `_Blackboard.md`，**项目讨论**写各工作区 `__synapsis/_Blackboard.md`（init 建）| 第一次被另一个 Claude 真用（Life Games，2026-10-08） |
 | **空间节点** `core/space.js` | ✅ `axes:` 的节点 = 空间，子节点 `vec:` = 坐标，`映射→目标:` = 矩阵；进空间页 = 散点投影（轴或成员方向当基，夹角 ≠ 90° 标黄），拖动改 vec；卡片小横条；空间之间的边 = 热力图；check 查维数 / 矩阵形状 | 非正交基时坐标轴仍画成直角（只标黄提醒）；样例模式没有空间；手感需人眼 |
 | **画布**（React Flow，👤 已定） | ✅ 钻进、跨层边聚合 + portal、原地展开、拖动连线、右键菜单、**配色**（`core/colors.js`：`color:` > 最上层认得出的名字 观测蓝 / 内在紫 / 决策橙 / 行动绿 / 外部灰 / 兜底红 > 顶层分组轮色，子孙继承，换页不变；右键色块才写 `color:`）；线 = 出发节点的颜色，kind 离散 = 虚线；选中时相连的线变实变粗、其余变淡；没选中时越长越淡越灰（有下限，👤：拖远的待办自然退到背景） | 手感只能用户亲手试；同一页里都继承同一色时分不开（要靠手动 `color:`） |
 | **左栏** | ✅ 大纲树（点 = 导航 + 看概览，双击 / F2 = 改名，键盘走）、文本页（成片打字）、文件页（含 `__synapsis`，节点 md → 跳过去看原文） | —— |

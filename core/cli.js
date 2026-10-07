@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // >v<🤖LLM接口-CLI-给 LLM（和人）读图、检查、导出；工作区默认取 .synapsis/config.json
-// 完整说明见仓库根目录 _AI_Manual.md（= `node core/cli.js manual`）
+// 完整说明见仓库根目录 _AI接入手册.md（= `node core/cli.js manual`）
 export const USAGE = `用法：node core/cli.js <命令> [参数] [--ws <被规划项目根目录>]
 读：
   overview                     分组树 + 状态统计（先看这个，省 token）
@@ -182,8 +182,8 @@ export function manualText(root) {
   const home = HOME.split('\\').join('/');
   return readFileSync(join(HOME, 'core', 'templates', 'AI_Manual.md'), 'utf8').replace(/\r\n/g, '\n').split('{{CLI}}').join(cli).split('{{WS}}').join(ws).split('{{HOME}}').join(home).split('{{USAGE}}').join(USAGE);
 }
-// 仓库根目录 _AI_Manual.md = 通用版（不填工作区）；自检会核对它和模板是否一致
-export const ROOT_MANUAL = join(HOME, '_AI_Manual.md');
+// 仓库根目录 _AI接入手册.md = 通用版（不填工作区）；自检会核对它和模板是否一致
+export const ROOT_MANUAL = join(HOME, '_AI接入手册.md');
 export const rootManualText = () => MANUAL_MARK + '\n' + manualText(null);
 
 function main(argv) {
