@@ -12,4 +12,4 @@
 - ✅ `_Design/Navigation.md`：导航原语、中键=基变换、标签/嵌入/结构度量（👤 Google 类比）
 - 📝 画布选型对比（含 Gemini 意见）：tldraw 自定义形状也能放任意 React（Gemini 说「中等」偏重），但胶水多（3 个坑 + 箭头绑定同步，~150 行 vs RF ~60 行）；RF 边即数据、MIT；tldraw 自由手绘强、有生产水印。倾向 RF 做主干，手绘以后叠一层。**等用户手感**
 - ✅ 项目构建引导 `bootstrap/`：规矩汇总（来自 ReadScreen / TTS / SimuWeb / Synapsis）+ 13 个模板 + `bootstrap.js` + 全局 skill `project-bootstrap`。【实测】临时目录生成：已有文件保留、二次运行全跳过、数字前缀去掉、git init
-  - ⚠️ 本项目自己的 `_DevIndex.md` 格式还没对齐引导里的 `>v<` 锚点表格式（待 core/ 写代码时一起改）
+  - ✅ `_DevIndex` 格式改成用户范本（Underwater_Thruster）：标记包反引号 + 大标题一览表 + 每节小标题；代码补了 8 个大标题的锚点；引导与模板同步

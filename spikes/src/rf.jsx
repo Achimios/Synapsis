@@ -15,6 +15,7 @@ function SNode({ data }) {
 }
 const nodeTypes = { s: SNode };
 
+// >v<🎨画布-ReactFlow-显示 view + 回报选择/拖动/连线/视图
 function RFCanvas({ view, layout, selected, images, onSelect, onDrill, onConnect, onMove, viewport, onViewport }) {
   const build = () => [
     ...view.nodes.map(n => ({ id: n.id, type: 's', position: layout[n.id], data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: n.id === selected }, selected: n.id === selected })),

@@ -1,3 +1,4 @@
+// >v<✅自检-核心-纯 Node：解析/往返/投影/聚合/编辑/布局
 // node test/outline.test.js
 import { parseOutline, toOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, autoLayout, ROOT } from '../src/outline.js';
 import { SAMPLE } from '../src/sample.js';

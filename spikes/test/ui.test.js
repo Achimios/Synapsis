@@ -1,3 +1,4 @@
+// >v<✅自检-界面-无头 Edge 跑两个画布同一套交互
 // 两个画布原型的同一套交互验收（无头 Edge）。先 npm run dev，再 node test/ui.test.js [截图目录]
 import { chromium } from 'playwright-core';
 const BASE = 'http://localhost:5410';

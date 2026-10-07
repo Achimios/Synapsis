@@ -8,6 +8,7 @@ const STATUS = { '✅': 'done', '◐': 'partial', '○': 'todo' };
 const STATUS_CH = { done: '✅', partial: '◐', todo: '○' };
 export const ROOT = '';
 
+// >v<🌳大纲模型-解析-大纲文本→节点树+边，按名称就近解析连线目标
 export function parseOutline(text) {
   const nodes = new Map(); // id -> {id,label,parent,status,children:[]}
   nodes.set(ROOT, { id: ROOT, label: '根', parent: null, status: null, children: [] });
@@ -69,6 +70,7 @@ function findInSubtree(nodes, rootId, label, exclude) {
   return null;
 }
 
+// >v<🌳大纲模型-序列化-图→大纲文本（画布编辑后回写，大纲是唯一真源）
 export function toOutline(graph) {
   const out = [];
   const byFrom = new Map();
@@ -96,6 +98,7 @@ function shortRef(graph, from, to) {
 
 // 视图投影：当前范围 scope 下只显示直接子节点；
 // 子孙之间的边提升到「在范围内可见的祖先」上并聚合（count），范围外的端点显示为 portal。
+// >v<🔭视图投影-范围投影-只显示当前范围的子节点，子孙边提升聚合，范围外端点变 portal
 export function projectView(graph, scope) {
   const visible = new Set(graph.nodes.get(scope).children);
   const lift = id => {
@@ -130,6 +133,7 @@ export function breadcrumb(graph, scope) {
 }
 
 // 给 LLM 的结构化文本（节点卡，简版；完整规范见需求文档 §0.6）
+// >v<📤LLM导出-节点卡-当前范围导出成带 id 的结构化文本
 export function exportForLLM(graph, scope = ROOT) {
   const ins = new Map(), outs = new Map();
   for (const e of graph.edges) {
@@ -159,6 +163,7 @@ function cloneGraph(g) {
   return { nodes, edges: g.edges.map(e => ({ ...e })), errors: [] };
 }
 
+// >v<🌳大纲模型-画布编辑-加边/加节点后重新生成大纲
 export function withEdge(g, from, to) {
   if (from === to || g.edges.some(e => e.from === from && e.to === to)) return null;
   const h = cloneGraph(g);
@@ -181,6 +186,7 @@ export function withNode(g, parent, after = null, base = '新节点') {
 }
 
 // 初始自动布局：范围内按最长路径分层（左→右），已有坐标的不动
+// >v<🔭视图投影-自动布局-最长路径分层，回边忽略，奇数层下错；已有坐标不动
 export function autoLayout(view, positions) {
   const ids = view.nodes.map(n => n.id);
   const rank = new Map(ids.map(id => [id, 0]));

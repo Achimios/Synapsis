@@ -8,6 +8,7 @@ import './shell.css';
 const load = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* 配额满/隐私模式：不持久化 */ } };
 
+// >v<🚀启停-心跳-页面每 20s ping，全关后服务自动退出
 // 心跳：告诉服务「还有网页开着」（全关后服务自动退出，见 vite.config.js）
 const ping = () => fetch('/__alive').catch(() => {});
 ping(); setInterval(ping, 20000);
@@ -19,8 +20,10 @@ export function Shell({ name, Canvas }) {
   const [positions, setPositions] = useState(() => load('syn.pos.' + name, {}));
   const [images, setImages] = useState(() => load('syn.img', {}));
   const [exportText, setExportText] = useState(null);
+  // >v<🧭导航-视图记忆-每个范围各存平移+缩放
   // 每个范围各记一份视图（平移+缩放），返回上一级/再钻进来时还原
   const [viewports, setViewports] = useState(() => load('syn.vp.' + name, {}));
+  // >v<🧭导航-历史-Alt+←/→ 后退前进，Alt+↑ 上一层
   // 导航历史：像浏览器一样 Alt+← / Alt+→
   const hist = useRef({ back: [], fwd: [] });
   const taRef = useRef(null);
@@ -65,6 +68,7 @@ export function Shell({ name, Canvas }) {
     if (!asChild) setSelected(r.id); else go(sel);
   };
 
+  // >v<🧭导航-快捷键-Enter 同级 / Tab 子级 / Esc / Alt+方向
   // 画布快捷键（焦点在大纲里时不触发）
   useEffect(() => {
     const onKey = e => {
@@ -81,6 +85,7 @@ export function Shell({ name, Canvas }) {
     return () => window.removeEventListener('keydown', onKey, true);
   });
 
+  // >v<🎨画布-贴图-选中节点 Ctrl+V 图片进节点
   // 贴图：选中节点时 Ctrl+V 图片 → 进节点
   useEffect(() => {
     const onPaste = e => {

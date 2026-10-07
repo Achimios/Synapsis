@@ -13,6 +13,7 @@ const W = 200, H = 46, IMG_H = 130;
 const sid = id => createShapeId('n:' + encodeURIComponent(id));
 const aid = id => createShapeId('e:' + encodeURIComponent(id));
 
+// >v<🎨画布-tldraw节点形状-自定义 snode：实心几何、Path2D 选中框、不可编辑
 class SNodeUtil extends BaseBoxShapeUtil {
   static type = 'snode';
   static props = { w: T.number, h: T.number, nid: T.string };
@@ -72,6 +73,7 @@ function sync(editor, view, layout, images, selected) {
   syncing = false;
 }
 
+// >v<🎨画布-tldraw-受管箭头同步、用户箭头翻译成连线、双击钻进、相机记忆
 function TDCanvas({ view, layout, selected, images, onSelect, onDrill, onConnect, onMove, viewport, onViewport }) {
   const [editor, setEditor] = useState(null);
   cb.drill = onDrill;
