@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { ReactFlow, Background, Controls, MiniMap, Handle, Position, applyNodeChanges, BaseEdge, EdgeLabelRenderer, getBezierPath, ViewportPortal, useReactFlow } from '@xyflow/react';
 import { dragScale } from './arrange.js';
 import '@xyflow/react/dist/style.css';
-import { Shell, NodeCard, PortalCard, PicCard, AxesCard, MatrixChip, edgeLook, lengthFade, desat, COLORS, nodeDim } from './shell.jsx';
+import { Shell, NodeCard, PortalCard, PicCard, AxesCard, MatrixChip, edgeLook, lengthFade, desat, nodeDim } from './shell.jsx';
 
 function SNode({ data }) {
   return (
@@ -17,22 +17,19 @@ function SNode({ data }) {
 const PNode = ({ data }) => <PicCard pic={data.pic} isSel={data.isSel} />;
 const ANode = ({ data }) => <AxesCard S={data.S} labels={data.labels} />;
 const nodeTypes = { s: SNode, pic: PNode, axes: ANode };
-// 所有边：高亮 = 实色；没高亮 = 出橙→入蓝渐变，按长度变淡变灰（edgeLook / lengthFade）。空间之间的边在标签处画矩阵热力图
+// 所有边：出发节点的颜色，离散 = 虚线；没高亮时按长度变淡变灰（edgeLook / lengthFade）。空间之间的边在标签处画矩阵热力图
 function FlowEdge({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data }) {
   const [path, lx, ly] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
   const { look, idx, text, mat } = data;
   const f = look.hl ? { opacity: 1, sat: 1 } : lengthFade(Math.hypot(targetX - sourceX, targetY - sourceY));
-  const op = look.opacity * f.opacity;
-  const cOut = look.hl ? look.color : desat(COLORS.out, f.sat), cIn = look.hl ? look.color : desat(COLORS.in, f.sat);
-  const gid = 'eg' + idx, mid = 'em' + idx;
+  const op = look.opacity * f.opacity, col = look.hl ? look.color : desat(look.color, f.sat), mid = 'em' + idx;
   return (<>
     <defs>
-      {!look.hl && <linearGradient id={gid} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}><stop offset="0" stopColor={cOut} /><stop offset="1" stopColor={cIn} /></linearGradient>}
-      <marker id={mid} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill={cIn} /></marker>
+      <marker id={mid} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill={col} /></marker>
     </defs>
-    <BaseEdge path={path} markerEnd={`url(#${mid})`} style={{ stroke: look.hl ? look.color : `url(#${gid})`, strokeWidth: look.width, opacity: op }} />
+    <BaseEdge path={path} markerEnd={`url(#${mid})`} style={{ stroke: col, strokeWidth: look.width, strokeDasharray: look.dash, opacity: op }} />
     {(mat || text) && <EdgeLabelRenderer>
-      <div className={(mat ? 'matwrap' : 'elabel') + ' nodrag nopan'} style={{ transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)`, opacity: Math.max(op, 0.35), color: look.hl ? look.color : 'var(--dim)' }}>
+      <div className={(mat ? 'matwrap' : 'elabel') + ' nodrag nopan'} style={{ transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)`, opacity: Math.max(op, 0.35), color: look.hl ? col : 'var(--dim)' }}>
         {mat ? <MatrixChip mat={mat} /> : text}</div>
     </EdgeLabelRenderer>}
   </>);
@@ -125,7 +122,7 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
       onMoveEnd={(_, vp) => onViewport(vp)}>
       <Background gap={24} size={1} color="#333" />
       <Controls showInteractive={false} />
-      <MiniMap pannable zoomable nodeColor="#444" nodeStrokeColor="#666" maskColor="rgba(0,0,0,.55)" />
+      <MiniMap pannable zoomable nodeColor={n => n.data?.node?.color || n.data?.portal?.color || "#444"} nodeStrokeColor="#666" maskColor="rgba(0,0,0,.55)" />
       {multi.length > 1 && <ScaleFrame nodes={nodes} ids={multi} setNodes={setNodes} onMove={onMove} />}
     </ReactFlow>
   );

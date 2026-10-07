@@ -2,6 +2,7 @@
 // 画布组件（main.jsx，React Flow）只负责「显示 view + 回报用户操作」。
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, autoLayout, lineOf, resolveLabel, ROOT } from './outline.js';
+import { colorMap } from './colors.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
 import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal, ScaffoldModal } from './panels.jsx';
 import { SAMPLE } from './sample.js';
@@ -66,10 +67,13 @@ export function Shell({ name, Canvas }) {
     const S = 260 / Math.max(1, ...pts.map(p => Math.max(Math.abs(p.x), Math.abs(p.y)))); // 1 个单位多少像素：坐标都在 ±1 内就固定 260
     return { keys, u, v, S, pts, angle: angleDeg(u, v), labels: keys.map(k => directionLabel(space, k)) };
   }, [space, spaceAxes, realScope]);
+  const colors = useMemo(() => colorMap(graph, getMeta), [graph, getMeta]);
   // 边标签 / 节点副标题来自工作区文件（大纲里没有）
   const view = useMemo(() => {
     const v = projectView(graph, realScope);
     const lab = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.label]));
+    const kind = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.kind || '']));
+    const colOf = id => colors.get(id.startsWith('@portal:') ? id.slice(8) : id) || PALETTE_IDLE;
     const pAxes = space ? space.axes : null; // 在空间页里，成员卡片的小横条用这一页的轴名
     // 空间 → 空间的边：源空间写了 映射→目标 就带上矩阵（画成热力图）
     const matOf = e => {
@@ -83,7 +87,7 @@ export function Shell({ name, Canvas }) {
     return {
       ...v,
       nodes: v.nodes.map(n => ({
-        ...n, sub: wsData?.nodes[n.id]?.meta?.rate || '',
+        ...n, color: colOf(n.id), sub: wsData?.nodes[n.id]?.meta?.rate || '',
         evidence: wsData?.nodes[n.id]?.meta?.evidence || '',
         vec: getMeta(n.id)?.vec ? parseVec(getMeta(n.id).vec) : null, vecAxes: pAxes,
         spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
@@ -91,9 +95,11 @@ export function Shell({ name, Canvas }) {
         open: !!expanded[n.id] && n.children.length > 0,
         kids: n.children.map(c => { const k = graph.nodes.get(c); return { id: c, label: k.label, status: k.status, n: k.children.length }; }),
       })),
-      edges: v.edges.map(e => ({ ...e, text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e) })),
+      portals: v.portals.map(p => ({ ...p, color: colOf(p.id) })),
+      // 线 = 出发节点的颜色；kind 是「离散」→ 虚线（聚合的边要每条都离散才虚）
+      edges: v.edges.map(e => ({ ...e, text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e), color: colOf(e.from), dashed: e.raw.every(r => DISCRETE.test(kind.get(r) || '')) })),
     };
-  }, [graph, realScope, wsData, expanded, picFold, localPicw, space, getMeta]);
+  }, [graph, realScope, wsData, expanded, picFold, localPicw, space, getMeta, colors]);
   // >v<🖼️图片-卡片显示-节点的 _pics_名字/ 里所有图（旧版 frontmatter img: 也认）
   const images = useMemo(() => {
     if (local) return localImages;
@@ -337,6 +343,8 @@ export function Shell({ name, Canvas }) {
     reveal: id => reveal(nodeFile(id), 'select'),
     pasteHint: id => { setSelected(id); setSaveState('选中了「' + graph.nodes.get(id).label + '」：现在 Ctrl+V 贴图'); },
     up: () => up(), canUp: realScope !== ROOT,
+    // 只有 👤 在这里点了才写 color:；「自动」= 删掉 color:，回到按分组 / 关键词自动配色
+    color: mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null,
     toggleAll: () => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; }),
   };
   const onContextMenu = useCallback((id, x, y) => { if (id && !id.startsWith('@')) setSelected(id); setMenu({ id: id && !id.startsWith('@') ? id : null, x, y }); }, []);
@@ -565,7 +573,7 @@ export function Shell({ name, Canvas }) {
       {scaffold && <ScaffoldModal items={scaffold} root={wsData?.root || ''} onClose={() => setScaffold(null)}
         onCreate={files => api('/scaffold', { method: 'POST', body: JSON.stringify({ files }) }).then(d => { setScaffold(null); setTree(null); setSaveState(d.made.length ? '已创建 ' + d.made.join('、') : '没有新建（都已存在）'); }).catch(e => setSaveState('❌ ' + e.message))} />}
       {fileView && <FilePanel file={fileView.text !== undefined || fileView.error || fileView.note ? fileView : null} onClose={() => setFileView(null)} />}
-      {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), open: !!expanded[menu.id], descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
+      {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), color: colors.get(menu.id), colorSet: getMeta(menu.id)?.color || null, open: !!expanded[menu.id], descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
         actions={{ ...menuActions, allOpen }} onClose={() => setMenu(null)} />}
       {exportText !== null && (
         <div className="modal" onClick={() => setExportText(null)}>
@@ -584,15 +592,15 @@ export function Shell({ name, Canvas }) {
 
 // 两个画布共用的节点外观
 export const STATUS_ICON = { done: '✅', partial: '◐', todo: '○' };
-export const COLORS = { in: '#2b7bff', out: '#ff8a1f', idle: '#8a8a8a' };
-// >v<🎨画布-边的颜色-高亮：入蓝 / 出橙实色；没高亮：也有颜色（出发端橙 → 到达端蓝的渐变），只是更淡；
-// 越长越淡、越灰（有下限）—— 👤 2026-10-08：临时拖远的节点（待办）连线自然退到背景里
+const PALETTE_IDLE = '#8a8a8a';
+export const DISCRETE = /离散|discrete|事件|event/i; // 边的 kind 是这些 → 虚线
+// >v<🎨画布-边的颜色-线 = 出发节点的颜色（core/colors.js），离散 = 虚线，箭头标方向（👤 2026-10-08 去掉进出渐变）；
+// 选中节点时颜色不变：相连的线变实变粗，其余变淡；没选中时越长越淡、越灰（有下限）—— 临时拖远的节点（待办）连线自然退到背景里
 export function edgeLook(e, selected) {
-  const w = 1.5 + Math.log2(e.count) * 1.5;
-  if (!selected) return { hl: false, opacity: 0.6, width: w };
-  if (e.to === selected) return { hl: true, color: COLORS.in, opacity: 1, width: w + 0.5 };
-  if (e.from === selected) return { hl: true, color: COLORS.out, opacity: 1, width: w + 0.5 };
-  return { hl: false, opacity: 0.14, width: w };
+  const w = 1.5 + Math.log2(e.count) * 1.5, color = e.color || PALETTE_IDLE, dash = e.dashed ? '6 4' : undefined;
+  if (!selected) return { hl: false, color, dash, opacity: 0.6, width: w };
+  if (e.to === selected || e.from === selected) return { hl: true, color, dash, opacity: 1, width: w + 1.5 };
+  return { hl: false, color, dash, opacity: 0.14, width: w };
 }
 export const FADE = { near: 350, far: 1600, minOpacity: 0.3, minSat: 0.15 }; // 画布坐标长度；短于 near 不衰减，长于 far 到下限
 export function lengthFade(len) {
@@ -627,7 +635,7 @@ export function NodeCard({ node, img, dim, isSel }) {
   };
   return (
     <div className={'card' + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (showPics ? ' hasimg' : '') + (node.status ? ' s-' + node.status : '')}
-      style={showPics && node.picw ? { width: node.picw, maxWidth: 'none' } : undefined}>
+      style={{ ...(node.color ? { '--c': node.color } : {}), ...(showPics && node.picw ? { width: node.picw, maxWidth: 'none' } : {}) }}>
       <div className="title">{node.status && <span className="st">{STATUS_ICON[node.status]}</span>}<span className="lab">{node.label}</span>
         {pics && <span className="picbadge" title={node.foldPics ? '显示图片' : '收起图片'} onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.foldPics(node.id); }}>🖼{img.length > 1 ? img.length : ''}</span>}
@@ -702,5 +710,5 @@ export function PicCard({ pic, isSel }) {
   );
 }
 export function PortalCard({ portal, dim }) {
-  return <div className={'card portal' + (dim ? ' dim' : '')} title={'在别的层：' + portal.target + '（双击跳过去）'}>{portal.label}</div>;
+  return <div className={'card portal' + (dim ? ' dim' : '')} style={portal.color ? { '--c': portal.color } : undefined} title={'在别的层：' + portal.target + '（双击跳过去）'}>{portal.label}</div>;
 }

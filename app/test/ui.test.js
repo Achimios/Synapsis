@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { saveOutline } from '../../core/workspace.js';
 import { runBatch } from '../../core/cli.js';
 import { SAMPLE } from '../src/sample.js';
+import { PALETTE } from '../../core/colors.js';
 const BASE = 'http://localhost:5410';
 const SHOTS = process.argv[2] || null;
 let pass = 0, fail = 0;
@@ -36,9 +37,9 @@ for (const kind of ['reactflow']) {
   };
   const center = b => [b.x + b.width / 2, b.y + b.height / 2];
   const outline = () => page.$eval('textarea', t => t.value);
-  const edges = () => page.$$eval('.react-flow__edge', es => es.map(e => { const p = e.querySelector('.react-flow__edge-path'); return { id: e.dataset.id, color: p.style.stroke, op: +p.style.opacity }; }));
-  const isIn = c => c === 'rgb(43, 123, 255)' || c === '#2b7bff';
-  const isOut = c => c === 'rgb(255, 138, 31)' || c === '#ff8a1f';
+  const edges = () => page.$$eval('.react-flow__edge', es => es.map(e => { const p = e.querySelector('.react-flow__edge-path'); return { id: e.dataset.id, color: p.style.stroke, op: +p.style.opacity, w: parseFloat(p.style.strokeWidth) }; }));
+  const rgb = h => 'rgb(' + [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(', ') + ')';
+  const sameCol = (c, h) => c === h || c === rgb(h);
 
   let c = await cards();
   ok(c.length === 3, '顶层 3 个节点, got ' + c.length);
@@ -70,15 +71,22 @@ for (const kind of ['reactflow']) {
   ok(es.length === 7, '聚合后 7 条边, got ' + es.length);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${kind}_1_drill.png` });
 
-  // 选中 行动：入 = 决策、兜底（蓝），出 = 感知（橙），记忆与人格淡化
+  // 颜色（👤 2026-10-08）：卡片按名字认色，线 = 出发节点的颜色
+  const cardCol = label => page.$$eval('.card', (cs, l) => { const c = cs.find(x => x.querySelector('.title')?.textContent.includes(l)); return c && c.style.getPropertyValue('--c'); }, label);
+  ok(await cardCol('感知') === PALETTE.蓝 && await cardCol('决策') === PALETTE.橙 && await cardCol('行动') === PALETTE.绿 && await cardCol('兜底') === PALETTE.红, '卡片颜色：感知蓝 决策橙 行动绿 兜底红');
+  ok(es.every(e => e.op < 0.95 && e.op > 0.1), '没选中时所有线半透明');
+  const idle = es;
+  // 选中 行动：颜色不变，相连的线变实变粗；入 = 决策（橙）、兜底（红），出 = 感知（行动的绿）；记忆与人格淡化
   b = await cardBox('行动');
   await page.mouse.click(...center(b));
   await sleep(500);
   es = await edges();
   const inE = es.filter(e => e.id.endsWith('=>游戏AI/行动'));
   const outE = es.filter(e => e.id.startsWith('游戏AI/行动=>'));
-  ok(inE.length === 2 && inE.every(e => isIn(e.color)), '入边蓝 ' + JSON.stringify(inE));
-  ok(outE.length === 1 && outE.every(e => isOut(e.color)), '出边橙 ' + JSON.stringify(outE));
+  const colOf = id => sameCol(es.find(e => e.id === id).color, PALETTE[{ '游戏AI/决策=>游戏AI/行动': '橙', '游戏AI/兜底=>游戏AI/行动': '红' }[id]]);
+  ok(inE.length === 2 && inE.every(e => colOf(e.id)), '入边 = 出发节点的颜色（决策橙、兜底红） ' + JSON.stringify(inE));
+  ok(outE.length === 1 && sameCol(outE[0].color, PALETTE.绿), '出边 = 行动自己的绿 ' + JSON.stringify(outE));
+  ok([...inE, ...outE].every(e => e.op === 1 && e.w > idle.find(x => x.id === e.id).w), '相连的线变实变粗');
   ok(es.filter(e => !inE.includes(e) && !outE.includes(e)).every(e => e.op < 0.2), '其余边淡化');
   const dims = await page.$$eval('.card.dim', cs => cs.map(c => c.innerText.split('\n')[0]));
   ok(dims.length === 1 && dims[0].includes('记忆与人格'), '无关节点淡化 ' + JSON.stringify(dims));
@@ -198,6 +206,7 @@ for (const kind of ['reactflow']) {
   console.log('== 工作区', kind);
   const ws = mkdtempSync(join(tmpdir(), 'syn-ui-'));
   saveOutline(ws, SAMPLE);
+  runBatch(ws, [['link', '游戏AI/行动/动作状态机', '游戏AI/感知/自身传感器', { label: '触发', kind: '离散' }]]);
   writeFileSync(join(ws, 'README_测试.md'), '# 外部区的文件\n项目根目录里的普通文件。');
   const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
   const errs = [];
@@ -231,6 +240,15 @@ for (const kind of ['reactflow']) {
   ok(await page.$('.ctx') !== null && (await page.$eval('.ctx .mh', e => e.innerText)) === '行动', '右键节点 → 菜单');
   await page.click('.ctx .mi.row button:has-text("✅")'); await sleep(1500);
   ok(/status: done/.test(nodeFile('游戏AI/行动/_node.md')), '右键改状态 → 文件 status: done');
+  // 颜色：自动配色不写文件；右键点色块才写 color:，「自动」删掉（👤 2026-10-08）
+  const cc = label => page.$$eval('.card', (cs, l) => { const c = cs.find(x => x.querySelector('.title')?.textContent.includes(l)); return c && c.style.getPropertyValue('--c'); }, label);
+  ok(!nodeFile('游戏AI/行动/_node.md').includes('color:') && await cc('行动') === PALETTE.绿, '自动配色（行动绿）不写进文件');
+  const dash = await page.$$eval('.react-flow__edge', es => Object.fromEntries(es.map(e => [e.dataset.id, e.querySelector('.react-flow__edge-path').style.strokeDasharray])));
+  ok(dash['游戏AI/行动=>游戏AI/感知'] && !dash['游戏AI/决策=>游戏AI/行动'], 'kind 离散 的边 = 虚线，其余实线 ' + JSON.stringify(dash));
+  await rclick('行动'); await page.click('.ctx .swatches button[title="粉"]'); await sleep(1500);
+  ok(/^color: 粉$/m.test(nodeFile('游戏AI/行动/_node.md')) && await cc('行动') === PALETTE.粉, '右键点粉 → color: 粉 写进文件，卡片变粉');
+  await rclick('行动'); await page.click('.ctx .swatches button.auto'); await sleep(1500);
+  ok(!nodeFile('游戏AI/行动/_node.md').includes('color:') && await cc('行动') === PALETTE.绿, '右键「自动」→ 删掉 color:，回到绿');
   await rclick('行动'); await page.click('.ctx .mi:has-text("属性")'); await sleep(400);
   ok((await page.$eval('.side h3', e => e.innerText)) === '行动', '右键 属性 → 面板');
   ok((await page.$$eval('.side .edges li', ls => ls.length)) > 0, '属性面板列出入/出边');
@@ -344,10 +362,11 @@ for (const kind of ['reactflow']) {
   const mid = b => [b.x + b.width / 2, b.y + b.height / 2];
   ok(await page.$$eval('.matchip tr', rs => rs.length) === 3 && await page.$$eval('.matchip td[title]', ts => ts.length) === 6, '空间→空间的边画成 2×3 热力图');
   ok((await (await card('情绪空间')).$eval('.axchips', e => e.textContent)).includes('愉悦 · 唤醒 · 支配'), '空间节点卡片列出轴');
-  // 没高亮的边也有颜色（渐变），越长越淡（👤 2026-10-08）
+  // 没高亮的边也有颜色（出发节点的颜色），越长越淡越灰（👤 2026-10-08）
   const edgeSt = () => page.$eval('.react-flow__edge-path', p => ({ stroke: p.style.stroke, op: +p.style.opacity }));
+  const sat = c => { const [r, g, b] = c.match(/\d+/g).map(Number); return Math.max(r, g, b) - Math.min(r, g, b); };
   const e0 = await edgeSt();
-  ok(e0.stroke.startsWith('url(') && e0.op > 0.3, '未高亮的边 = 渐变色，不是灰 ' + JSON.stringify(e0));
+  ok(e0.stroke.startsWith('rgb(') && sat(e0.stroke) > 100 && e0.op > 0.3, '未高亮的边 = 出发节点的颜色，不是灰 ' + JSON.stringify(e0));
   const zoom = await page.$eval('.react-flow__viewport', v => new DOMMatrix(getComputedStyle(v).transform).a);
   const [bx, by] = mid(await (await card('行为空间')).boundingBox());
   await page.mouse.move(bx, by); await page.mouse.down();
@@ -355,10 +374,8 @@ for (const kind of ['reactflow']) {
   await page.mouse.up(); await sleep(600);
   const e1 = await edgeSt();
   ok(e1.op < e0.op * 0.7, '把节点拖远 → 连线变淡 ' + e0.op.toFixed(2) + ' → ' + e1.op.toFixed(2));
-  const stops = await page.$$eval('.react-flow__edges linearGradient stop', s => s.map(x => x.getAttribute('stop-color')));
-  const sat = c => { const [r, g, b] = c.match(/\d+/g).map(Number); return Math.max(r, g, b) - Math.min(r, g, b); };
   if (SHOTS) await page.screenshot({ path: SHOTS + '/space_drag.png' });
-  ok(stops.length === 2 && sat(stops[0]) < 150, '拖远后颜色也变灰（饱和度降低） ' + stops.join(' '));
+  ok(sat(e1.stroke) < sat(e0.stroke) * 0.6, '拖远后颜色也变灰（饱和度降低） ' + e0.stroke + ' → ' + e1.stroke);
   await page.click('.react-flow__controls-fitview'); await sleep(600); // 拖到边上会自动平移，先看全
   await page.mouse.dblclick(...mid(await (await card('情绪空间')).boundingBox())); await sleep(1000);
   ok(!!(await page.$('.planebar')) && (await page.$eval('.planebar', e => e.innerText)).includes('夹角 90°'), '钻进空间 → 投影工具条，轴夹角 90°');

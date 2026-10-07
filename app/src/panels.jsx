@@ -1,6 +1,7 @@
 // 右键菜单、属性面板、文件树（外部区）、文件预览。外壳把状态和动作传进来，这里只管显示。
 import { useEffect, useRef, useState } from 'react';
 
+import { PALETTE } from './colors.js';
 const STATUS = [['done', '✅'], ['partial', '◐'], ['todo', '○']];
 
 // >v<🎨画布-右键菜单-节点：属性/改名/状态/新建/展开/钻进/删除；空白处：新建/全部展开/上一层
@@ -17,7 +18,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       <span>{label}</span>{opts.key && <kbd>{opts.key}</kbd>}
     </div>
   );
-  const style = { left: Math.min(menu.x, innerWidth - 220), top: Math.min(menu.y, innerHeight - 430) };
+  const style = { left: Math.min(menu.x, innerWidth - 220), top: Math.min(menu.y, innerHeight - 460) };
   if (!node) return (
     <div className="ctx" style={style}>
       {item('＋ 在这里新建节点', actions.addHere)}
@@ -35,6 +36,11 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         {STATUS.map(([s, ic]) => <button key={s} className={node.status === s ? 'on' : ''} onClick={() => { onClose(); actions.status(node.id, s); }}>{ic}</button>)}
         <button title="清除" onClick={() => { onClose(); actions.status(node.id, null); }}>✕</button>
       </div>
+      {actions.color && <div className="mi row swatches" onPointerDown={e => e.stopPropagation()}>
+        <span>颜色</span>
+        {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={node.colorSet === k ? 'on' : ''} style={{ background: c }} onClick={() => { onClose(); actions.color(node.id, k); }} />)}
+        <button title="自动（按分组 / 名字配色，子节点跟着父节点）" className={!node.colorSet ? 'on auto' : 'auto'} onClick={() => { onClose(); actions.color(node.id, null); }}>自动</button>
+      </div>}
       {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'Tab' })}
       {item('＋ 新建同级', () => actions.addSibling(node.id), { key: 'Enter' })}
       {node.children.length > 0 && item(node.open ? '收起子级' : '原地展开子级', () => actions.toggle(node.id), { key: '空格' })}

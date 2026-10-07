@@ -34,6 +34,6 @@
 - **颜色**全在 `app/src/shell.css` 的 `:root` 变量里，组件里不写死颜色；键位只在 `app/src/panels.jsx` 的 `KEYMAP` 表里写一次。
 - **AI 接入手册只改模板** `core/templates/AI_Manual.md`，然后 `node core/cli.js manual --write`（cli 自检会核对根目录那份和模板一致）；工作区里的 `_synapsis.md` 打开工作区时自动刷新。
 - **别的 AI 的留言**在 `_Blackboard.md`（Synapsis 工具本身的问题）：每轮开工先看一眼，处理完剪进 `_过期的/`。被规划项目自己的讨论在它的 `__synapsis/_Blackboard.md`。
-- **自检**：`node core/test/workspace.test.js`、`node core/test/cli.test.js`、`node core/test/space.test.js`、`node core/test/arrange.test.js`、`npm test`、`npm run test:ui`（要先有 :5410 服务）、`npm run test:desktop`。⚠️测试只用 `?demo` 或临时目录，**绝不碰真工作区**；桌面测试实例不抢单实例锁（用户可能正开着 Synapsis）。
+- **自检**：`node core/test/workspace.test.js`、`node core/test/cli.test.js`、`node core/test/space.test.js`、`node core/test/arrange.test.js`、`node core/test/colors.test.js`、`npm test`、`npm run test:ui`（要先有 :5410 服务）、`npm run test:desktop`。⚠️测试只用 `?demo` 或临时目录，**绝不碰真工作区**；桌面测试实例不抢单实例锁（用户可能正开着 Synapsis）。
 - **探测接口别带假路径**：`?ws=` 写错会在磁盘上建目录（2026-10-07 建出过 `C:\nonexist`；现在 view 接口已拦，其它写接口仍要小心）。
 - 人格：伊丽莎白（`_人格_伊丽莎白.md`）；语音见 `_TTS调用方法.md`。

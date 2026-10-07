@@ -44,14 +44,17 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 /* 卡片：扁、细边、状态用左边一条色带 */
 .card { background: var(--panel2); border: 1px solid var(--line2); border-left-width: 3px; border-radius: 3px; padding: 3px 7px; min-width: 96px; max-width: 200px; transition: opacity .15s; color: var(--text); }
 .card.s-done { border-left-color: var(--ok); } .card.s-partial { border-left-color: #e0b84d; } .card.s-todo { border-left-color: var(--faint); }
-.card.sel { border-color: var(--sel); box-shadow: 0 0 0 1px var(--sel); }
+/* 节点颜色 --c（core/colors.js）：边框 + 淡底色；左边那条仍是状态色 */
+.card { --c: var(--line2); border-top-color: color-mix(in srgb, var(--c) 70%, var(--line2)); border-right-color: color-mix(in srgb, var(--c) 70%, var(--line2)); border-bottom-color: color-mix(in srgb, var(--c) 70%, var(--line2)); background: color-mix(in srgb, var(--c) 9%, var(--panel2)); }
+.card .title .lab { color: color-mix(in srgb, var(--c) 35%, var(--text)); }
+.card.sel { border-color: var(--sel); box-shadow: 0 0 0 1px var(--sel), 0 0 10px color-mix(in srgb, var(--c) 60%, transparent); }
 .card.dim { opacity: .25; }
 .card .title { font-weight: 600; display: flex; gap: 4px; align-items: center; line-height: 1.3; }
 .card .st { font-size: 10px; }
 .card .kids { margin-left: auto; font-size: 10px; color: var(--dim); background: #353535; border-radius: 8px; padding: 0 5px; font-weight: 400; cursor: pointer; user-select: none; }
 .card .kids:hover { background: #444; color: #fff; }
 .card .sub { font-size: 10px; color: var(--dim); margin-top: 1px; }
-.card.portal { border-style: dashed; border-left-width: 1px; color: var(--dim); font-size: 11px; min-width: 0; background: transparent; }
+.card.portal { border-style: dashed; border-left-width: 1px; border-left-color: color-mix(in srgb, var(--c) 70%, var(--line2)); color: color-mix(in srgb, var(--c) 45%, var(--dim)); font-size: 11px; min-width: 0; background: transparent; }
 /* 图片：PureRef 式 —— 有图的卡片放宽，图是主体 */
 .card.hasimg { max-width: 280px; padding-bottom: 4px; }
 .card .pics { display: grid; gap: 2px; margin-top: 3px; }
@@ -86,6 +89,10 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .ctx .mi.row { cursor: default; }
 .ctx .mi.row:hover { background: none; }
 .ctx button, .side .row button { padding: 0 5px; }
+.ctx .swatches { gap: 3px; flex-wrap: wrap; max-width: 240px; }
+.ctx .swatches button { width: 14px; height: 14px; padding: 0; border-radius: 50%; border: 1px solid rgba(0,0,0,.4); }
+.ctx .swatches button.on { outline: 2px solid var(--sel); outline-offset: 1px; }
+.ctx .swatches button.auto { width: auto; height: auto; border-radius: 3px; padding: 0 4px; font-size: 10px; background: var(--panel2); border-color: var(--line2); }
 .ctx button.on, .side .row button.on { background: #2f4f7a; border-color: var(--accent); }
 
 /* 右侧面板：属性 / 文件预览 */
