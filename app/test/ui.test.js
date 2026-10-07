@@ -840,6 +840,18 @@ for (const kind of ['reactflow']) {
   ok(!/生命/.test(gmd()) && !(await page.$('.meta.edit input.mk')), '✕ → 删掉属性');
   await page.fill('.addrow td:first-child input', '血量'); await page.fill('.addrow td:nth-child(2) input', '120'); await page.press('.addrow td:nth-child(2) input', 'Enter'); await sleep(1500);
   ok((await cardP()).includes('血量120'), '回车也能加');
+  // 属性 / 正文编辑也能撤销
+  await page.fill('.addrow td:first-child input', '射程'); await page.fill('.addrow td:nth-child(2) input', '30'); await page.press('.addrow td:nth-child(2) input', 'Enter'); await sleep(1200);
+  await page.mouse.click(700, 760); await sleep(200);
+  await page.mouse.click(...mid(await (await lab('咕噜人')).boundingBox())); await sleep(300);
+  await page.keyboard.press('Control+z'); await sleep(1200);
+  ok(!/射程/.test(gmd()) && /血量: 120/.test(gmd()), 'Ctrl+Z → 撤掉刚加的属性（之前的还在）');
+  await page.keyboard.press('Control+y'); await sleep(1200);
+  ok(/射程: 30/.test(gmd()), 'Ctrl+Y → 属性回来');
+  await page.fill('.side textarea', '咕噜人的正文'); await page.click('.side h3'); await sleep(1200);
+  ok(/咕噜人的正文/.test(gmd()), '正文失焦保存');
+  await page.mouse.click(700, 760); await sleep(200); await page.keyboard.press('Control+z'); await sleep(1200);
+  ok(!/咕噜人的正文/.test(gmd()), 'Ctrl+Z → 正文撤回去');
   // 底纹图案：词表认（传感器 → 点阵、情绪… → 波纹）；右键 → 图案 → 网格 写进 pattern:
   const patOf = l => page.$$eval('.card', (cs, l) => [...(cs.find(c => c.querySelector('.lab')?.textContent === l)?.classList || [])].find(x => x.startsWith('pat-')) || '', l);
   ok(await patOf('传感器') === 'pat-dots' && await patOf('情绪恐惧') === 'pat-wave', '图案词表：传感器 = 点阵，情绪恐惧 = 波纹 ' + await patOf('传感器') + ' ' + await patOf('情绪恐惧'));

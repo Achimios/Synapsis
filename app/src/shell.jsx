@@ -290,7 +290,7 @@ export function Shell({ name, Canvas }) {
 
   // >v<🧭导航-撤销重做-Ctrl+Z / Ctrl+Shift+Z（Ctrl+Y）：一步 = 一次大纲保存（增删改名、状态、连线）或一次拖动 / 框选缩放。
   // 撤销删除 = 先把 _过期的/ 里的文件搬回原处，再写回删除前的大纲（正文、属性、图片都在）。
-  // 不在撤销范围：属性 / 正文的编辑、空间页拖动改 vec（这些直接写 frontmatter）。只在工作区模式。
+  // 属性 / 正文编辑（含颜色、图案）也在撤销栈里（op 条目，见 saveMeta / saveBody）；不在撤销范围：空间页拖动改 vec。只在工作区模式。
   const hist2 = useRef({ undo: [], redo: [], committed: null, applying: false });
   const persistHist = () => { const h = hist2.current; try { sessionStorage.setItem(HIST_KEY, JSON.stringify({ undo: h.undo.slice(-50), redo: h.redo.slice(-50), committed: h.committed })); } catch { /* 配额满：只是刷新后接不上 */ } };
   const recordSave = (t, report) => {
@@ -331,6 +331,7 @@ export function Shell({ name, Canvas }) {
     const h = hist2.current;
     if (mode !== 'ws' || !h.committed) return setSaveState('撤销只在工作区模式');
     const e = h.undo.pop(); if (!e) return setSaveState('没有可撤销的');
+    if (e.op) { h.redo.push(e); persistHist(); applyOp(e, 'undo').then(() => setSaveState('已撤销' + (e.op === 'meta' ? '属性修改' : '正文修改') + ' · 还能撤 ' + h.undo.length + ' 步')); return; }
     h.redo.push({ text: h.committed.text, positions: h.committed.positions, hint: flip(e.hint) });
     applyHist(e).then(() => setSaveState('已撤销' + (e.restore ? '（删掉的节点从 _过期的/ 搬回来了）' : '') + ' · 还能撤 ' + h.undo.length + ' 步'));
   };
@@ -338,6 +339,7 @@ export function Shell({ name, Canvas }) {
     const h = hist2.current;
     if (mode !== 'ws' || !h.committed) return;
     const e = h.redo.pop(); if (!e) return setSaveState('没有可重做的');
+    if (e.op) { h.undo.push(e); persistHist(); applyOp(e, 'redo').then(() => setSaveState('已重做')); return; }
     h.undo.push({ text: h.committed.text, positions: h.committed.positions, restore: null, hint: flip(e.hint) });
     applyHist(e).then(() => setSaveState('已重做'));
   };
@@ -496,7 +498,13 @@ export function Shell({ name, Canvas }) {
     if (propsTab !== 'raw' || !sel || !nodeFile(sel)) { setRawText(null); return; }
     api('/raw?p=' + encodeURIComponent(nodeFile(sel))).then(r => setRawText(r.text ?? r.note)).catch(e => setRawText('读取失败：' + e.message));
   }, [propsTab, sel, wsData]);
-  const saveMeta = (id, patch) => api('/node', { method: 'PATCH', body: JSON.stringify({ id, meta: patch }) }).then(d => { setWsData(d); setSaveState('属性已保存：' + Object.keys(patch).join('、')); }).catch(e => setSaveState('❌ 属性保存失败：' + e.message));
+  // >v<🧭导航-撤销重做-属性 / 正文编辑也进撤销栈（👤 待办）：记 {op, id, undo: 改之前, redo: 改之后}，撤销 = 把旧值写回
+  const pushOp = e => { const h = hist2.current; if (!h.committed) return; h.undo.push(e); h.redo = []; persistHist(); };
+  const saveMeta = (id, patch, opt = {}) => {
+    const old = wsData?.nodes[id]?.meta || {};
+    if (!opt.silent) pushOp({ op: 'meta', id, undo: Object.fromEntries(Object.keys(patch).map(k => [k, k in old ? old[k] : null])), redo: patch });
+    return api('/node', { method: 'PATCH', body: JSON.stringify({ id, meta: patch }) }).then(d => { setWsData(d); setSaveState('属性已保存：' + Object.keys(patch).join('、') + '（Ctrl+Z 撤销）'); }).catch(e => setSaveState('❌ 属性保存失败：' + e.message));
+  };
   // 属性面板的快捷按钮：把空白模板填进「＋ 属性」那一行，改完回车
   const metaHints = id => {
     const m = getMeta(id) || {}, out = [], par = graph.nodes.get(id)?.parent, pm = par != null ? getMeta(par) : null;
@@ -509,7 +517,13 @@ export function Shell({ name, Canvas }) {
     }
     return out;
   };
-  const saveBody = (id, body) => api('/node', { method: 'PATCH', body: JSON.stringify({ id, body }) }).then(d => { setWsData(d); setSaveState('正文已保存 ' + new Date().toLocaleTimeString()); }).catch(e => setSaveState('❌ 正文保存失败：' + e.message));
+  const saveBody = (id, body, opt = {}) => {
+    const old = wsData?.nodes[id]?.body || '';
+    if (old === body) return Promise.resolve();
+    if (!opt.silent) pushOp({ op: 'body', id, undo: old, redo: body });
+    return api('/node', { method: 'PATCH', body: JSON.stringify({ id, body }) }).then(d => { setWsData(d); setSaveState('正文已保存 ' + new Date().toLocaleTimeString() + '（Ctrl+Z 撤销）'); }).catch(e => setSaveState('❌ 正文保存失败：' + e.message));
+  };
+  const applyOp = (e, which) => e.op === 'meta' ? saveMeta(e.id, e[which], { silent: true }) : saveBody(e.id, e[which], { silent: true });
 
   const toggle = id => setExpanded(x => ({ ...x, [id]: !x[id] }));
   cardActions.toggle = toggle;
