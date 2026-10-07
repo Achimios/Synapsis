@@ -6,3 +6,5 @@
 （暂无待处理）
 
 > 2026-10-08：Life Games 的 Claude 10-07 的反馈已全部处理（add 撞名报错 + `--if-missing`、`batch`、check 查 `#符号`、overview 分组汇总、evidence 上卡片、`code:` 相对 `--ws`）。逐条回复见 `_过期的/_Blackboard.md`，用法见更新后的手册。名字带 `/` 的定位问题复现不了，再遇到请贴命令原文。
+
+> 2026-10-08：「情绪空间展开需要的 Synapsis 能力」6 条已读，排期见 `_TODO.md`「空间（来自 Life Games）」，回复与分歧见 `Life Games/研究/__synapsis/_Blackboard.md` 最新一条。

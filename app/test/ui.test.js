@@ -344,6 +344,22 @@ for (const kind of ['reactflow']) {
   const mid = b => [b.x + b.width / 2, b.y + b.height / 2];
   ok(await page.$$eval('.matchip tr', rs => rs.length) === 3 && await page.$$eval('.matchip td[title]', ts => ts.length) === 6, '空间→空间的边画成 2×3 热力图');
   ok((await (await card('情绪空间')).$eval('.axchips', e => e.textContent)).includes('愉悦 · 唤醒 · 支配'), '空间节点卡片列出轴');
+  // 没高亮的边也有颜色（渐变），越长越淡（👤 2026-10-08）
+  const edgeSt = () => page.$eval('.react-flow__edge-path', p => ({ stroke: p.style.stroke, op: +p.style.opacity }));
+  const e0 = await edgeSt();
+  ok(e0.stroke.startsWith('url(') && e0.op > 0.3, '未高亮的边 = 渐变色，不是灰 ' + JSON.stringify(e0));
+  const zoom = await page.$eval('.react-flow__viewport', v => new DOMMatrix(getComputedStyle(v).transform).a);
+  const [bx, by] = mid(await (await card('行为空间')).boundingBox());
+  await page.mouse.move(bx, by); await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(bx + 1500 * zoom * i / 10, by + 300 * zoom * i / 10);
+  await page.mouse.up(); await sleep(600);
+  const e1 = await edgeSt();
+  ok(e1.op < e0.op * 0.7, '把节点拖远 → 连线变淡 ' + e0.op.toFixed(2) + ' → ' + e1.op.toFixed(2));
+  const stops = await page.$$eval('.react-flow__edges linearGradient stop', s => s.map(x => x.getAttribute('stop-color')));
+  const sat = c => { const [r, g, b] = c.match(/\d+/g).map(Number); return Math.max(r, g, b) - Math.min(r, g, b); };
+  if (SHOTS) await page.screenshot({ path: SHOTS + '/space_drag.png' });
+  ok(stops.length === 2 && sat(stops[0]) < 150, '拖远后颜色也变灰（饱和度降低） ' + stops.join(' '));
+  await page.click('.react-flow__controls-fitview'); await sleep(600); // 拖到边上会自动平移，先看全
   await page.mouse.dblclick(...mid(await (await card('情绪空间')).boundingBox())); await sleep(1000);
   ok(!!(await page.$('.planebar')) && (await page.$eval('.planebar', e => e.innerText)).includes('夹角 90°'), '钻进空间 → 投影工具条，轴夹角 90°');
   // 坐标核对：卡片中心相对坐标轴原点 / 单位长度 = (愉悦, 唤醒)
@@ -369,6 +385,16 @@ for (const kind of ['reactflow']) {
   c = await coord('谨慎');
   ok(Math.abs(c[0] - v[0]) < 0.03, '松手后卡片停在新坐标 ' + c.map(x => x.toFixed(2)) + ' vec ' + v);
   await sleep(800);
+  // 属性面板直接加坐标：选中没坐标的「备注」→「加坐标」按钮 → 改值回车 → 写进 md，出现在散点图里
+  await page.mouse.click(...mid(await (await card('备注')).boundingBox())); await sleep(400);
+  await page.click('.metahints button:has-text("加坐标")');
+  await page.fill('.meta .addrow td:nth-child(2) input', '0.5, -0.5, 0'); await page.keyboard.press('Enter'); await sleep(1200);
+  ok(/vec: 0\.5, -0\.5, 0/.test(readFileSync(join(ws, '__synapsis', '情绪空间', '备注.md'), 'utf8')), '属性面板「加坐标」写进 md');
+  c = await coord('备注');
+  ok(Math.abs(c[0] - 0.5) < 0.05 && Math.abs(c[1] + 0.5) < 0.05, '加了坐标立刻出现在散点图上 ' + c.map(x => x.toFixed(2)));
+  const vin = await page.$('.meta.edit tr:has(td:text-is("vec")) input');
+  await vin.fill('0.5, -0.5, 0.9'); await page.keyboard.press('Enter'); await sleep(1000);
+  ok(/vec: 0\.5, -0\.5, 0\.9/.test(readFileSync(join(ws, '__synapsis', '情绪空间', '备注.md'), 'utf8')), '属性值原地改，回车保存');
   const view = JSON.parse(readFileSync(join(ws, '.synapsis', 'view.json'), 'utf8'));
   ok(view.spaceAxes?.['情绪空间']?.join() === '#0,#1', '投影方向记进 view.json');
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));

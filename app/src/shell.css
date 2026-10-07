@@ -181,3 +181,13 @@ svg.axes text.al { fill: var(--dim); font-size: 12px; }
 .matchip { border-collapse: collapse; background: var(--panel); border: 1px solid var(--line2); font-size: 9px; color: var(--dim); }
 .matchip td { width: 12px; height: 12px; border: 1px solid var(--line); padding: 0; text-align: center; }
 .matchip th { font-weight: normal; padding: 0 2px; white-space: nowrap; }
+.elabel { position: absolute; pointer-events: none; font-size: 10px; padding: 0 3px; background: var(--bg); border-radius: 2px; white-space: nowrap; }
+.meta.edit { width: 100%; table-layout: fixed; }
+.meta.edit td:first-child { width: 34%; overflow: hidden; text-overflow: ellipsis; }
+.meta.edit input { width: 100%; background: transparent; border: 1px solid transparent; color: var(--text); font: inherit; padding: 1px 3px; }
+.meta.edit input:hover { border-color: var(--line2); }
+.meta.edit input:focus { border-color: var(--accent); background: var(--panel2); outline: none; }
+.meta.edit input:disabled { color: var(--dim); }
+.meta.edit .addrow input::placeholder { color: var(--faint); }
+.meta .metahints { border-top: 0; padding-top: 4px; }
+.meta .metahints button { font-size: 10px; margin: 0 4px 2px 0; }

@@ -308,6 +308,19 @@ export function Shell({ name, Canvas }) {
     if (propsTab !== 'raw' || !sel || !nodeFile(sel)) { setRawText(null); return; }
     api('/raw?p=' + encodeURIComponent(nodeFile(sel))).then(r => setRawText(r.text ?? r.note)).catch(e => setRawText('读取失败：' + e.message));
   }, [propsTab, sel, wsData]);
+  const saveMeta = (id, patch) => api('/node', { method: 'PATCH', body: JSON.stringify({ id, meta: patch }) }).then(d => { setWsData(d); setSaveState('属性已保存：' + Object.keys(patch).join('、')); }).catch(e => setSaveState('❌ 属性保存失败：' + e.message));
+  // 属性面板的快捷按钮：把空白模板填进「＋ 属性」那一行，改完回车
+  const metaHints = id => {
+    const m = getMeta(id) || {}, out = [], par = graph.nodes.get(id)?.parent, pm = par != null ? getMeta(par) : null;
+    if (!isSpace(m)) out.push({ label: '设为空间', key: 'axes', value: '轴1, 轴2, 轴3', title: '这个节点变成「空间」：axes = 轴名，逗号分隔。子节点写 vec 就成了它的成员' });
+    if (isSpace(pm) && !m.vec) out.push({ label: '加坐标', key: 'vec', value: parseAxes(pm.axes).map(() => '0').join(', '), title: '在「' + graph.nodes.get(par).label + '」里的坐标：' + parseAxes(pm.axes).join('、') });
+    if (isSpace(m)) for (const e of graph.edges.filter(x => x.from === id)) {
+      const tm = getMeta(e.to), lab = graph.nodes.get(e.to).label;
+      if (isSpace(tm) && !mapsOf(m).some(x => (resolveLabel(graph.nodes, id, x.ref) || x.ref) === e.to))
+        out.push({ label: '映射→' + lab, key: '映射→' + lab, value: parseAxes(tm.axes).map(() => parseAxes(m.axes).map(() => '0').join(' ')).join('; '), title: `矩阵 ${parseAxes(tm.axes).length} 行（${parseAxes(tm.axes).join('、')}）× ${parseAxes(m.axes).length} 列（${parseAxes(m.axes).join('、')}），; 分行` });
+    }
+    return out;
+  };
   const saveBody = (id, body) => api('/node', { method: 'PATCH', body: JSON.stringify({ id, body }) }).then(d => { setWsData(d); setSaveState('正文已保存 ' + new Date().toLocaleTimeString()); }).catch(e => setSaveState('❌ 正文保存失败：' + e.message));
 
   const toggle = id => setExpanded(x => ({ ...x, [id]: !x[id] }));
@@ -494,7 +507,7 @@ export function Shell({ name, Canvas }) {
       </main>
       {propsOpen && sel && !sel.startsWith('@') && graph.nodes.has(sel) && (
         <PropsPanel id={sel} graph={graph} wsNode={wsData?.nodes[sel]} edges={mode === 'ws' ? (wsData?.edges || []) : graph.edges}
-          editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} file={nodeFile(sel)} tab={propsTab} onTab={setPropsTab} raw={rawText} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)} />
+          editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} onMeta={saveMeta} metaHints={mode === 'ws' ? metaHints(sel) : []} file={nodeFile(sel)} tab={propsTab} onTab={setPropsTab} raw={rawText} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)} />
       )}
       {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（I 开关）</div></aside>}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
@@ -519,12 +532,25 @@ export function Shell({ name, Canvas }) {
 // 两个画布共用的节点外观
 export const STATUS_ICON = { done: '✅', partial: '◐', todo: '○' };
 export const COLORS = { in: '#2b7bff', out: '#ff8a1f', idle: '#8a8a8a' };
+// >v<🎨画布-边的颜色-高亮：入蓝 / 出橙实色；没高亮：也有颜色（出发端橙 → 到达端蓝的渐变），只是更淡；
+// 越长越淡、越灰（有下限）—— 👤 2026-10-08：临时拖远的节点（待办）连线自然退到背景里
 export function edgeLook(e, selected) {
   const w = 1.5 + Math.log2(e.count) * 1.5;
-  if (!selected) return { color: COLORS.idle, opacity: 0.55, width: w };
-  if (e.to === selected) return { color: COLORS.in, opacity: 1, width: w + 0.5 };
-  if (e.from === selected) return { color: COLORS.out, opacity: 1, width: w + 0.5 };
-  return { color: COLORS.idle, opacity: 0.08, width: w };
+  if (!selected) return { hl: false, opacity: 0.6, width: w };
+  if (e.to === selected) return { hl: true, color: COLORS.in, opacity: 1, width: w + 0.5 };
+  if (e.from === selected) return { hl: true, color: COLORS.out, opacity: 1, width: w + 0.5 };
+  return { hl: false, opacity: 0.14, width: w };
+}
+export const FADE = { near: 350, far: 1600, minOpacity: 0.3, minSat: 0.15 }; // 画布坐标长度；短于 near 不衰减，长于 far 到下限
+export function lengthFade(len) {
+  const t = Math.max(0, Math.min(1, (len - FADE.near) / (FADE.far - FADE.near)));
+  return { opacity: 1 - t * (1 - FADE.minOpacity), sat: 1 - t * (1 - FADE.minSat) };
+}
+// 把颜色往同亮度的灰拉：s = 1 原色，s = 0 全灰
+export function desat(hex, s) {
+  const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  const g = 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2];
+  return 'rgb(' + c.map(x => Math.round(g + (x - g) * s)).join(', ') + ')';
 }
 export function nodeDim(id, view, selected) {
   if (!selected || id === selected) return false;

@@ -49,7 +49,29 @@ export function ContextMenu({ menu, node, actions, onClose }) {
 const countAll = n => n.descendants ?? n.children.length;
 
 // >v<🎨画布-属性面板-节点属性/出入边/正文（工作区模式下正文可改，失焦保存）
-export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onSelect, onClose, file, tab, onTab, raw, onReveal }) {
+// >v<🎨画布-属性可编辑-值失焦保存（清空 = 删掉这个键）；底下一行加新属性；空间相关的给快捷按钮（轴 / 坐标 / 映射）
+const LOCKED = new Set(['to', 'label', 'status', 'order']);
+function MetaTable({ id, meta, editable, onMeta, hints = [] }) {
+  const [k, setK] = useState(''), [v, setV] = useState('');
+  const keyRef = useRef(null);
+  useEffect(() => { setK(''); setV(''); }, [id]);
+  const add = () => { const kk = k.trim(); if (!kk || LOCKED.has(kk)) return; onMeta(id, { [kk]: v.trim() || null }); setK(''); setV(''); };
+  const rows = meta.filter(([key]) => !LOCKED.has(key));
+  if (!editable) return rows.length > 0 ? <table className="meta"><tbody>{rows.map(([key, val]) => <tr key={key}><td>{key}</td><td>{Array.isArray(val) ? val.join('；') : val}</td></tr>)}</tbody></table> : null;
+  return (
+    <table className="meta edit"><tbody>
+      {rows.map(([key, val]) => <tr key={key}><td>{key}</td><td>
+        <input key={id + key + val} defaultValue={Array.isArray(val) ? val.join('；') : val} disabled={Array.isArray(val)} title={Array.isArray(val) ? '列表值请在原文里改' : '失焦保存；清空 = 删掉这个属性'}
+          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { e.currentTarget.value = val; e.currentTarget.blur(); } }}
+          onBlur={e => { const nv = e.currentTarget.value.trim(); if (nv !== String(val)) onMeta(id, { [key]: nv || null }); }} /></td></tr>)}
+      <tr className="addrow"><td><input ref={keyRef} placeholder="＋ 属性" value={k} onChange={e => setK(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} /></td>
+        <td><input placeholder="值（回车添加）" value={v} onChange={e => setV(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} /></td></tr>
+      {hints.length > 0 && <tr><td colSpan={2} className="metahints">{hints.map(h => <button key={h.label} title={h.title} onClick={() => { setK(h.key); setV(h.value); keyRef.current?.focus(); }}>{h.label}</button>)}</td></tr>}
+    </tbody></table>
+  );
+}
+
+export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, tab, onTab, raw, onReveal }) {
   const n = graph.nodes.get(id);
   const [body, setBody] = useState(wsNode?.body || '');
   useEffect(() => setBody(wsNode?.body || ''), [id, wsNode?.body]);
@@ -74,7 +96,7 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
       <div className="sidebody">
         <h3>{n.label}</h3>
         <div className="row">状态 {STATUS.map(([s, ic]) => <button key={s} className={n.status === s ? 'on' : ''} onClick={() => onStatus(id, s)}>{ic}</button>)}</div>
-        {meta.length > 0 && <table className="meta"><tbody>{meta.map(([k, v]) => <tr key={k}><td>{k}</td><td>{Array.isArray(v) ? v.join('；') : v}</td></tr>)}</tbody></table>}
+        <MetaTable id={id} meta={meta} editable={editable} onMeta={onMeta} hints={metaHints} />
         {(ins.length > 0 || outs.length > 0) && <div className="edges">
           {ins.length > 0 && <><div className="eh in">← 输入{sub.size > 1 ? '（含子节点）' : ''}</div><ul>{ins.map(e => edgeRow(e, e.from, e.to))}</ul></>}
           {outs.length > 0 && <><div className="eh out">→ 输出{sub.size > 1 ? '（含子节点）' : ''}</div><ul>{outs.map(e => edgeRow(e, e.to, e.from))}</ul></>}
