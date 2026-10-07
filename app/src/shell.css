@@ -73,6 +73,20 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .frame .fhead .kids:hover { background: #444; color: #fff; }
 .frame.dropped .lab { text-decoration: line-through; }
 .react-flow__node-frame { padding: 0; }
+/* 搜索框（Ctrl+K / 连线到…） */
+.modal > div.finder { width: min(640px, 94vw); max-height: 70vh; align-self: flex-start; margin-top: 12vh; }
+.finder input { margin: 8px; padding: 6px 8px; font: 14px system-ui, "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); border: 1px solid var(--accent); border-radius: 3px; outline: none; }
+.finder ul { list-style: none; margin: 0; padding: 0 0 6px; overflow: auto; }
+.finder li { padding: 4px 12px; cursor: pointer; display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; }
+.finder li.on { background: #2f4f7a; }
+.finder .fp { color: var(--dim); font-size: 11px; }
+.finder .fw { font-size: 10px; color: var(--faint); border: 1px solid var(--line2); border-radius: 3px; padding: 0 3px; }
+.finder .fs { flex-basis: 100%; color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ofilter { margin: 4px 6px; padding: 2px 6px; font: inherit; background: var(--bg); color: var(--text); border: 1px solid var(--line2); border-radius: 3px; outline: none; }
+.ofilter:focus { border-color: var(--accent); }
+.orow.hit .olab { color: #ffd76a; }
+.side .edges button.ex { font-size: 10px; padding: 0 4px; margin-left: 4px; color: var(--faint); border-color: transparent; background: none; }
+.side .edges button.ex:hover { color: var(--bad); border-color: var(--bad); }
 /* 调节口：顶上 / 底下的小菱形，平时很淡，鼠标移到卡片上才明显 */
 .react-flow__handle.modh { width: 7px; height: 7px; border-radius: 1px; transform: translate(-50%, -50%) rotate(45deg); background: #555; border: 1px solid var(--bg); opacity: .25; }
 .react-flow__handle.modh.react-flow__handle-bottom { transform: translate(-50%, 50%) rotate(45deg); }

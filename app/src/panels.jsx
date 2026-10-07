@@ -1,7 +1,8 @@
 // 右键菜单、属性面板、文件树（外部区）、文件预览。外壳把状态和动作传进来，这里只管显示。
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { PALETTE } from './colors.js';
+import { searchNodes, filterTree } from './search.js';
 const STATUS = [['done', '✅'], ['partial', '◐'], ['todo', '○'], ['dropped', '❌']];
 
 // >v<🎨画布-右键菜单-节点：属性/改名/状态/新建/展开/钻进/删除；空白处：新建/全部展开/上一层
@@ -19,6 +20,16 @@ export function ContextMenu({ menu, node, actions, onClose }) {
     </div>
   );
   const style = { left: Math.min(menu.x, innerWidth - 220), top: Math.min(menu.y, innerHeight - 460) };
+  if (menu.edge) { // 右键连线：删除（聚合的线 = 里面每一条）/ 换类型
+    const pairs = menu.edge.raw.map(r => r.split('->'));
+    return (
+      <div className="ctx" style={style}>
+        <div className="mh">{menu.edge.count > 1 ? `${menu.edge.count} 条连线（聚合）` : '连线'}</div>
+        {pairs.length === 1 && actions.canEdgeKind && item('换类型：普通 → 调节 → 离散', () => actions.edgeKind(pairs[0][0], pairs[0][1]))}
+        {item('🗑️ 删除' + (pairs.length > 1 ? `这 ${pairs.length} 条连线` : '这条连线'), () => actions.removeEdges(pairs), { danger: true })}
+      </div>
+    );
+  }
   if (!node) return (
     <div className="ctx" style={style}>
       {item('＋ 在这里新建节点', actions.addHere)}
@@ -42,6 +53,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         <button title="自动（按分组 / 名字配色，子节点跟着父节点）" className={!node.colorSet ? 'on auto' : 'auto'} onClick={() => { onClose(); actions.color(node.id, null); }}>自动</button>
         {actions.colorWords && <button title="自动配色按名字里的词认颜色：打开这个工作区的词表 __synapsis/_配色.md（没有就按默认建一份）" className="auto" onClick={() => { onClose(); actions.colorWords(); }}>词表…</button>}
       </div>}
+      {item('🔗 连线到…', () => actions.linkTo(node.id), { key: 'L' })}
       {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'Tab' })}
       {item('＋ 新建同级', () => actions.addSibling(node.id), { key: 'Enter' })}
       {node.children.length > 0 && item(node.open ? '收起子级' : '原地展开子级', () => actions.toggle(node.id), { key: '空格' })}
@@ -79,7 +91,7 @@ function MetaTable({ id, meta, editable, onMeta, hints = [] }) {
   );
 }
 
-export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, tab, onTab, raw, onReveal, onRename, color, onColor, onEdgeKind }) {
+export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, tab, onTab, raw, onReveal, onRename, color, onColor, onEdgeKind, onEdgeRemove }) {
   const n = graph.nodes.get(id);
   const [body, setBody] = useState(wsNode?.body || '');
   useEffect(() => setBody(wsNode?.body || ''), [id, wsNode?.body]);
@@ -91,7 +103,8 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
   const lab = id2 => graph.nodes.get(id2)?.label || id2;
   const via = (e, inner) => inner !== id ? <span className="el">经 {lab(inner)}</span> : null;
   const kindBtn = e => onEdgeKind ? <button className={'ek' + (e.kind ? ' on' : '')} title="点一下换类型：普通 → 调节（◆ 从下往上连，不算数据流）→ 离散（虚线）→ 普通" onClick={() => onEdgeKind(e.from, e.to, e.label || '', e.kind || '')}>{e.kind || '普通'}</button> : e.kind ? <span className="el">{e.kind}</span> : null;
-  const edgeRow = (e, other, inner) => <li key={e.from + e.to}><a onClick={() => onSelect(other)}>{lab(other)}</a>{e.label && <span className="el">{e.label}</span>}{kindBtn(e)}{via(e, inner)}</li>;
+  const edgeRow = (e, other, inner) => <li key={e.from + e.to}><a onClick={() => onSelect(other)}>{lab(other)}</a>{e.label && <span className="el">{e.label}</span>}{kindBtn(e)}{via(e, inner)}
+    {onEdgeRemove && <button className="ex" title="删除这条连线" onClick={() => onEdgeRemove(e.from, e.to)}>✕</button>}</li>;
   return (
     <aside className="side">
       <div className="bar tabs"><a className={tab !== 'raw' ? 'on' : ''} onClick={() => onTab('info')}>概览</a>
@@ -158,13 +171,15 @@ export function FilePanel({ file, onClose }) {
 // >v<🌳大纲模型-大纲树-左栏默认页：点一下 = 导航 + 看内容（不进编辑）；双击 / F2 = 原地改名；▸ 折叠；→ 钻进；↑↓←→ 键盘走
 export function OutlineTree({ graph, selected, scope, renaming, status, onPick, onDrill, onRename, onCommit, onCancel }) {
   const [open, setOpen] = useState({});
+  const [q, setQ] = useState(''); // 过滤：只留名字命中的和它们的祖先（全部展开）
+  const flt = useMemo(() => filterTree(graph, q), [graph, q]);
   const box = useRef(null);
   // 默认：前两层展开；当前页和选中节点的祖先一律展开（大纲里永远看得到「我在哪」）
   const focus = new Set();
   for (const f of [scope, selected]) for (let c = f; c && graph.nodes.has(c); c = graph.nodes.get(c).parent) focus.add(c);
-  const isOpen = (id, depth) => open[id] ?? (depth < 2 || focus.has(id));
+  const isOpen = (id, depth) => flt ? true : open[id] ?? (depth < 2 || focus.has(id));
   const rows = [];
-  const walk = (id, depth) => { for (const c of graph.nodes.get(id).children) { const n = graph.nodes.get(c); rows.push({ n, depth }); if (n.children.length && isOpen(c, depth)) walk(c, depth + 1); } };
+  const walk = (id, depth) => { for (const c of graph.nodes.get(id).children) { if (flt && !flt.keep.has(c)) continue; const n = graph.nodes.get(c); rows.push({ n, depth }); if (n.children.length && isOpen(c, depth)) walk(c, depth + 1); } };
   walk('', 0);
   useEffect(() => { box.current?.querySelector('.orow.sel')?.scrollIntoView({ block: 'nearest' }); }, [selected]);
   const onKey = e => {
@@ -175,9 +190,12 @@ export function OutlineTree({ graph, selected, scope, renaming, status, onPick, 
     else if (e.key === 'ArrowLeft' && r) { e.preventDefault(); if (r.n.children.length && isOpen(r.n.id, r.depth)) setOpen(o => ({ ...o, [r.n.id]: false })); else if (r.n.parent) onPick(r.n.parent); }
   };
   return (
+    <>
+    <input className="ofilter" value={q} placeholder="过滤…（名字）" onChange={e => setQ(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') setQ(''); else if (e.key === 'Enter' && flt?.hits.size) onPick([...flt.hits][0]); }} />
     <div className="otree" ref={box} tabIndex={0} onKeyDown={onKey}>
+      {flt && !rows.length && <div className="hint" style={{ padding: 6 }}>没有名字含「{q}」的节点（Ctrl+K 可以搜属性和正文）</div>}
       {rows.map(({ n, depth }) => (
-        <div key={n.id} className={'orow' + (n.id === selected ? ' sel' : '') + (n.id === scope && scope ? ' scope' : '')} style={{ paddingLeft: 4 + depth * 12 }}
+        <div key={n.id} className={'orow' + (n.id === selected ? ' sel' : '') + (n.id === scope && scope ? ' scope' : '') + (flt?.hits.has(n.id) ? ' hit' : '')} style={{ paddingLeft: 4 + depth * 12 }}
           onClick={() => { if (renaming !== n.id) onPick(n.id); }} onDoubleClick={() => onRename(n.id)} title={n.id}>
           <span className="ocaret" onClick={e => { e.stopPropagation(); if (n.children.length) setOpen(o => ({ ...o, [n.id]: !isOpen(n.id, depth) })); }}>{n.children.length ? (isOpen(n.id, depth) ? '▾' : '▸') : ''}</span>
           <span className="ost">{n.status ? status[n.status] : '·'}</span>
@@ -190,6 +208,7 @@ export function OutlineTree({ graph, selected, scope, renaming, status, onPick, 
         </div>
       ))}
     </div>
+    </>
   );
 }
 
@@ -220,13 +239,37 @@ export function ScaffoldModal({ items, root, onCreate, onClose }) {
 
 export const KEYMAP = [
   ['选择与查看', [['单击卡片 / 大纲行', '选中，右侧显示概览'], ['I', '属性面板开关'], ['Tab', '左栏开关'], ['? / F1', '这一页']]],
+  ['搜索', [['Ctrl+K', '全局搜索（名字 / 属性 / 正文）→ 跳过去'], ['大纲顶上的过滤框', '只看名字含这些字的节点']]],
   ['导航', [['双击卡片 / 大纲行的 →', '钻进去'], ['Alt+↑', '上一层'], ['鼠标侧键 / Alt+← →', '后退 / 前进'], ['大纲树里 ↑↓←→', '上下走 / 折叠展开'], ['▸N / 空格', '卡片里原地展开子级'], ['⊞ / F', '分组原地展开成框（子节点画在框里、线直连）']]],
-  ['编辑', [['Enter', '新建同级'], ['Insert / Ctrl+Enter', '新建子级'], ['F2 / 双击大纲行', '改名'], ['Del', '删除（进 _过期的/）'], ['卡片边缘拖到另一张', '连线'], ['卡片底下 ◆ 拖到另一张顶上', '调节线（参数 / 修改器，不算数据流）'], ['右键', '菜单：状态（❌ = 弃用）、颜色、属性、原文……'], ['Ctrl+Z', '撤销（结构、连线、拖动；删除也能撤回）'], ['Ctrl+Shift+Z / Ctrl+Y', '重做']]],
+  ['编辑', [['Enter', '新建同级'], ['Insert / Ctrl+Enter', '新建子级'], ['F2 / 双击大纲行', '改名'], ['Del', '删除（进 _过期的/）'], ['卡片边缘拖到另一张', '连线'], ['卡片底下 ◆ 拖到另一张顶上', '调节线（参数 / 修改器，不算数据流）'], ['L / 右键「连线到…」', '搜索目标连线（可以连到别的页）'], ['右键连线 / 属性面板 ✕', '删除连线'], ['Alt + 拖连线一端', '放到别的节点 = 改接，放到空白 = 删除，拖着时右键 / Esc = 取消'], ['右键', '菜单：状态（❌ = 弃用）、颜色、属性、原文……'], ['Ctrl+Z', '撤销（结构、连线、拖动；删除也能撤回）'], ['Ctrl+Shift+Z / Ctrl+Y', '重做']]],
   ['复制', [['Ctrl+C', '复制选中的卡（连同子孙、属性、正文、图片、它们之间的边）'], ['Ctrl+V', '粘到当前页、鼠标处（同名加「 2」）；剪贴板里是图片 = 贴图']]],
   ['选择', [['Ctrl+单击', '加入 / 移出选择'], ['Shift+单击', '加上它和已选之间连线路径上的所有节点'], ['Ctrl+← / →', '沿入线 / 出线扩选一层'], ['Shift+← / →', '沿入线 / 出线一直扩到头']]],
   ['排列', [['Shift+拖空白', '框选多张卡'], ['拖框的边 / 角', '整体拉开或收紧间距'], ['收到底', '对齐；会重叠的依次排开']]],
   ['图片', [['Ctrl+V', '贴进选中的卡；没选中 = 散图'], ['拖文件 / 网页图', '落在卡片上 = 进那张；空白处 = 散图'], ['图片右下角拖', '调大小'], ['🖼 / 工具栏', '收起这张 / 全部收起']]],
 ];
+// >v<🔎搜索-搜索框-Ctrl+K 跳到节点 / 右键「连线到…」选目标：同一个框（↑↓ 选，Enter 确定，Esc 关）
+export function SearchModal({ title, items, exclude, onPick, onClose }) {
+  const [q, setQ] = useState(''), [i, setI] = useState(0);
+  const res = useMemo(() => searchNodes(items, q).filter(r => r.id !== exclude), [items, q, exclude]);
+  useEffect(() => setI(0), [q]);
+  const pick = r => r && (onClose(), onPick(r.id));
+  return (
+    <div className="modal" onPointerDown={onClose}>
+      <div className="finder" onPointerDown={e => e.stopPropagation()}>
+        <div className="bar"><b>{title}</b><span className="hint">名字 / 属性 / 正文，空格分开多个词 · ↑↓ Enter · Esc</span></div>
+        <input autoFocus value={q} placeholder="搜索节点…" onChange={e => setQ(e.target.value)}
+          onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') onClose(); else if (e.key === 'ArrowDown') { e.preventDefault(); setI(x => Math.min(res.length - 1, x + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setI(x => Math.max(0, x - 1)); } else if (e.key === 'Enter') pick(res[i]); }} />
+        <ul>{res.map((r, k) => (
+          <li key={r.id} className={k === i ? 'on' : ''} onMouseEnter={() => setI(k)} onClick={() => pick(r)}>
+            <b>{r.label}</b><span className="fp">{r.path.split('/').slice(0, -1).join(' / ')}</span>{r.where !== '名字' && <span className="fw">{r.where}</span>}
+            {r.snippet && <div className="fs">{r.snippet}</div>}
+          </li>))}
+          {q.trim() && !res.length && <li className="hint">没找到</li>}</ul>
+      </div>
+    </div>
+  );
+}
+
 export function HelpModal({ onClose }) {
   return (
     <div className="modal" onClick={onClose}>

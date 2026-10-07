@@ -1,10 +1,10 @@
 // 外壳：左大纲（真源）、面包屑、导出、快捷键、贴图、工作区读写。
 // 画布组件（main.jsx，React Flow）只负责「显示 view + 回报用户操作」。
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, autoLayout, lineOf, resolveLabel, isDropped, withCopies, ROOT } from './outline.js';
+import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, autoLayout, lineOf, resolveLabel, isDropped, withCopies, withoutEdge, ROOT } from './outline.js';
 import { colorMap } from './colors.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
-import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal, ScaffoldModal } from './panels.jsx';
+import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal, ScaffoldModal, SearchModal } from './panels.jsx';
 import { SAMPLE } from './sample.js';
 import './shell.css';
 
@@ -334,6 +334,36 @@ export function Shell({ name, Canvas }) {
   const [propsTab, setPropsTab] = useState('info'); // info | raw
   const [rawText, setRawText] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  // >v<🔎搜索-接入-Ctrl+K 跳过去（换页 + 选中 + 居中）；L / 右键「连线到…」= 选目标连线（可以连到别的页，那头会变成传送门）
+  const [finder, setFinder] = useState(null); // {mode: 'go' | 'link', from?}
+  const searchItems = useMemo(() => [...graph.nodes.values()].filter(n => n.id !== ROOT).map(n => ({ id: n.id, label: n.label, path: n.id, meta: wsData?.nodes[n.id]?.meta, body: wsData?.nodes[n.id]?.body })), [graph, wsData]);
+  const jumpTo = id => {
+    const p = graph.nodes.get(id)?.parent;
+    if (p == null) return;
+    if (p !== realScope && !(framed[p] && view.nodes.some(n => n.id === id))) go(p);
+    setSelected(id); setPropsOpen(true);
+    setTimeout(() => cardActions.centerOn?.(id), 400);
+  };
+  // >v<🎨画布-改接连线-Alt 拖连线一端：放到别的节点 = 改接（标签 / 类型跟过去），放到空白 = 删除，拖的时候右键 / Esc = 取消（👤 2026-10-08）
+  const rewire = (from, to, nf, nt) => {
+    const resolve = id => id.startsWith('@portal:') ? id.slice(8) : id;
+    nf = resolve(nf); nt = resolve(nt);
+    if (nf === from && nt === to) return;
+    if (mode === 'ws') {
+      api('/rewire', { method: 'POST', body: JSON.stringify({ from, to, nf, nt }) })
+        .then(d => { lastSaved.current = d.report.outline; setText(d.report.outline); setWsData(d); recordSave(d.report.outline, d.report); setSaveState('已改接：' + graph.nodes.get(nf)?.label + ' → ' + graph.nodes.get(nt)?.label + '（Ctrl+Z 撤销）'); })
+        .catch(e => setSaveState('❌ ' + e.message));
+      return;
+    }
+    const t1 = withoutEdge(graph, from, to), t2 = t1 && withEdge(parseOutline(t1), nf, nt);
+    if (t2) setText(t2);
+  };
+  // >v<🎨画布-删连线-右键连线 / 属性面板 ✕（👤 2026-10-08「没法取消连线」）；聚合的线 = 删掉里面每一条
+  const removeEdges = pairs => {
+    let g = graph, t = null;
+    for (const [from, to] of pairs) { const x = withoutEdge(g, from, to); if (x) { t = x; g = parseOutline(x); } }
+    if (t) { setText(t); setSaveState('已删除连线' + (pairs.length > 1 ? ' ' + pairs.length + ' 条' : '') + '（Ctrl+Z 撤销）'); }
+  };
   const [scaffold, setScaffold] = useState(null); // 项目文档对话框：检测结果
   const [leftTab, setLeftTab] = useState('outline'); // outline（树，导航用）| text（原始大纲文本）| files
   // >v<🌳大纲模型-大纲树-点一下 = 画布跳到那一页并选中、右侧显示内容；双击/F2 = 改名；钻进用 ▸
@@ -376,6 +406,10 @@ export function Shell({ name, Canvas }) {
     hasFile: id => !!nodeFile(id),
     openMd: id => { setSelected(id); setPropsOpen(true); setPropsTab('raw'); },
     reveal: id => reveal(nodeFile(id), 'select'),
+    linkTo: id => setFinder({ mode: 'link', from: id }),
+    removeEdges: ids => removeEdges(ids),
+    edgeKind: (from, to) => { const e = (wsData?.edges || []).find(x => x.from === from && x.to === to); if (e) cycleKind(from, to, e.label || '', e.kind || ''); },
+    canEdgeKind: mode === 'ws',
     pasteHint: id => { setSelected(id); setSaveState('选中了「' + graph.nodes.get(id).label + '」：现在 Ctrl+V 贴图'); },
     up: () => up(), canUp: realScope !== ROOT,
     // 只有 👤 在这里点了才写 color:；「自动」= 删掉 color:，回到按分组 / 关键词自动配色
@@ -383,6 +417,7 @@ export function Shell({ name, Canvas }) {
     colorWords: mode === 'ws' ? () => api('/color-words', { method: 'POST' }).then(d => { reveal(d.file, 'open'); setSaveState('配色词表：' + d.file + '（改完保存，Synapsis 会自动刷新）'); }).catch(e => setSaveState('❌ ' + e.message)) : null,
     toggleAll: () => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; }),
   };
+  const onEdgeMenu = useCallback((edgeId, x, y) => { const e = view.edges.find(q => q.id === edgeId); if (e) setMenu({ edge: e, x, y }); }, [view]);
   const onContextMenu = useCallback((id, x, y) => { if (id && !id.startsWith('@')) setSelected(id); setMenu({ id: id && !id.startsWith('@') ? id : null, x, y }); }, []);
   // 文件页：切过去时取文件树；点文件 → 右侧预览
   useEffect(() => { if (leftTab === 'files' && mode === 'ws' && !tree) api('/tree').then(setTree).catch(e => setTree({ tree: [], error: e.message })); }, [leftTab, mode]);
@@ -429,6 +464,7 @@ export function Shell({ name, Canvas }) {
   // 画布快捷键（焦点在输入框里时不触发）
   useEffect(() => {
     const onKey = e => {
+      if (e.ctrlKey && !e.altKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); e.stopPropagation(); setFinder({ mode: 'go' }); return; } // 在输入框里也能用
       const inText = e.target.closest && e.target.closest('textarea, input, [contenteditable="true"]');
       if (inText) return;
       if (helpOpen && e.key === 'Escape') { setHelpOpen(false); return; }
@@ -446,6 +482,7 @@ export function Shell({ name, Canvas }) {
       else if (e.key === 'F2' && sel) { e.preventDefault(); focusLabel(sel); }
       else if ((e.key === 'i' || e.key === 'I') && !e.ctrlKey && !e.altKey) { e.preventDefault(); setPropsOpen(o => !o); }
       else if (e.key === '?' || e.key === 'F1') { e.preventDefault(); setHelpOpen(h => !h); }
+      else if ((e.key === 'l' || e.key === 'L') && !e.ctrlKey && !e.altKey && sel && !sel.startsWith('@')) { e.preventDefault(); setFinder({ mode: 'link', from: sel }); }
     };
     // 鼠标侧键：3 = 后退，4 = 前进（拦掉浏览器自己的历史跳转）
     const onMouse = e => {
@@ -649,7 +686,7 @@ export function Shell({ name, Canvas }) {
           <Canvas key={realScope} view={view} layout={layout} selected={sel} images={images}
             plane={plane && { S: plane.S, labels: plane.labels, ids: plane.pts.map(p => p.id) }}
             pics={loosePics.map(p => ({ ...p, w: positions[p.id]?.w || 0, folded: !!picFold[p.id] }))}
-            onSelect={setSelected} onDrill={drill} onConnect={connect} onMove={move} onContextMenu={onContextMenu}
+            onSelect={setSelected} onDrill={drill} onConnect={connect} onMove={move} onContextMenu={onContextMenu} onEdgeMenu={onEdgeMenu} onRewire={rewire} onRemoveEdges={removeEdges}
             viewport={viewports[realScope]} onViewport={vp => onViewport(realScope, vp)} />
         </div>}
       </main>
@@ -657,10 +694,12 @@ export function Shell({ name, Canvas }) {
       {propsOpen && sel && !sel.startsWith('@') && graph.nodes.has(sel) && (
         <PropsPanel id={sel} graph={graph} wsNode={wsData?.nodes[sel]} edges={mode === 'ws' ? (wsData?.edges || []) : graph.edges}
           editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} onMeta={saveMeta} metaHints={mode === 'ws' ? metaHints(sel) : []} file={nodeFile(sel)} tab={propsTab} onTab={setPropsTab} raw={rawText} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)}
-          onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} color={colors.get(sel)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} />
+          onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} onEdgeRemove={(from, to) => removeEdges([[from, to]])} color={colors.get(sel)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} />
       )}
       {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（I 开关）</div></aside>}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+      {finder && <SearchModal title={finder.mode === 'link' ? '连线：「' + graph.nodes.get(finder.from)?.label + '」→ 哪个节点？' : '跳到节点（Ctrl+K）'} items={searchItems} exclude={finder.from}
+        onClose={() => setFinder(null)} onPick={id => finder.mode === 'link' ? connect(finder.from, id) : jumpTo(id)} />}
       {scaffold && <ScaffoldModal items={scaffold} root={wsData?.root || ''} onClose={() => setScaffold(null)}
         onCreate={files => api('/scaffold', { method: 'POST', body: JSON.stringify({ files }) }).then(d => { setScaffold(null); setTree(null); setSaveState(d.made.length ? '已创建 ' + d.made.join('、') : '没有新建（都已存在）'); }).catch(e => setSaveState('❌ ' + e.message))} />}
       {fileView && <FilePanel file={fileView.text !== undefined || fileView.error || fileView.note ? fileView : null} onClose={() => setFileView(null)} />}

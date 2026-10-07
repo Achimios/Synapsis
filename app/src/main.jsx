@@ -98,10 +98,28 @@ function ScaleFrame({ nodes, ids, setNodes, onMove }) {
 }
 
 // 外壳要把屏幕坐标换成画布坐标（粘贴落在鼠标处）
-function FlowBridge() { const rf = useReactFlow(); cardActions.toFlow = p => rf.screenToFlowPosition(p); return null; }
+function FlowBridge() {
+  const rf = useReactFlow();
+  cardActions.toFlow = p => rf.screenToFlowPosition(p);
+  cardActions.centerOn = id => rf.getNode(id) && rf.fitView({ nodes: [{ id }], duration: 300, padding: 1.5, maxZoom: Math.max(1, rf.getZoom()) });
+  return null;
+}
 
 // >v<🎨画布-ReactFlow-显示 view + 回报选择/拖动/连线/视图
-function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, onDrill, onConnect, onMove, onContextMenu, viewport, onViewport }) {
+function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, onDrill, onConnect, onMove, onContextMenu, onEdgeMenu, onRewire, onRemoveEdges, viewport, onViewport }) {
+  // 按住 Alt：连线两端变成可拖（离哪端近拿哪端）
+  const [alt, setAlt] = useState(false);
+  useEffect(() => {
+    const k = e => setAlt(e.altKey), b = () => setAlt(false);
+    window.addEventListener('keydown', k); window.addEventListener('keyup', k); window.addEventListener('blur', b);
+    return () => { window.removeEventListener('keydown', k); window.removeEventListener('keyup', k); window.removeEventListener('blur', b); };
+  }, []);
+  const rw = useRef({ done: false, cancel: false });
+  useEffect(() => {
+    const cancel = e => { if (!rw.current.active) return; if (e.type === 'contextmenu' || e.key === 'Escape' || e.button === 2) { e.preventDefault(); rw.current.cancel = true; } };
+    window.addEventListener('contextmenu', cancel, true); window.addEventListener('keydown', cancel, true); window.addEventListener('pointerdown', cancel, true);
+    return () => { window.removeEventListener('contextmenu', cancel, true); window.removeEventListener('keydown', cancel, true); window.removeEventListener('pointerdown', cancel, true); };
+  }, []);
   const centered = new Set(plane?.ids || []); // 空间成员：卡片中心对准坐标点
   // >v<🎨画布-多选-选择由这里自己管（不用 React Flow 的 Ctrl 多选：两边各管一份会互相触发 → 死循环黑屏，👤 2026-10-08）：
   // 单击 = 只选它；Ctrl+单击 = 加入 / 移出；Shift+单击 = 加上它和当前选中之间路径上的节点；Shift+拖空白 = 框选；
@@ -136,7 +154,7 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
   // 选中一个框：框里的节点连出去的线也算「相连」
   const near = selected && view.parentOf?.size ? new Set([selected, ...view.nodes.filter(n => { for (let f = n.frame; f != null; f = view.parentOf.get(f)) if (f === selected) return true; return false; }).map(n => n.id)]) : null;
   const edges = view.edges.map((e, idx) => ({
-    id: e.id, source: e.from, target: e.to, type: 'flow', selectable: false, ...(e.mod ? { sourceHandle: 'mo', targetHandle: 'mi' } : {}),
+    id: e.id, source: e.from, target: e.to, type: 'flow', selectable: false, reconnectable: alt, ...(e.mod ? { sourceHandle: 'mo', targetHandle: 'mi' } : {}),
     data: { look: edgeLook(e, selected, near), idx, text: e.text || '', mat: e.mat || null },
   }));
 
@@ -193,6 +211,12 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
       onPaneClick={() => { onSelect(null); setMulti([]); }}
       onNodeContextMenu={(e, n) => { e.preventDefault(); onContextMenu(n.id, e.clientX, e.clientY); }}
       onPaneContextMenu={e => { e.preventDefault(); onContextMenu(null, e.clientX, e.clientY); }}
+      onEdgeContextMenu={(e, edge) => { e.preventDefault(); if (!rw.current.active) onEdgeMenu?.(edge.id, e.clientX, e.clientY); }}
+      onEdgeClick={() => {}} // 有点击回调连线才接收鼠标（右键菜单要用）
+      reconnectRadius={14}
+      onReconnectStart={() => { rw.current = { active: true, done: false, cancel: false }; }}
+      onReconnect={(old, c) => { rw.current.done = true; if (rw.current.cancel || c.__right) return; const e = view.edges.find(x => x.id === old.id); if (e?.count === 1) { const [f, t] = e.raw[0].split('->'); onRewire(f, t, c.source, c.target); } }}
+      onReconnectEnd={(evt, old) => { const r = rw.current; rw.current = { active: false }; if (r.done || r.cancel || evt?.button === 2 || (evt?.buttons & 2)) return; /* 按右键会直接结束拖动 → 当取消 */ const e = view.edges.find(x => x.id === old.id); if (e) onRemoveEdges(e.raw.map(x => x.split('->'))); }}
       onNodeDoubleClick={(_, n) => onDrill(n.id)}
       onNodeDragStop={(_, n, dragged) => onMove(Object.fromEntries((dragged || [n]).map(d => [d.id, toLayout(d.id, d.position)])))}
       onConnect={c => onConnect(c.source, c.target, c.sourceHandle === 'mo' || c.targetHandle === 'mi')}

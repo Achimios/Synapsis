@@ -610,6 +610,51 @@ for (const kind of ['reactflow']) {
   ok(await kb() === '调节', '属性面板显示边的类型');
   await page.click('.side .edges li:has-text("观察属性") button.ek'); await sleep(1500);
   ok(/观察空间\s*\|\s*\|\s*离散/.test(md('观察属性.md')) && await kb() === '离散', '点一下 → 离散');
+  // Ctrl+K 搜索 → 跳过去选中（👤 2026-10-08）
+  await page.mouse.click(700, 760); await page.keyboard.press('Control+k'); await sleep(300);
+  ok(!!(await page.$('.finder input')), 'Ctrl+K 打开搜索框');
+  await page.keyboard.type('观察属'); await sleep(200);
+  ok((await page.$$eval('.finder li', ls => ls.map(l => l.innerText.split('\n')[0])))[0] === '观察属性', '搜索结果第一个 = 观察属性');
+  await page.keyboard.press('Enter'); await sleep(800);
+  ok(!(await page.$('.finder')) && (await page.$eval('.side h3 input', e => e.value)) === '观察属性', 'Enter → 关掉搜索框，选中它');
+  // L = 连线到…：从 敌方 连到 观察属性
+  await page.click('.react-flow__controls-fitview'); await sleep(500); // 跳过去会居中放大，先看全
+  await page.click('.react-flow__node[data-id="敌方"] .lab'); await sleep(300);
+  await page.keyboard.press('l'); await sleep(300);
+  ok((await page.$eval('.finder .bar b', e => e.textContent)).includes('敌方'), 'L → 「连线到…」框');
+  await page.keyboard.type('观察属性'); await page.keyboard.press('Enter'); await sleep(1800);
+  ok(/观察属性/.test(md('敌方.md')), '选目标 → 连上（写进 敌方.md） ' + md('敌方.md'));
+  // 删连线：属性面板 ✕；右键连线 → 删除
+  await page.click('.side .edges li:has-text("观察属性") button.ex'); await sleep(1800);
+  ok(!/观察属性/.test(md('敌方.md')), '属性面板 ✕ → 删掉连线');
+  // 曲线中点（包围盒中心不一定在线上）
+  const ept = await page.$eval('.react-flow__edge[data-id="敌方=>观察空间"] .react-flow__edge-path', p => { const q = p.getPointAtLength(p.getTotalLength() / 2), m = p.getScreenCTM(); return [q.x * m.a + q.y * m.c + m.e, q.x * m.b + q.y * m.d + m.f]; });
+  await page.mouse.click(ept[0], ept[1], { button: 'right' }); await sleep(300);
+  ok(!!(await page.$('.ctx .mi.danger:has-text("删除这条连线")')), '右键连线 → 删除菜单');
+  await page.click('.ctx .mi.danger'); await sleep(1800);
+  ok(!/观察空间/.test(md('敌方.md')), '右键删除 → 连线没了');
+  // Alt + 拖连线一端（👤 2026-10-08）：放到别的节点 = 改接（类型跟过去），拖着右键 = 取消，放到空白 = 删除
+  await page.mouse.click(700, 760); await sleep(200);
+  const altDrag = async (edgeId, end, to, opts = {}) => {
+    await page.keyboard.down('Alt'); await sleep(150);
+    const a = await (await page.$(`.react-flow__edge[data-id="${edgeId}"] .react-flow__edgeupdater-${end}`)).boundingBox();
+    const s = [a.x + a.width / 2, a.y + a.height / 2];
+    await page.mouse.move(...s); await page.mouse.down();
+    for (let i = 1; i <= 10; i++) { await page.mouse.move(s[0] + (to[0] - s[0]) * i / 10, s[1] + (to[1] - s[1]) * i / 10); if (opts.cancelAt === i) { await page.mouse.down({ button: 'right' }); await page.mouse.up({ button: 'right' }); } }
+    await page.mouse.up(); await page.keyboard.up('Alt'); await sleep(1800);
+  };
+  const enemyIn = await (await page.$('.react-flow__node[data-id="敌方"] .react-flow__handle.target:not(.modh)')).boundingBox();
+  await altDrag('观察属性=>观察空间', 'target', [enemyIn.x + enemyIn.width / 2, enemyIn.y + enemyIn.height / 2], { cancelAt: 6 });
+  ok(/观察空间\s*\|\s*\|\s*离散/.test(md('观察属性.md')), '拖着按右键 = 取消（连线不变）');
+  await altDrag('观察属性=>观察空间', 'target', [enemyIn.x + enemyIn.width / 2, enemyIn.y + enemyIn.height / 2]);
+  ok(/敌方\s*\|\s*\|\s*离散/.test(md('观察属性.md')) && !/观察空间/.test(md('观察属性.md')), 'Alt 拖终点到 敌方 → 改接，类型（离散）跟过去 ' + md('观察属性.md'));
+  await altDrag('观察属性=>敌方', 'target', [700, 700]);
+  ok(!/敌方/.test(md('观察属性.md')), 'Alt 拖到空白 → 删除');
+  // 大纲树过滤
+  await page.fill('.ofilter', '观察'); await sleep(300);
+  ok((await page.$$eval('.orow', rs => rs.map(r => r.innerText.trim()))).join() .includes('观察属性') && (await page.$$('.orow')).length === 2 && (await page.$$('.orow.hit')).length === 2, '大纲过滤：只剩名字含「观察」的');
+  await page.fill('.ofilter', ''); await sleep(200);
+  ok((await page.$$('.orow')).length === 3, '清空过滤 → 全回来');
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });

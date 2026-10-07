@@ -16,7 +16,7 @@
 //   正文（人写的，Synapsis 不动）
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, unlinkSync, rmdirSync, cpSync } from 'node:fs';
 import { join, dirname, relative, isAbsolute } from 'node:path';
-import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, withCopies, withEdge, ROOT } from './outline.js';
+import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, withCopies, withEdge, withoutEdge, ROOT } from './outline.js';
 import { checkSpaces } from './space.js';
 import { WORDS_FILE, DEFAULT_WORDS, parseColorWords } from './colors.js';
 
@@ -451,6 +451,18 @@ export function linkNodes(root, from, to, label = '', kind = '') {
     if (!report.ok) throw new Error('连线失败：' + JSON.stringify(report.errors));
   }
   if (label || kind) setEdgeLabel(root, from, to, label, kind);
+  return { ...report, outline: workspaceOutline(loadWorkspace(root)) };
+}
+
+// >v<🎨画布-改接连线-Alt 拖连线的一端到别的节点：删旧边、连新边，标签和类型跟过去（👤 2026-10-08）
+export function rewireEdge(root, from, to, nf, nt) {
+  const ws = loadWorkspace(root), old = ws.graph.edges.find(e => e.from === from && e.to === to);
+  if (!old) throw new Error(`没有这条边：${from} -> ${to}`);
+  const t1 = withoutEdge(ws.graph, from, to), t2 = withEdge(parseOutline(t1), nf, nt);
+  if (!t2) throw new Error(`连不上：${nf} -> ${nt}（自己连自己，或者已经有这条边）`);
+  const report = saveOutline(root, t2);
+  if (!report.ok) throw new Error('改接失败：' + JSON.stringify(report.errors));
+  if (old.label || old.kind) setEdgeLabel(root, nf, nt, old.label || '', old.kind || '');
   return { ...report, outline: workspaceOutline(loadWorkspace(root)) };
 }
 
