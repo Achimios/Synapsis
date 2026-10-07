@@ -130,10 +130,12 @@ function refreshTray() {
   ]));
 }
 
-// 托盘图标：代码画一个 32×32 的圆（不依赖图片文件）
+// 托盘图标：优先用 app/electron/icon.png（core/tools/make_icon.py 从任意图片生成）；没有就代码画一个 32×32 的圆
 let _icon = null;
 function trayIcon() {
   if (_icon) return _icon;
+  const file = join(APP, 'electron', 'icon.png');
+  if (existsSync(file)) { const im = nativeImage.createFromPath(file); if (!im.isEmpty()) return (_icon = im); }
   const S = 32, raw = Buffer.alloc((S * 4 + 1) * S);
   for (let y = 0; y < S; y++) {
     raw[y * (S * 4 + 1)] = 0;
