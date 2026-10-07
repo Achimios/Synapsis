@@ -3,8 +3,8 @@ import react from '@vitejs/plugin-react';
 import { resolve, join, normalize, relative } from 'node:path';
 import { spawn } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
-import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, DIR } from '../core/workspace.js';
-import { workspaceRoot } from '../core/cli.js';
+import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, DIR } from '../core/workspace.js';
+import { workspaceRoot, manualText } from '../core/cli.js';
 
 // >v<🚀启停-心跳-3 分钟没人 ping 就退出（SYN_IDLE_MS 可调）
 // 页面每 20s ping 一次；见过 ping 之后若 3 分钟没人 ping（网页全关了）→ 服务自动退出。
@@ -26,14 +26,13 @@ function heartbeat() {
 
 // >v<💾工作区-HTTP接口-界面读写被规划项目的 __synapsis/（工作区：?ws= > SYN_WS > .synapsis/config.json）
 function workspaceApi() {
-  const CLI = resolve('../core/cli.js').split('\\').join('/');
   const body = req => new Promise((ok, no) => { let s = ''; req.on('data', c => s += c); req.on('end', () => { try { ok(s ? JSON.parse(s) : {}); } catch (e) { no(e); } }); });
   const payload = root => {
     const ws = loadWorkspace(root);
     const nodes = {};
     // file = 相对项目根的路径（文件树和「打开 md」用）；pics = 相对 __synapsis 的图片路径
     for (const [id, n] of ws.graph.nodes) if (id) nodes[id] = { meta: n.meta, body: n.body, file: relative(root, n.file).split('\\').join('/'), pics: n.pics };
-    return { root, outline: workspaceOutline(ws), layout: ws.layout, nodes, edges: ws.graph.edges, errors: ws.graph.errors };
+    return { root, outline: workspaceOutline(ws), layout: ws.layout, nodes, edges: ws.graph.edges, errors: ws.graph.errors, loose: ws.loose };
   };
   return {
     name: 'synapsis-workspace',
@@ -44,7 +43,7 @@ function workspaceApi() {
         let root;
         try { root = url.searchParams.get('ws') || workspaceRoot([]); } catch (e) { return send(404, { error: e.message }); }
         try {
-          if (url.pathname === '/ws' && req.method === 'GET') { ensureWorkspaceReadme(root, CLI); return send(200, { ...payload(root), view: loadView(root) }); }
+          if (url.pathname === '/ws' && req.method === 'GET') { ensureWorkspaceReadme(root, manualText(root)); return send(200, { ...payload(root), view: loadView(root) }); }
           // 只往已挂上 Synapsis 的目录写（别因为一个拼错的 ?ws= 在磁盘上凭空建目录）
           if (url.pathname === '/view' && req.method === 'PUT') { if (!existsSync(join(root, DIR))) return send(404, { error: '不是 Synapsis 工作区' }); saveView(root, await body(req)); return send(200, { ok: true }); }
           // 在资源管理器里显示 / 用默认程序打开（服务只在本机跑，等于本机操作；路径限定在项目内）
@@ -68,7 +67,8 @@ function workspaceApi() {
           if (url.pathname === '/tree' && req.method === 'GET') return send(200, listTree(root));
           if (url.pathname === '/raw' && req.method === 'GET') return send(200, readProjectFile(root, url.searchParams.get('p') || ''));
           if (url.pathname === '/layout' && req.method === 'PUT') { saveLayout(root, (await body(req)).positions); return send(200, { ok: true }); }
-          if (url.pathname === '/asset' && req.method === 'POST') {
+          // 图片：/asset 进某个节点；/loose 当散图放进某一页；/loose-remove 删散图（进 _过期的/）
+          if ((url.pathname === '/asset' || url.pathname === '/loose') && req.method === 'POST') {
             const b = await body(req);
             // 从浏览器拖来的网页图：页面跨域拿不到，由本机服务代下（只收图片、30MB 封顶）
             if (b.url && !b.dataUrl) {
@@ -80,8 +80,14 @@ function workspaceApi() {
               if (buf.length > 30e6) return send(400, { error: '图片超过 30MB' });
               b.dataUrl = `data:${ct};base64,${buf.toString('base64')}`;
             }
+            if (url.pathname === '/loose') {
+              const r = saveLooseImage(root, b.scope ?? '', b.dataUrl);
+              if (b.at && !r.node) saveLayout(root, { ['@pic:' + r.path]: b.at });
+              return send(200, r);
+            }
             return send(200, { path: saveAsset(root, b.id, b.dataUrl) });
           }
+          if (url.pathname === '/loose-remove' && req.method === 'POST') { removeLooseImage(root, (await body(req)).path); return send(200, { ok: true }); }
           if (url.pathname === '/file' && req.method === 'GET') {
             const base = join(root, DIR);
             const f = normalize(join(base, url.searchParams.get('p') || ''));

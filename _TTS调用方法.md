@@ -11,7 +11,7 @@
 
 ## 命令
 ```bash
-printf '%s' '{"id":"syn-'"$(date +%s)"'","role":"Eva","text":"53 条全过了，已提交。"}' | python "C:/Users/Administrator/Desktop/DeepSeek_TTS程序/tts_v1.py" --stdin
+printf '%s' '{"id":"syn-'"$(date +%s)"'","role":"Eva","text":"53 条全过了，已提交。"}' | python "C:/Users/Administrator/Desktop/Obsidian_V_Hyper/1_DeepSeek_TTS/tts_v1.py" --stdin
 ```
 - 打断当前播放（紧急）：加 `"brk":true`
 - 播放时压低别的应用音量：加 `"low":true`

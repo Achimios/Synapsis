@@ -289,17 +289,36 @@ for (const kind of ['reactflow']) {
   await page.mouse.up(); await sleep(1200);
   ok((await (await page.$('.card.hasimg')).boundingBox()).width > w0 + 60, '拖图片右下角 → 卡片变宽');
   ok(/picw: \d+/.test(readFileSync(join(ws, '__synapsis', '游戏AI', '决策', '_node.md'), 'utf8')), '宽度写进 _node.md 的 picw');
-  // 图片拖到空白处 → 新建一张图片卡（文件名当名字），图存进它的 _pics_
+  // 图片拖到空白处 → 散图（👤：不必变成节点），存进这一页的 _pics/，坐标在落点
   const nBefore = (await page.$$('.card')).length;
   await page.evaluate(png => {
     const bin = atob(png.split(',')[1]), u8 = Uint8Array.from(bin, c => c.charCodeAt(0));
     const dt = new DataTransfer(); dt.items.add(new File([u8], '参考图.png', { type: 'image/png' }));
     const c = document.querySelector('.canvas'), r = c.getBoundingClientRect();
-    c.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: r.left + 80, clientY: r.bottom - 80 }));
+    c.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: r.left + 60, clientY: r.top + 40 }));
   }, PNG);
   await sleep(2500);
-  ok((await page.$$('.card')).length === nBefore + 1 && (await page.$$eval('.card .title', ts => ts.map(t => t.textContent))).some(t => t.includes('参考图')), '拖图到空白处 → 新卡「参考图」');
-  ok(existsSync(join(ws, '__synapsis', '游戏AI', '_pics_参考图')) && readdirSync(join(ws, '__synapsis', '游戏AI', '_pics_参考图')).length === 1, '图存进 游戏AI/_pics_参考图/');
+  ok((await page.$$('.card')).length === nBefore && (await page.$$('.loosepic img')).length === 1, '拖图到空白处 → 散图（不新建节点）');
+  const looseDir = join(ws, '__synapsis', '游戏AI', '_pics');
+  ok(existsSync(looseDir) && readdirSync(looseDir).length === 1, '散图存进 游戏AI/_pics/');
+  const lay2 = JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'));
+  ok(Object.keys(lay2).some(k => k.startsWith('@pic:游戏AI/_pics/')), '散图坐标写进 _layout.json（@pic:）');
+  // 拖右下角调大小 → 宽度进 _layout.json；收起；Del 删 → 进 _过期的/
+  await page.hover('.loosepic'); await sleep(200);
+  const lg = await (await page.$('.loosepic .picgrip')).boundingBox();
+  const lw0 = (await (await page.$('.loosepic')).boundingBox()).width;
+  await page.mouse.move(lg.x + 5, lg.y + 5); await page.mouse.down();
+  for (let i = 1; i <= 6; i++) await page.mouse.move(lg.x + 5 + i * 15, lg.y + 5);
+  await page.mouse.up(); await sleep(1000);
+  ok((await (await page.$('.loosepic')).boundingBox()).width > lw0 + 40, '散图拖角变大');
+  ok(Object.entries(JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'))).some(([k, v]) => k.startsWith('@pic:') && v.w > 0), '散图宽度写进 _layout.json');
+  await page.click('button:has-text("收起图片")'); await sleep(400);
+  ok((await page.$$('.loosepic.folded')).length === 1, '全局收起也收起散图');
+  await page.click('button:has-text("显示图片")'); await sleep(400);
+  const lb = await (await page.$('.loosepic')).boundingBox();
+  await page.mouse.click(lb.x + lb.width / 2, lb.y + lb.height / 2); await sleep(200);
+  await page.keyboard.press('Delete'); await sleep(1500);
+  ok((await page.$$('.loosepic')).length === 0 && readdirSync(looseDir).length === 0, '选中散图 Del → 删掉（文件进 _过期的/）');
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });

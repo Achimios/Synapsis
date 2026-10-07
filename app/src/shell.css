@@ -56,8 +56,8 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .card.hasimg { max-width: 280px; padding-bottom: 4px; }
 .card .pics { display: grid; gap: 2px; margin-top: 3px; }
 .card .pics.n2 { grid-template-columns: 1fr 1fr; } .card .pics.n3 { grid-template-columns: 1fr 1fr 1fr; }
-.card .pics img { display: block; width: 100%; max-height: 180px; object-fit: cover; border-radius: 2px; background: #111; }
-.card .pics.n1 img { object-fit: contain; max-height: 220px; }
+.card .pics img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 2px; background: #111; } /* 多张：方格，跟着卡片宽度缩放 */
+.card .pics.n1 img { aspect-ratio: auto; object-fit: contain; } /* 单张：不限高，拉宽就变大 */
 .kidlist { list-style: none; margin: 3px 0 0; padding: 2px 0 0; border-top: 1px solid var(--line); font-size: 11px; }
 .kidlist li { display: flex; gap: 4px; align-items: center; padding: 0 2px; border-radius: 2px; cursor: default; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kidlist li:hover { background: var(--hover); }
@@ -122,7 +122,7 @@ pre.raw { margin: 0; white-space: pre-wrap; word-break: break-word; font: var(--
 .card .picbadge:hover { opacity: 1; background: #444; }
 .card .picbadge + .kids { margin-left: 2px; }
 .card .pics { position: relative; }
-.card .picgrip { position: absolute; right: -4px; bottom: -4px; width: 12px; height: 12px; cursor: nwse-resize; border-right: 2px solid var(--dim); border-bottom: 2px solid var(--dim); opacity: 0; transition: opacity .1s; }
+.picgrip { position: absolute; right: -4px; bottom: -4px; width: 12px; height: 12px; cursor: nwse-resize; border-right: 2px solid var(--dim); border-bottom: 2px solid var(--dim); opacity: 0; transition: opacity .1s; }
 .card:hover .picgrip, .card.sel .picgrip { opacity: .8; }
 /* 大纲树 */
 .otree { flex: 1; overflow: auto; padding: 2px 0; outline: none; }
@@ -148,3 +148,9 @@ pre.raw { margin: 0; white-space: pre-wrap; word-break: break-word; font: var(--
 .helpgrid kbd { font: 11px Consolas, monospace; background: var(--panel2); border: 1px solid var(--line2); border-radius: 3px; padding: 0 4px; color: #fff; }
 .hint.keys { cursor: pointer; }
 .side .bar.tabs .hint { border: 0; border-radius: 0; width: auto; height: auto; display: block; flex: 1; cursor: default; }
+/* 散图：图就是本体 */
+.loosepic { position: relative; line-height: 0; border: 1px solid transparent; }
+.loosepic img { width: 100%; display: block; border-radius: 1px; }
+.loosepic.sel { border-color: var(--sel); box-shadow: 0 0 0 1px var(--sel); }
+.loosepic:hover .picgrip, .loosepic.sel .picgrip { opacity: .8; }
+.loosepic.folded { line-height: 1.2; font-size: 14px; padding: 2px 5px; background: var(--panel2); border: 1px dashed var(--line2); border-radius: 3px; width: auto; }

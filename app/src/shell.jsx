@@ -49,6 +49,7 @@ export function Shell({ name, Canvas }) {
   const [picFold, setPicFold] = useState(() => DEMO ? load('syn.pf', {}) : {});
   const [localPicw, setLocalPicw] = useState(() => load('syn.pw', {}));
   const [renaming, setRenaming] = useState(null); // 大纲树里正在改名的节点
+  const [localLoose, setLocalLoose] = useState(() => load('syn.loose', {})); // 样例模式的散图：scope -> [{id, url}]
 
   const graph = useMemo(() => parseOutline(text), [text]);
   const realScope = graph.nodes.has(scope) ? scope : ROOT;
@@ -77,6 +78,11 @@ export function Shell({ name, Canvas }) {
     }
     return m;
   }, [local, localImages, wsData]);
+  // >v<🖼️图片-散图显示-当前页 _pics/ 里不属于任何节点的图，画布上是独立的图块（id = @pic:路径）
+  const loosePics = useMemo(() => {
+    if (local) return localLoose[realScope] || [];
+    return (wsData?.loose?.[realScope] || []).map(p => ({ id: '@pic:' + p, url: withWs('/file?p=' + encodeURIComponent(p)), path: p }));
+  }, [local, localLoose, wsData, realScope]);
 
   // 启动：从工作区加载（含上次的视图）；失败 → 离线（localStorage）
   useEffect(() => {
@@ -95,24 +101,31 @@ export function Shell({ name, Canvas }) {
     const t = setTimeout(() => {
       setSaveState('保存中…');
       api('/outline', { method: 'PUT', body: JSON.stringify({ outline: text }) })
-        .then(d => { lastSaved.current = text; setWsData(d); const r = d.report; setSaveState('已保存 ' + new Date().toLocaleTimeString() + (r.removed.length ? '（' + r.removed.length + ' 个节点移进 _过期的/）' : '')); })
+        .then(d => { lastSaved.current = text; setWsData(d); setPositions(p => ({ ...p, ...Object.fromEntries(Object.entries(d.layout || {}).filter(([k]) => k.startsWith('@pic:'))) })); /* 分组改名后散图坐标键会变 */ const r = d.report; setSaveState('已保存 ' + new Date().toLocaleTimeString() + (r.removed.length ? '（' + r.removed.length + ' 个节点移进 _过期的/）' : '')); })
         .catch(e => setSaveState('❌ 保存失败：' + e.message));
     }, 700);
     return () => clearTimeout(t);
   }, [text, mode]);
-  const layout = useMemo(() => autoLayout(view, positions), [view, positions]);
+  const layout = useMemo(() => {
+    const l = autoLayout(view, positions);
+    // 散图没坐标时排在节点右边一列
+    const maxX = Math.max(0, ...Object.values(l).map(p => p.x));
+    loosePics.forEach((p, i) => { l[p.id] = positions[p.id] || { x: maxX + 320, y: i * 240 }; });
+    return l;
+  }, [view, positions, loosePics]);
   // 自动排出来的位置立刻固定（存起来），之后加节点别的节点不会跟着跳
   useEffect(() => {
     const missing = Object.fromEntries(Object.entries(layout).filter(([id]) => !positions[id]));
     if (Object.keys(missing).length) move(missing);
   }, [layout]);
-  const sel = selected && (view.nodes.some(n => n.id === selected) || view.portals.some(p => p.id === selected)) ? selected : null;
+  const sel = selected && (view.nodes.some(n => n.id === selected) || view.portals.some(p => p.id === selected) || loosePics.some(p => p.id === selected)) ? selected : null;
 
   useEffect(() => { if (local) save('syn.text', text); }, [text, local]);
   useEffect(() => { if (local) save('syn.pos.' + name, positions); }, [positions, name, local]);
   useEffect(() => save('syn.img2', localImages), [localImages]);
   useEffect(() => { if (local) { save('syn.vp.' + name, viewports); save('syn.exp', expanded); save('syn.lh', leftHidden); save('syn.pf', picFold); save('syn.po', propsOpen); } }, [viewports, expanded, leftHidden, picFold, propsOpen, name, local]);
   useEffect(() => save('syn.pw', localPicw), [localPicw]);
+  useEffect(() => save('syn.loose', localLoose), [localLoose]);
   // 工作区：视图状态停手 0.6s 写进 .synapsis/view.json
   useEffect(() => {
     if (mode !== 'ws') return;
@@ -142,13 +155,13 @@ export function Shell({ name, Canvas }) {
     if (t) setText(t);
   }, [graph]);
   const move = useCallback(changes => {
-    setPositions(p => ({ ...p, ...changes }));
+    setPositions(p => { const q = { ...p }; for (const [k, v] of Object.entries(changes)) q[k] = { ...p[k], ...v }; return q; }); // 按键合并：散图的 w 和 x/y 分开更新
     if (mode === 'ws') api('/layout', { method: 'PUT', body: JSON.stringify({ positions: changes }) }).catch(e => setSaveState('❌ 坐标保存失败：' + e.message));
   }, [mode]);
   // >v<🌳大纲模型-新建节点-Enter 同级 / Tab 子级（父节点原地展开）/ 工具栏＋；建完光标跳到大纲那一行、名字选中，直接打字改名
   const pendingRename = useRef(null);
   const addNode = asChild => {
-    const s = sel && !sel.startsWith('@portal:') ? sel : null;
+    const s = sel && !sel.startsWith('@') ? sel : null;
     const parent = s && asChild ? s : s ? graph.nodes.get(s).parent : realScope;
     const r = withNode(graph, parent, asChild ? null : s);
     pendingRename.current = r.id;
@@ -199,6 +212,12 @@ export function Shell({ name, Canvas }) {
   const [tree, setTree] = useState(null);
   const [fileView, setFileView] = useState(null); // {path, text|null, note, error}
   const remove = id => {
+    if (id?.startsWith('@pic:')) { // 散图：进 _过期的/
+      if (local) setLocalLoose(m => ({ ...m, [realScope]: (m[realScope] || []).filter(p => p.id !== id) }));
+      else api('/loose-remove', { method: 'POST', body: JSON.stringify({ path: id.slice(5) }) }).then(() => api('/ws')).then(setWsData).catch(e => setSaveState('❌ ' + e.message));
+      setSelected(null); setSaveState('已删除散图' + (local ? '' : '（移进 _过期的/）'));
+      return;
+    }
     const n = graph.nodes.get(id);
     if (!n || id.startsWith('@portal:')) return;
     let k = 0; const cnt = x => { for (const c of graph.nodes.get(x).children) { k++; cnt(c); } }; cnt(id);
@@ -223,7 +242,7 @@ export function Shell({ name, Canvas }) {
     up: () => up(), canUp: realScope !== ROOT,
     toggleAll: () => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; }),
   };
-  const onContextMenu = useCallback((id, x, y) => { if (id && !id.startsWith('@portal:')) setSelected(id); setMenu({ id: id && !id.startsWith('@portal:') ? id : null, x, y }); }, []);
+  const onContextMenu = useCallback((id, x, y) => { if (id && !id.startsWith('@')) setSelected(id); setMenu({ id: id && !id.startsWith('@') ? id : null, x, y }); }, []);
   // 文件页：切过去时取文件树；点文件 → 右侧预览
   useEffect(() => { if (leftTab === 'files' && mode === 'ws' && !tree) api('/tree').then(setTree).catch(e => setTree({ tree: [], error: e.message })); }, [leftTab, mode]);
   const openFile = p => { setFileView({ path: p }); api('/raw?p=' + encodeURIComponent(p)).then(setFileView).catch(e => setFileView({ path: p, error: e.message })); };
@@ -262,7 +281,7 @@ export function Shell({ name, Canvas }) {
       else if (e.key === 'ArrowLeft' && e.altKey) { e.preventDefault(); back(); }
       else if (e.key === 'ArrowRight' && e.altKey) { e.preventDefault(); fwd(); }
       else if (e.key === 'Escape') setSelected(null);
-      else if (e.key === ' ' && sel && !sel.startsWith('@portal:')) { e.preventDefault(); e.stopPropagation(); toggle(sel); }
+      else if (e.key === ' ' && sel && !sel.startsWith('@')) { e.preventDefault(); e.stopPropagation(); toggle(sel); }
       else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); e.stopPropagation(); remove(sel); }
       else if (e.key === 'F2' && sel) { e.preventDefault(); focusLabel(sel); }
       else if ((e.key === 'i' || e.key === 'I') && !e.ctrlKey && !e.altKey) { e.preventDefault(); setPropsOpen(o => !o); }
@@ -285,14 +304,21 @@ export function Shell({ name, Canvas }) {
   const addImages = async (target, srcs, at, baseName) => {
     if (!srcs.length) return;
     try {
-      let id = target;
-      if (!id) {
-        const r = withNode(graph, realScope, null, baseName || '图片');
-        id = r.id;
-        // 先把新节点写进文件（图片要存到它旁边），再放坐标（saveOutline 会丢掉它不认识的新节点坐标）
-        if (mode === 'ws') { const d = await api('/outline', { method: 'PUT', body: JSON.stringify({ outline: r.text }) }); lastSaved.current = r.text; setWsData(d); }
-        setText(r.text);
-        if (at) move({ [id]: at });
+      const id = target;
+      if (!id) { // 落在空白处 / 没选中时粘贴 → 散图，放进当前页的 _pics/（👤：不必变成节点）
+        if (mode !== 'ws') {
+          const urls = srcs.filter(s => s.dataUrl).map((s, i) => ({ id: '@pic:local' + Date.now() + '_' + i, url: s.dataUrl }));
+          if (urls.length < srcs.length) setSaveState('样例模式拿不到网页图片，拖本地文件或粘贴试试');
+          setLocalLoose(m => ({ ...m, [realScope]: [...(m[realScope] || []), ...urls] }));
+          if (at) move(Object.fromEntries(urls.map((u, i) => [u.id, { x: at.x + i * 30, y: at.y + i * 30 }])));
+          return;
+        }
+        let last = null;
+        for (const [i, s] of srcs.entries()) last = await api('/loose', { method: 'POST', body: JSON.stringify({ scope: realScope, ...s, at: at && { x: at.x + i * 30, y: at.y + i * 30 } }) });
+        const d = await api('/ws');
+        setWsData(d); setPositions(p => ({ ...p, ...Object.fromEntries(Object.entries(d.layout || {}).filter(([k]) => k.startsWith('@pic:'))) }));
+        setSaveState(last.node ? '这一页是叶子，没有自己的文件夹 → 图归给它：' + last.path : '散图已存 ' + last.path);
+        return;
       }
       setSelected(id);
       if (mode !== 'ws') {
@@ -311,7 +337,7 @@ export function Shell({ name, Canvas }) {
       const files = [...(e.clipboardData?.items || [])].filter(i => i.type.startsWith('image/')).map(i => i.getAsFile());
       if (!files.length) return;
       e.preventDefault(); e.stopPropagation();
-      const target = sel && !sel.startsWith('@portal:') ? sel : null;
+      const target = sel && !sel.startsWith('@') ? sel : null;
       Promise.all(files.map(readFile)).then(us => addImages(target, us.map(dataUrl => ({ dataUrl }))));
     };
     window.addEventListener('paste', onPaste, true);
@@ -326,7 +352,7 @@ export function Shell({ name, Canvas }) {
     if (!files.length && !/^(https?:|data:image)/.test(url)) return;
     e.preventDefault();
     const card = e.target.closest?.('.react-flow__node')?.dataset.id;
-    const target = card && !card.startsWith('@portal:') ? card : null;
+    const target = card && !card.startsWith('@') ? card : null;
     // 落点 → 画布坐标（直接读 React Flow 的变换矩阵，不依赖视图记忆有没有存过）
     let at = null;
     const vpEl = e.currentTarget.querySelector('.react-flow__viewport');
@@ -344,13 +370,14 @@ export function Shell({ name, Canvas }) {
     window.addEventListener('dragover', no); window.addEventListener('drop', no);
     return () => { window.removeEventListener('dragover', no); window.removeEventListener('drop', no); };
   }, []);
+  cardActions.resizeLoose = (id, w) => move({ [id]: { w: Math.round(Math.max(60, Math.min(2400, w))) } });
   cardActions.foldPics = id => setPicFold(f => ({ ...f, [id]: !f[id] }));
   cardActions.resizePics = (id, w) => {
     w = Math.round(Math.max(80, Math.min(1600, w)));
     if (mode === 'ws') api('/node', { method: 'PATCH', body: JSON.stringify({ id, meta: { picw: String(w) } }) }).then(setWsData).catch(e => setSaveState('❌ ' + e.message));
     else setLocalPicw(m => ({ ...m, [id]: w }));
   };
-  const withPics = view.nodes.filter(n => images[n.id]?.length);
+  const withPics = [...view.nodes.filter(n => images[n.id]?.length), ...loosePics];
   const allPicsFolded = withPics.length > 0 && withPics.every(n => picFold[n.id]);
 
   // 大纲里：Tab 缩进、Shift+Tab 反缩进、回车保持缩进
@@ -401,11 +428,12 @@ export function Shell({ name, Canvas }) {
         </div>
         {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className="canvas" onDragOver={e => e.preventDefault()} onDrop={onDrop}>
           <Canvas key={realScope} view={view} layout={layout} selected={sel} images={images}
+            pics={loosePics.map(p => ({ ...p, w: positions[p.id]?.w || 0, folded: !!picFold[p.id] }))}
             onSelect={setSelected} onDrill={drill} onConnect={connect} onMove={move} onContextMenu={onContextMenu}
             viewport={viewports[realScope]} onViewport={vp => onViewport(realScope, vp)} />
         </div>}
       </main>
-      {propsOpen && sel && !sel.startsWith('@portal:') && graph.nodes.has(sel) && (
+      {propsOpen && sel && !sel.startsWith('@') && graph.nodes.has(sel) && (
         <PropsPanel id={sel} graph={graph} wsNode={wsData?.nodes[sel]} edges={mode === 'ws' ? (wsData?.edges || []) : graph.edges}
           editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} file={nodeFile(sel)} tab={propsTab} onTab={setPropsTab} raw={rawText} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)} />
       )}
@@ -474,6 +502,25 @@ export function NodeCard({ node, img, dim, isSel }) {
         </li>))}</ul>}
       {showPics && <div className={'pics n' + Math.min(img.length, 3)}>{img.map(u => <img key={u} src={u} draggable={false} />)}
         <span className="picgrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} /></div>}
+    </div>
+  );
+}
+// 散图：没有卡片框，图就是本体（PureRef 式）；收起时是一个小签
+export function PicCard({ pic, isSel }) {
+  const startResize = e => {
+    e.stopPropagation(); e.preventDefault();
+    const el = e.currentTarget.closest('.loosepic');
+    const w0 = el.offsetWidth, z = el.getBoundingClientRect().width / w0 || 1, x0 = e.clientX;
+    let w = w0;
+    const mv = ev => { w = Math.max(60, w0 + (ev.clientX - x0) / z); el.style.width = w + 'px'; };
+    const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); cardActions.resizeLoose(pic.id, w); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+  };
+  if (pic.folded) return <div className={'loosepic folded' + (isSel ? ' sel' : '')} title={pic.path || ''}>🖼</div>;
+  return (
+    <div className={'loosepic' + (isSel ? ' sel' : '')} style={{ width: pic.w || 240 }} title={pic.path || ''}>
+      <img src={pic.url} draggable={false} />
+      <span className="picgrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} />
     </div>
   );
 }

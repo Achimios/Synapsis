@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveView, loadView, listTree, DIR } from '../workspace.js';
+import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, DIR } from '../workspace.js';
 import { SAMPLE } from '../../app/src/sample.js';
 
 let pass = 0, fail = 0;
@@ -95,6 +95,22 @@ try {
     ok(!existsSync(P('_pics_B')) && readdirSync(P('_过期的')).some(n => n.endsWith('_pics')), '删除节点 → 图片文件夹一起进 _过期的/');
     saveOutline(r2, 'C\n  新名\n    孙');
     ok(existsSync(P('C/新名/_pics_新名')) && !existsSync(P('A')), '父节点改名 → 子节点的图片跟着走、旧目录清掉');
+    // 散图：页的 _pics/；分组改名跟着走、坐标键跟着改；叶子页归给叶子自己；删 = 进 _过期的/
+    const l0 = saveLooseImage(r2, '', PNG);
+    ok(l0.path.startsWith('_pics/') && !l0.node && loadWorkspace(r2).loose[''][0] === l0.path, '根页散图 → __synapsis/_pics/ ' + l0.path);
+    const l1 = saveLooseImage(r2, 'C', PNG);
+    ok(l1.path.startsWith('C/_pics/'), '分组页散图 → C/_pics/ ' + l1.path);
+    saveLayout(r2, { ['@pic:' + l1.path]: { x: 10, y: 20, w: 300 } });
+    saveOutline(r2, 'D\n  新名\n    孙');
+    const moved1 = l1.path.replace('C/', 'D/'), lay1 = loadWorkspace(r2).layout;
+    ok(existsSync(P(moved1)) && !existsSync(P('C')), '分组改名 → 散图文件夹跟着搬 ' + moved1);
+    ok(lay1['@pic:' + moved1]?.w === 300 && !lay1['@pic:' + l1.path], '散图坐标键跟着改（宽度保留）');
+    const l2 = saveLooseImage(r2, 'D/新名/孙', PNG);
+    ok(l2.node === 'D/新名/孙' && l2.path.includes('_pics_孙/'), '叶子页没有文件夹 → 归给叶子自己');
+    removeLooseImage(r2, l0.path);
+    ok(!existsSync(P(l0.path)) && readdirSync(P('_过期的')).some(n => n.includes('散图')), '删散图 → 进 _过期的/');
+    let threw = false; try { removeLooseImage(r2, 'D/新名/_node.md'); } catch { threw = true; }
+    ok(threw, '删散图接口拒绝非散图路径');
     // 视图记忆
     saveView(r2, { scope: 'C', viewports: { C: { x: 1, y: 2, zoom: 0.5 } } });
     saveView(r2, { leftHidden: true });

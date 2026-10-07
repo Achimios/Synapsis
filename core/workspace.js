@@ -4,6 +4,7 @@
 //   有子节点的    名字/_node.md   （它自己的属性与正文）
 //   以 _ 或 . 开头的文件/目录不是节点（_layout.json、_assets/、_过期的/、_synapsis.md）
 //   节点的图片    _pics_名字/   （紧挨节点的 .md：叶子在同目录，分组在自己文件夹里；文件夹本身就是真源，往里丢图就显示）
+//   散图          _pics/        （某一页上不属于任何节点的图：根页在 __synapsis/_pics/，分组页在 分组/_pics/；坐标在 _layout.json 的 @pic:路径）
 // 节点文件 = frontmatter + 正文：
 //   ---
 //   status: done | partial | todo
@@ -27,6 +28,9 @@ export const fileName = label => label.replace(/[\/\\:*?"<>|]/g, c => FW[c]).rep
 // 图片文件夹用 _ 不用 .：Obsidian 不索引点开头的文件夹，正文里 ![](...) 会断
 export const picsDir = (file, label) => join(dirname(file), '_pics_' + fileName(label));
 const IMG_EXT = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
+// 一页的文件夹：根 = __synapsis/，分组 = 它自己的文件夹；叶子没有自己的文件夹（返回 null）
+export const pageDir = (base, n) => !n || n.id === ROOT ? base : n.isGroup ? dirname(n.file) : null;
+const posix = p => p.split('\\').join('/');
 const listPics = (dir, base) => { try { return readdirSync(dir).filter(f => IMG_EXT.test(f)).sort().map(f => relative(base, join(dir, f)).split('\\').join('/')); } catch { return []; } };
 
 // >v<💾工作区-frontmatter-最小 YAML 子集：key: value 与 key: + "  - 项" 列表
@@ -97,6 +101,9 @@ export function loadWorkspace(root) {
     nodes.get(parent).children = kids.map(k => k.id);
   };
   walk(base, ROOT);
+  // 散图：每一页的 _pics/
+  const loose = {};
+  for (const n of nodes.values()) { const d = pageDir(base, n); const l = d ? listPics(join(d, '_pics'), base) : []; if (l.length) loose[n.id] = l; }
   const edges = [];
   for (const n of nodes.values()) {
     for (const raw of n.meta.to || []) {
@@ -108,7 +115,7 @@ export function loadWorkspace(root) {
   }
   let layout = {};
   try { layout = JSON.parse(readFileSync(join(base, '_layout.json'), 'utf8')); } catch { /* 没有就空 */ }
-  return { root, base, graph: { nodes, edges, errors }, layout };
+  return { root, base, graph: { nodes, edges, errors }, layout, loose };
 }
 
 export const workspaceOutline = ws => toOutline(ws.graph);
@@ -185,6 +192,8 @@ export function saveOutline(root, text) {
     report.removed.push(relative(base, dst));
     const pd = picsDir(n.file, n.label);
     if (existsSync(pd)) renameSync(pd, dst.slice(0, -3) + '_pics');
+    const lp = n.isGroup ? join(dirname(n.file), '_pics') : null; // 删掉的分组页上的散图
+    if (lp && existsSync(lp)) renameSync(lp, dst.slice(0, -3) + '_散图');
   }
   // 2) 写新内容（只写变了的）
   for (const [file, { content, old }] of writes) {
@@ -194,6 +203,20 @@ export function saveOutline(root, text) {
     writeFileSync(file, content);
     report.written.push(relative(base, file));
     if (old && old.file !== file) report.moved.push(relative(base, old.file) + ' → ' + relative(base, file));
+  }
+  // 2a) 散图文件夹 _pics/ 跟着分组文件夹走；分组变叶子 → 并进它自己的 _pics_名字/；坐标键 @pic:旧前缀 → 新前缀
+  const picKeys = {}; // 旧前缀 -> 新前缀（相对 base，正斜杠）
+  for (const [file, { old, label }] of writes) {
+    if (!old || !old.isGroup) continue;
+    const from = join(dirname(old.file), '_pics');
+    if (!existsSync(from)) continue;
+    let to = file.endsWith(NODE_FILE) ? join(dirname(file), '_pics') : picsDir(file, label);
+    if (to === from) continue;
+    if (existsSync(to)) to = join(graveyard, `${stamp()}_${label}_散图`);
+    mkdirSync(dirname(to), { recursive: true });
+    renameSync(from, to);
+    picKeys[posix(relative(base, from)) + '/'] = posix(relative(base, to)) + '/';
+    report.moved.push(relative(base, from) + ' → ' + relative(base, to));
   }
   // 2b) 图片文件夹跟着节点走（改名、移动、叶子⇄分组）
   for (const [file, { old, label }] of writes) {
@@ -221,12 +244,16 @@ export function saveOutline(root, text) {
   const layout = {};
   for (const [nid, cid] of map) if (cid !== null && ws.layout[cid]) layout[nid] = ws.layout[cid];
   for (const k of Object.keys(ws.layout)) if (k.startsWith('@portal:')) layout[k] = ws.layout[k];
+  for (const k of Object.keys(ws.layout)) if (k.startsWith('@pic:')) {
+    const p = k.slice(5), hit = Object.keys(picKeys).find(o => p.startsWith(o));
+    layout['@pic:' + (hit ? picKeys[hit] + p.slice(hit.length) : p)] = ws.layout[k];
+  }
   writeLayout(base, layout);
   return report;
 }
 
 function writeLayout(base, layout) {
-  const sorted = Object.fromEntries(Object.keys(layout).sort().map(k => [k, { x: Math.round(layout[k].x), y: Math.round(layout[k].y) }]));
+  const sorted = Object.fromEntries(Object.keys(layout).sort().map(k => [k, { x: Math.round(layout[k].x), y: Math.round(layout[k].y), ...(layout[k].w ? { w: Math.round(layout[k].w) } : {}) }]));
   mkdirSync(base, { recursive: true });
   const file = join(base, '_layout.json');
   const content = JSON.stringify(sorted, null, 1) + '\n';
@@ -235,7 +262,10 @@ function writeLayout(base, layout) {
 
 export function saveLayout(root, positions) {
   const ws = loadWorkspace(root);
-  writeLayout(ws.base, { ...ws.layout, ...positions });
+  // 按键合并（散图的 w 宽度和 x/y 分开更新时不互相覆盖）
+  const lay = { ...ws.layout };
+  for (const [k, v] of Object.entries(positions)) lay[k] = { ...lay[k], ...v };
+  writeLayout(ws.base, lay);
 }
 
 // >v<💾工作区-改属性-单个节点的 frontmatter 合并（贴图、spec 等大纲表达不了的东西）
@@ -249,19 +279,41 @@ export function setNodeMeta(root, id, patch) {
 }
 
 // >v<🖼️图片-贴图落盘-存进节点旁边的 _pics_名字/（不写 frontmatter：文件夹就是真源）
-export function saveAsset(root, id, dataUrl) {
+function writeImage(dir, base, dataUrl) {
   const m = dataUrl.match(/^data:image\/([\w+]+);base64,(.+)$/);
   if (!m) throw new Error('不是图片 dataURL');
   const ext = m[1] === 'jpeg' ? 'jpg' : m[1] === 'svg+xml' ? 'svg' : m[1];
-  const ws = loadWorkspace(root);
-  const n = ws.graph.nodes.get(id);
-  if (!n || id === ROOT) throw new Error('没有这个节点：' + id);
-  const dir = picsDir(n.file, n.label);
   mkdirSync(dir, { recursive: true });
   let name = `${stamp()}.${ext}`;
   for (let k = 2; existsSync(join(dir, name)); k++) name = `${stamp()}_${k}.${ext}`;
   writeFileSync(join(dir, name), Buffer.from(m[2], 'base64'));
-  return relative(ws.base, join(dir, name)).split('\\').join('/');
+  return posix(relative(base, join(dir, name)));
+}
+export function saveAsset(root, id, dataUrl) {
+  const ws = loadWorkspace(root);
+  const n = ws.graph.nodes.get(id);
+  if (!n || id === ROOT) throw new Error('没有这个节点：' + id);
+  return writeImage(picsDir(n.file, n.label), ws.base, dataUrl);
+}
+// >v<🖼️图片-散图-落在某页空白处、不属于任何节点的图：存进那一页的 _pics/（叶子页没有文件夹 → 归给叶子节点自己）。返回 {path, node?}
+export function saveLooseImage(root, scope, dataUrl) {
+  const ws = loadWorkspace(root);
+  const n = ws.graph.nodes.get(scope);
+  if (!n) throw new Error('没有这一页：' + scope);
+  const d = pageDir(ws.base, n);
+  if (!d) return { path: writeImage(picsDir(n.file, n.label), ws.base, dataUrl), node: scope };
+  return { path: writeImage(join(d, '_pics'), ws.base, dataUrl) };
+}
+// 删散图 = 移进 __synapsis/_过期的/（不真删），坐标一并去掉
+export function removeLooseImage(root, relPath) {
+  const base = join(root, DIR), f = join(base, relPath);
+  if (relPath.includes('..') || !/(^|\/)_pics\/[^/]+$/.test(relPath) || !existsSync(f)) throw new Error('不是散图：' + relPath);
+  const g = join(base, '_过期的');
+  mkdirSync(g, { recursive: true });
+  renameSync(f, join(g, `${stamp()}_散图_${relPath.replace(/\//g, '～')}`));
+  const lay = { ...loadWorkspace(root).layout };
+  delete lay['@pic:' + relPath];
+  writeLayout(base, lay);
 }
 
 // >v<🧭导航-视图记忆-每个工作区的 .synapsis/view.json：各页平移缩放、上次所在页、展开状态、左栏（本机状态，不进 git）
@@ -291,42 +343,39 @@ export function checkWorkspace(ws) {
   return issues;
 }
 
-// >v<💾工作区-说明文件-每个 __synapsis/ 放一份 _synapsis.md：给人和 LLM 的格式说明 + CLI 用法（已存在不覆盖）
-export function ensureWorkspaceReadme(root, cliPath) {
+// >v<💾工作区-说明文件-每个 __synapsis/ 放一份 _synapsis.md = AI 接入手册（填好本工作区路径）。生成物：带标记就按最新手册刷新，人改过（去掉标记）就不动
+export const MANUAL_MARK = '<!-- synapsis:generated —— 这份由 Synapsis 生成，会被刷新；想自己改就删掉这一行 -->';
+export function ensureWorkspaceReadme(root, content) {
   const file = join(root, DIR, '_synapsis.md');
-  if (existsSync(file)) return false;
+  const body = MANUAL_MARK + '\n' + content;
+  if (existsSync(file)) {
+    const cur = readFileSync(file, 'utf8');
+    const generated = cur.includes(MANUAL_MARK) || cur.startsWith('# __synapsis/ —— 这个项目的结构图'); // 旧版生成物没有标记，认标题
+    if (!generated || sameText(cur, body)) return false;
+  }
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, `# __synapsis/ —— 这个项目的结构图（Synapsis 工作区）
-
-> 给人和 LLM 读的说明。图是**设计草稿**，不是代码；边多为设计估计（看 \`source:\`）。
-
-## 怎么读（LLM 优先用 CLI，省 token）
-\`\`\`bash
-node "${cliPath}" overview --ws "${root.split('\\').join('/')}"     # 分组树 + 状态统计（先看这个）
-node "${cliPath}" get "<节点id>" --ws "..."   # 单个节点：属性 + 入边/出边 + 正文
-node "${cliPath}" export ["<节点id>"] --ws "..." # 节点卡
-node "${cliPath}" check --ws "..."            # 悬空边、无状态、code 指向不存在的文件
-\`\`\`
-节点 id = 名称路径（\`游戏NPC状态空间组/决策/决策空间（战术目标）\`）。
-
-## 文件格式（文件夹 = 层级）
-- 叶子节点 \`名字.md\`；有子节点的 \`名字/_node.md\`
-- 以 \`_\` 或 \`.\` 开头的不是节点：\`_layout.json\`（坐标）、\`_assets/\`（图片）、\`_过期的/\`（删除的节点，不真删）
-- 名字里有 \`/\` 等非法字符 → 文件名用全角，原名在 frontmatter \`label:\`
-\`\`\`
----
-status: done | partial | todo
-order: 0
-rate: 0.5–5 Hz          # 其余属性随便加，Synapsis 原样保留
-to:
-  - 目标名字 | 边标签 | 类型（离散 / LLM）
----
-正文：人写的，Synapsis 不改。
-\`\`\`
-- 连线目标按名字**就近**解析（先兄弟、再往上层找）；同名冲突时写完整 id。
-- 改结构（增删改名、移动、连线）优先在 Synapsis 界面或 \`apply\` 里做；直接改文件也行，改完跑 \`check\`。
-`);
+  writeFileSync(file, body);
   return true;
+}
+
+// >v<🤖LLM接口-边标签-给已有的边写标签 / 类型（大纲只表达「有没有边」，标签存在出发节点 frontmatter 的 to: 里）
+export function setEdgeLabel(root, from, to, label = '', kind = '') {
+  const ws = loadWorkspace(root), g = ws.graph, n = g.nodes.get(from);
+  if (!n || !g.edges.some(e => e.from === from && e.to === to)) throw new Error(`没有这条边：${from} -> ${to}`);
+  const list = g.edges.filter(e => e.from === from).map(e => fmtEdge({ ref: shortRef(g, from, e.to), label: e.to === to ? label : e.label, kind: e.to === to ? kind : e.kind }));
+  setNodeMeta(root, from, { to: list });
+}
+
+// >v<🤖LLM接口-查找-名字 / 正文 / 属性里的关键词（不区分大小写）；以后接嵌入做语义搜索
+export function findNodes(ws, q) {
+  const k = q.toLowerCase(), out = [];
+  for (const n of ws.graph.nodes.values()) {
+    if (n.id === ROOT) continue;
+    const meta = Object.entries(n.meta).filter(([key]) => key !== 'to').map(([key, v]) => key + ': ' + v).join('\n');
+    const hay = [n.label, meta, n.body || ''].join('\n'), i = hay.toLowerCase().indexOf(k);
+    if (i >= 0) out.push({ id: n.id, where: i < n.label.length ? '名字' : i <= n.label.length + meta.length ? '属性' : '正文', snippet: hay.slice(Math.max(0, i - 20), i + k.length + 30).replace(/\s+/g, ' ') });
+  }
+  return out;
 }
 
 // >v<💾工作区-改正文-属性面板里改节点正文（Synapsis 唯一会写正文的地方：用户亲手改的）

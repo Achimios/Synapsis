@@ -171,6 +171,13 @@ export function withEdge(g, from, to) {
   return toOutline(h);
 }
 
+export function withoutEdge(g, from, to) {
+  if (!g.edges.some(e => e.from === from && e.to === to)) return null;
+  const h = cloneGraph(g);
+  h.edges = h.edges.filter(e => !(e.from === from && e.to === to));
+  return toOutline(h);
+}
+
 // 在 parent 下新建节点；after = 插在哪个兄弟后面（null = 末尾）。返回 {text, id}
 export function withNode(g, parent, after = null, base = '新节点') {
   const h = cloneGraph(g);
