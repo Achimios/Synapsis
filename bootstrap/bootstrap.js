@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // >v<🏗️构建引导-生成骨架-按用户规矩给新项目铺文档骨架，已有文件一律跳过
 // 用法：node bootstrap.js <项目目录> [--name 名字] [--desc "一句话"] [--dry]
-// 规矩本体：同目录 _ProjectBootstrap.md；模板：template/
+// 规矩本体：同目录 _项目构建引导.md；模板：template/
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve, basename, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = join(HERE, 'template');
-const GUIDE = join(HERE, '_ProjectBootstrap.md');
+const GUIDE = join(HERE, '_项目构建引导.md');
 
 export function plan(target, { name, desc, date }) {
   const vars = { NAME: name, DESC: desc, DATE: date, GUIDE: GUIDE.replace(/\\/g, '/') };
@@ -50,7 +50,7 @@ function main(argv) {
     catch (e) { console.log('  ⚠️ git init 失败：', e.message); }
   }
   console.log(`${args.dry ? '预演' : '完成'}：${name} @ ${target}，新建 ${args.dry ? items.filter(i => !i.exists).length : made} 个，跳过 ${items.filter(i => i.exists).length} 个`);
-  console.log('下一步：按 _ProjectBootstrap.md §6，用一两句话跟用户确认「是什么 / 精度定位 / 当前专注」写进 AGENTS.md');
+  console.log('下一步：按 _项目构建引导.md §6，用一两句话跟用户确认「是什么 / 精度定位 / 当前专注」写进 AGENTS.md');
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2));

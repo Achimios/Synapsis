@@ -185,12 +185,12 @@ try {
   // 项目骨架：检测已有 / 同类，只写勾上且不存在的
   const r4 = mkdtempSync(join(tmpdir(), 'syn-scaffold-'));
   try {
-    writeFileSync(join(r4, '_TODO.md'), '我自己的待办');
-    writeFileSync(join(r4, '_开发进度.md'), '中文名的进度');
+    writeFileSync(join(r4, '_待办.md'), '我自己的待办');
+    writeFileSync(join(r4, '_DevProgress.md'), '旧英文名的进度');
     const items = scaffoldPlan(r4);
-    ok(items.find(i => i.rel === '_TODO.md')?.exists && items.find(i => i.rel === '_DevProgress.md')?.alike.includes('_开发进度.md'), '骨架检测：同名已存在 / 同类中文名');
-    const made = scaffoldWrite(r4, ['_TODO.md', '_LEARNINGS.md']);
-    ok(made.join() === '_LEARNINGS.md' && readFileSync(join(r4, '_TODO.md'), 'utf8') === '我自己的待办' && !existsSync(join(r4, '_DevProgress.md')), '骨架只写勾上且不存在的，不覆盖');
+    ok(items.find(i => i.rel === '_待办.md')?.exists && items.find(i => i.rel === '_开发进度.md')?.alike.includes('_DevProgress.md'), '骨架检测：同名已存在 / 同类旧英文名');
+    const made = scaffoldWrite(r4, ['_待办.md', '_经验教训.md']);
+    ok(made.join() === '_经验教训.md' && readFileSync(join(r4, '_待办.md'), 'utf8') === '我自己的待办' && !existsSync(join(r4, '_开发进度.md')), '骨架只写勾上且不存在的，不覆盖');
   } finally { rmSync(r4, { recursive: true, force: true }); }
 } finally {
   rmSync(root, { recursive: true, force: true });

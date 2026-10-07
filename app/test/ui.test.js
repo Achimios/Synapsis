@@ -451,7 +451,7 @@ for (const kind of ['reactflow']) {
   saveOutline(ws, '甲 -> 乙\n乙\n丙\n丁');
   writeFileSync(join(ws, '__synapsis', '甲.md'), readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8') + '\n甲的正文，人写的。\n');
   writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 甲: { x: 0, y: 0 }, 乙: { x: 400, y: 0 }, 丙: { x: 800, y: 0 }, 丁: { x: 400, y: 300 } }));
-  writeFileSync(join(ws, '_开发进度.md'), '中文名的进度');
+  writeFileSync(join(ws, '_DevProgress.md'), '旧英文名的进度');
   const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
@@ -534,12 +534,12 @@ for (const kind of ['reactflow']) {
   ok(lay()['乙'].x === 400 && lay()['乙'].y === 0, '框选缩放也能 Ctrl+Z');
   // 项目文档：先检测；同名中文的默认不勾；只建勾上的
   await page.click('button:has-text("项目文档")'); await sleep(600);
-  ok((await page.$eval('.scaffold', e => e.innerText)).includes('已有同类：_开发进度.md'), '项目文档：检测到同类中文名');
-  ok(!(await page.$eval('.scaflist li:has-text("_DevProgress.md") input', e => e.checked)), '有同类的默认不勾');
-  for (const li of await page.$$('.scaflist li')) { const t = await li.innerText(); const cbx = await li.$('input'); if (!t.includes('_TODO.md') && await cbx.isChecked() && !(await cbx.isDisabled())) await cbx.uncheck(); }
+  ok((await page.$eval('.scaffold', e => e.innerText)).includes('已有同类：_DevProgress.md'), '项目文档：检测到同类旧英文名');
+  ok(!(await page.$eval('.scaflist li:has-text("_开发进度.md") input', e => e.checked)), '有同类的默认不勾');
+  for (const li of await page.$$('.scaflist li')) { const t = await li.innerText(); const cbx = await li.$('input'); if (!t.includes('_待办.md') && await cbx.isChecked() && !(await cbx.isDisabled())) await cbx.uncheck(); }
   await page.click('.scaffold button:has-text("创建勾选的")'); await sleep(800);
-  ok(existsSync(join(ws, '_TODO.md')) && !existsSync(join(ws, '_DevProgress.md')) && !existsSync(join(ws, 'AGENTS.md')), '只创建勾上的（_TODO.md）');
-  ok(readFileSync(join(ws, '_开发进度.md'), 'utf8') === '中文名的进度', '已有文件不动');
+  ok(existsSync(join(ws, '_待办.md')) && !existsSync(join(ws, '_开发进度.md')) && existsSync(join(ws, '_DevProgress.md')) && !existsSync(join(ws, 'AGENTS.md')), '只创建勾上的（_待办.md）');
+  ok(readFileSync(join(ws, '_DevProgress.md'), 'utf8') === '旧英文名的进度', '已有文件不动');
   // 传送门（↗ 别处的节点）也能框选排列（👤 2026-10-08 截图：一列 ↗ 框选后没反应）
   await page.keyboard.press('Escape');
   saveOutline(ws, '组\n  里面 -> 外一, 外二\n外一\n外二');

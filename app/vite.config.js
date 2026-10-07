@@ -69,7 +69,7 @@ function workspaceApi() {
           if (url.pathname === '/paste' && req.method === 'POST') { const b = await body(req); const r = pasteNodes(root, b.ids, b.parent); return send(200, { report: r, ...payload(root) }); }
           // 撤销删除：把 _过期的/ 里的文件搬回去（随后前端写回删除前的大纲）
           if (url.pathname === '/restore' && req.method === 'POST') return send(200, { restored: restoreRemoved(root, (await body(req)).pairs) });
-          // 项目骨架（_DevProgress.md 那套）：GET = 检测清单，POST = 只写勾上且不存在的
+          // 项目骨架（_开发进度.md 那套）：GET = 检测清单，POST = 只写勾上且不存在的
           if (url.pathname === '/scaffold' && req.method === 'GET') return send(200, { items: scaffoldPlan(root).map(({ rel, exists, alike }) => ({ rel, exists, alike })) });
           if (url.pathname === '/scaffold' && req.method === 'POST') { if (!existsSync(join(root, DIR))) return send(404, { error: '不是 Synapsis 工作区' }); return send(200, { made: scaffoldWrite(root, (await body(req)).files) }); }
           if (url.pathname === '/tree' && req.method === 'GET') return send(200, listTree(root));

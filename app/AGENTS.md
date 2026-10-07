@@ -8,7 +8,7 @@
 - `vite.config.js`：心跳自动退出 + 工作区 HTTP 接口（`?ws=` > `SYN_WS` > `../.synapsis/config.json`）
 
 规矩：
-- 画布选型已定 React Flow（`../_Design/Decision_Canvas.md`）；卡片里可交互的元素加 `nodrag`/`nowheel` 或拦 `pointerdown`
+- 画布选型已定 React Flow（`../_设计/Decision_Canvas.md`）；卡片里可交互的元素加 `nodrag`/`nowheel` 或拦 `pointerdown`
 - 坐标以外壳的 layout 为准，React Flow 只在拖动中用本地坐标；重建 nodes 保留 `measured`
 - 自检：`npm run test:desktop`（Electron，窗口隐藏，最近列表重定向到临时文件）；`npm test`（纯 Node）；`npm run test:ui`（需先起 dev；无头 Edge；**只用 `?demo` 或临时 `?ws=`，别让测试碰真工作区**）；`test/shot.mjs` 给真实工作区截图
 - 启动：被规划项目根目录 `Synapsis.vbs`；停：`../Synapsis_stop.bat`；或 `npm run dev`（:5410）
