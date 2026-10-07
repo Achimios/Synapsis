@@ -30,6 +30,7 @@ grep -rn ">v<💾工作区" core app bootstrap --include=*.js --include=*.jsx
 | `>v<🎨画布` | `app/src/main.jsx` `app/src/td.jsx` `app/src/shell.jsx` | 两个画布实现、贴图 |
 | `>v<🚀启停` | `app/vite.config.js` `app/src/shell.jsx` `core/cli.js`(init) + `core/templates/Synapsis.vbs` `Synapsis_stop.bat` `Synapsis_init.vbs` `core/tools/init_picker.ps1` | 无窗口启动、按端口停止、心跳自动退出 |
 | `>v<🗂️外部区` | `core/workspace.js`(listTree/readProjectFile) `app/src/panels.jsx` | 左栏「文件」页：项目根目录里 __synapsis 之外的只读文件树 + 右侧预览 |
+| `>v<🖥️桌面` | `app/electron/` `app/src/launcher.jsx` `Synapsis_desktop.vbs` `core/templates/Synapsis.vbs` | 托盘程序：内置服务、托盘菜单、启动台、每个工作区一个窗口、单实例 |
 | `>v<✅自检` | `app/test/` `core/test/` `core/workspace.js`(checkWorkspace) | 纯 Node 核心自检 + 无头 Edge 界面自检 |
 | `>v<🧪嵌入实验` | `core/tools/embed_probe.js` | 本地嵌入模型（LM Studio）× 工作区：有连线 vs 没连线的相似度效应量、最像但没连线的候选 |
 | `>v<🏗️构建引导` | `bootstrap/bootstrap.js` `bootstrap/template/` | 给新项目铺骨架，已有文件跳过 |
@@ -78,6 +79,16 @@ grep -rn ">v<💾工作区" core app bootstrap --include=*.js --include=*.jsx
 
 - **CLI** —— `node core/cli.js` 无参数看用法。LLM 先 `overview`（省 token）→ `get <id>` / `export <id>` → 改结构用 `apply` → `check`。
 - **init** —— 双击 `Synapsis_init.vbs` 弹出系统选文件夹窗口（`init_picker.ps1`：IFileOpenDialog + FOS_PICKFOLDERS，资源管理器同款；.NET Framework 的 FolderBrowserDialog 是老式树形窗口所以不用；记住上次选的**上一级**目录在 `.synapsis/last_init_dir.txt`），或把文件夹拖到它上面，或 `cli.js init <目录>`。ps1 必须带 BOM（PS 5.1），读 node 输出前设 `[Console]::OutputEncoding = UTF8`；`SYN_QUIET=1` 不弹结果框（测试用），结果写 `.synapsis/last_init.log`。给项目挂上 Synapsis（重跑安全：已有文件不动，只刷新生成的启动器）：`__synapsis/` + `_synapsis.md`、`.synapsis/`（自带 `*` gitignore，不碰项目原有 .gitignore）、`Synapsis.vbs`（VBScript 的 Escape 给 %uXXXX 浏览器不认 → 手写 UTF-8 编码，已与 encodeURIComponent 对过）。
+
+## `>v<🖥️桌面`
+
+小标题：
+
+- **托盘主进程** —— `electron/main.mjs`：Electron = Node + Chromium（Obsidian 同款），所以托盘不需要 Python。主进程 `chdir(app/)` 后直接 `createServer` 起 vite（端口被占 = 复用已有服务）；`SYN_DESKTOP=1` 关掉心跳自动退出（否则会把整个程序关了）。单实例锁：再次启动把 `--ws` 交给已开的实例。关窗口不退出，托盘「退出」才退。托盘图标代码画的 PNG（不依赖图片文件）。
+- **启动台** —— `launcher.html`：最近打开（`.synapsis/recent.json`）+「打开文件夹…」（Electron 原生对话框，默认停在上次项目的上一级）；没挂上 Synapsis 的文件夹先问要不要初始化（调 `core/cli.js` 的 `init`）。preload 只暴露 recent / pickOpen / open / forget / info。⚠️IPC 返回值要能结构化克隆，别把 BrowserWindow 传回页面。
+- **项目启动器** —— 模板 `Synapsis.vbs`：装了 Electron 就用桌面程序 `--ws <本目录>` 打开，否则退回 dev 服务 + 浏览器。
+- **安装** —— `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`；npm 11 下 postinstall 可能没下二进制 → 手动 `node node_modules/electron/install.js`。
+- **自检** —— `test/desktop.test.js`：`SYN_TEST_HIDDEN` 窗口不显示、跳过确认框；`SYN_RECENT` 把最近列表指到临时文件。外部服务在跑 / 不在跑两条路径都过过。
 
 ## `>v<🧭导航`
 

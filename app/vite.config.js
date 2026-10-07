@@ -15,6 +15,7 @@ function heartbeat() {
     name: 'synapsis-heartbeat',
     configureServer(server) {
       server.middlewares.use('/__alive', (_req, res) => { last = Date.now(); res.end('ok'); });
+      if (process.env.SYN_DESKTOP) return; // 托盘程序里由 Electron 管生命周期，不能「没网页就退出」
       setInterval(() => {
         if (last && Date.now() - last > IDLE_MS) { console.log('[synapsis] 没有网页开着，自动退出'); process.exit(0); }
       }, 15000).unref();

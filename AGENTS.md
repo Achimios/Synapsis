@@ -21,6 +21,7 @@
 | `core/` | ⭐数据核心：工作区读写、大纲、CLI（`node core/cli.js` 看用法） |
 | `bootstrap/` | ⭐**项目构建引导**：用户所有新项目的规矩 + 骨架模板 + 生成脚本（全局 skill `project-bootstrap` 指向这里） |
 | `app/` | 界面：React Flow（已定，见 `_Design/Decision_Canvas.md`）+ 外壳 + dev 服务里的工作区 API |
+| `Synapsis_desktop.vbs` | ⭐**托盘程序**（Electron，像 Obsidian）：启动台（最近打开 / 打开文件夹，没挂上的会问要不要初始化），每个工作区一个窗口 |
 | `Synapsis.vbs` / `Synapsis_stop.bat` / `Synapsis_init.vbs` | 打开 Synapsis 自己的工作区 / 停服务 / **双击弹出选文件夹窗口（记住上次位置）或把文件夹拖上去 = 挂上 Synapsis** |
 
 ## 规矩
