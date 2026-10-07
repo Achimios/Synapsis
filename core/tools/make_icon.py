@@ -1,6 +1,7 @@
 # 任意图片 -> Synapsis 图标：app/electron/icon.png（托盘 / 窗口）+ icon.ico（多尺寸）+ 根目录快捷方式
 # 用法：python core/tools/make_icon.py <图片> [--desktop <图片2>]
 #   第一张给「打开本项目」(Synapsis.lnk)，--desktop 给「打开客户端」(Synapsis 客户端.lnk) 和托盘；不给就共用第一张。
+# 透明底或黑底都行：黑底（没有透明像素）的图自动把黑色转成透明。
 # .vbs 本身不能换图标，所以生成 .lnk 快捷方式（图标 + 直接调 electron，不经过 vbs）。
 import sys, os, subprocess
 from PIL import Image
@@ -11,8 +12,18 @@ EXE = os.path.join(HOME, 'app', 'node_modules', 'electron', 'dist', 'electron.ex
 MAIN = os.path.join(ELEC, 'main.mjs')
 SIZES = [16, 24, 32, 48, 64, 128, 256]
 
+def unblack(im):
+    # 黑底发光图 -> 透明：alpha = 最亮通道，颜色除回去（加色混合的逆运算，发光边缘不会留黑圈）
+    import numpy as np
+    a = np.asarray(im.convert('RGB')).astype(float) / 255
+    al = np.clip((a.max(axis=2) - 0.03) / 0.97, 0, 1)  # 压掉黑底噪点
+    rgb = np.clip(a / np.maximum(al[..., None], 1e-6), 0, 1) * (al[..., None] > 0)
+    out = Image.fromarray((np.dstack([rgb, al]) * 255).astype('uint8'), 'RGBA')
+    return out.crop(Image.fromarray((al > 0.08).astype('uint8') * 255).getbbox())
+
 def square(path):
     im = Image.open(path).convert('RGBA')
+    if im.getextrema()[3][0] == 255: im = unblack(im)  # 没有透明像素 = 黑底图
     bb = im.getbbox()  # 裁掉全透明边
     if bb: im = im.crop(bb)
     s = max(im.size)
