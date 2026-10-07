@@ -82,6 +82,9 @@ function ScaleFrame({ nodes, ids, setNodes, onMove }) {
     };
     const up = () => {
       window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); setMode('');
+      // 松手处和按下处不是同一个元素时，浏览器会在共同祖先上补一个 click → 被当成「点空白」退出多选（👤 2026-10-08：缩放后不要退出选择）
+      const eat = ev => { ev.stopPropagation(); ev.preventDefault(); };
+      window.addEventListener('click', eat, true); setTimeout(() => window.removeEventListener('click', eat, true), 300);
       onMove(Object.fromEntries(last.map(q => [q.id, { x: Math.round(q.x - q.off.x + q.o[0] * q.w), y: Math.round(q.y - q.off.y + q.o[1] * q.h) }])));
     };
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);

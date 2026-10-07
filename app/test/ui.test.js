@@ -548,12 +548,13 @@ for (const kind of ['reactflow']) {
   // 拖过最左边再拖一段（挤到头之后继续收）→ 对齐成一列
   for (let i = 1; i <= 12; i++) await page.mouse.move(eh.x - (eh.x - left) * 2 * i / 12, eh.y);
   const modeTxt = await page.$eval('.scaleframe .shmode', e => e.innerText).catch(() => '');
-  await page.mouse.up(); await sleep(900);
+  await page.mouse.up(); await page.evaluate(() => document.querySelector('.react-flow__pane').click()); await sleep(900); // 模拟浏览器在共同祖先上补的 click
   const L = lay(), xs = ['甲', '乙', '丙'].map(k => L[k].x), ys = ['甲', '乙', '丙'].map(k => L[k].y);
   ok(modeTxt === '对齐' && xs.every(x => x === xs[0]), '拖到底 → 左对齐 ' + modeTxt + ' ' + xs);
   ok(ys[0] < ys[1] && ys[1] < ys[2], '会重叠的往下依次排开（保持左右顺序） ' + ys);
   const cb = await Promise.all(['甲', '乙', '丙'].map(async l => (await card(l)).boundingBox()));
   ok(cb.every((b, i) => cb.slice(i + 1).every(q => b.y + b.height <= q.y || q.y + q.height <= b.y)), '排开后卡片互不重叠');
+  ok((await page.$$('.card.sel')).length === 3 && !!(await page.$('.scaleframe')), '缩放完还保持选中（👤：点空白才退出） ' + (await page.$$('.card.sel')).length);
   await page.keyboard.press('Control+z'); await sleep(1000);
   ok(lay()['乙'].x === 400 && lay()['乙'].y === 0, '框选缩放也能 Ctrl+Z');
   // 项目文档：先检测；同名中文的默认不勾；只建勾上的
