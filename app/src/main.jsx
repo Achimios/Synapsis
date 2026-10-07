@@ -195,7 +195,24 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
     data: { look: rw?.id === e.id ? { ...edgeLook(e, selected, near), opacity: 0.2 } : edgeLook(e, selected, near), idx, text: e.text || '', mat: e.mat || null },
   }));
 
-  const onNodesChange = useCallback(ch => setNodes(ns => applyNodeChanges(ch, ns)), []);
+  // >v<🎨画布-锁轴拖动-拖卡片时按住 Shift = 只横移或只竖移（看从起点算哪个方向挪得多；👤 2026-10-08）
+  const dragStart = useRef(null), shiftDown = useRef(false);
+  useEffect(() => {
+    const k = e => { shiftDown.current = e.shiftKey; }, b = () => { shiftDown.current = false; };
+    window.addEventListener('keydown', k); window.addEventListener('keyup', k); window.addEventListener('blur', b);
+    return () => { window.removeEventListener('keydown', k); window.removeEventListener('keyup', k); window.removeEventListener('blur', b); };
+  }, []);
+  const onNodesChange = useCallback(ch => {
+    const st = dragStart.current;
+    if (st && shiftDown.current) {
+      const lead = ch.find(c => c.type === 'position' && c.dragging && c.position && st.pos[c.id]);
+      if (lead) {
+        const s0 = st.pos[lead.id], horiz = Math.abs(lead.position.x - s0.x) >= Math.abs(lead.position.y - s0.y);
+        ch = ch.map(c => c.type === 'position' && c.position && st.pos[c.id] ? { ...c, position: horiz ? { x: c.position.x, y: st.pos[c.id].y } : { x: st.pos[c.id].x, y: c.position.y } } : c);
+      }
+    }
+    setNodes(ns => applyNodeChanges(ch, ns));
+  }, []);
   const nodesRef = useRef(nodes); nodesRef.current = nodes;
   // AI 指令框用：选中一批（预览 / 执行「选中」）；量卡片（对齐 / 排列要宽高，坐标给存的那套）
   cardActions.select = ids => { setMulti(ids); onSelect(ids.length === 1 ? ids[0] : ids.at(-1) ?? null); };
@@ -259,7 +276,8 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
       onEdgeClick={() => {}} /* 有点击回调连线才接收鼠标（右键菜单、Alt 拖都要用） */
       className={alt ? 'altdown' : ''}
       onNodeDoubleClick={(_, n) => onDrill(n.id)}
-      onNodeDragStop={(_, n, dragged) => onMove(Object.fromEntries((dragged || [n]).map(d => [d.id, toLayout(d.id, d.position)])))}
+      onNodeDragStart={(_, n, dragged) => { dragStart.current = { pos: Object.fromEntries((dragged || [n]).map(d => [d.id, { ...d.position }])) }; }}
+      onNodeDragStop={(_, n, dragged) => { dragStart.current = null; const cur = id => nodesRef.current.find(x => x.id === id)?.position; /* 用画布上的（锁轴后的）坐标 */ onMove(Object.fromEntries((dragged || [n]).map(d => [d.id, toLayout(d.id, cur(d.id) || d.position)]))); }}
       onConnect={c => onConnect(c.source, c.target, c.sourceHandle === 'mo' || c.targetHandle === 'mi')}
       zoomOnDoubleClick={false} deleteKeyCode={null} minZoom={0.1} colorMode="dark"
       // 记住的视图优先；第一次进这个范围才 fitView

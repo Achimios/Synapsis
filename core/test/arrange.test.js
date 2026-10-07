@@ -26,7 +26,18 @@ ok(sMin > 0.3 && sMin < 0.4, '同一行：不重叠的最小比例 ≈ (100+12)/
 r = scaleAxis(row, 'x', 'min', sMin - 0.1);
 ok(r.mode === 'hold' && noOverlap(r.rects), '缩过头一点：停在 sMin，不重叠');
 r = scaleAxis(row, 'x', 'min', 0);
-ok(r.mode === 'align' && r.rects.every(q => q.x === 0) && noOverlap(r.rects), '继续拖到底：左对齐，会重叠的往下排开');
+ok(r.mode === 'hold' && near(byId(r.rects, 'b').x, 112) && near(byId(r.rects, 'c').x, 224) && noOverlap(r.rects), '收到 0：同一行的依次贴住（挤到头），不重叠 ' + r.rects.map(q => q.x));
+// 👤 2026-10-08：贴住的停下，其余还能靠近的继续靠近 —— 第一对贴住不能拦住别的行
+const two = [{ id: 'a', x: 0, y: 0, w: 100, h: 40 }, { id: 'b', x: 150, y: 0, w: 100, h: 40 }, { id: 'd', x: 400, y: 200, w: 100, h: 40 }];
+r = scaleAxis(two, 'x', 'min', 0.3);
+ok(near(byId(r.rects, 'b').x, 112) && near(byId(r.rects, 'd').x, 120) && r.mode === 'hold', 'a、b 贴住了，另一行的 d 照样按比例靠近（400 → 120） ' + r.rects.map(q => q.x));
+r = scaleAxis(two, 'x', 'min', 0);
+ok(byId(r.rects, 'd').x === 0 && near(byId(r.rects, 'b').x, 112), '收到 0：d 一路靠到最左，b 贴着 a');
+// 拖过锚边再拖一段 → 对齐成一列，会重叠的往下排开
+r = scaleAxis(row, 'x', 'min', -0.1);
+ok(r.mode === 'hold' && near(byId(r.rects, 'c').x, 224), '刚拖过锚边：还停在挤到头');
+r = scaleAxis(row, 'x', 'min', -0.5);
+ok(r.mode === 'align' && r.rects.every(q => q.x === 0) && noOverlap(r.rects), '继续拖：左对齐，会重叠的往下排开');
 const ys = ['a', 'b', 'c'].map(id => byId(r.rects, id).y);
 ok(ys[0] === 0 && ys[1] >= 40 + GAP && ys[2] >= ys[1] + 40 + GAP - 0.01, '排开保持原来的上下顺序（a、b、c） ' + ys);
 

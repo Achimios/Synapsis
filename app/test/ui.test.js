@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSy
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { saveOutline } from '../../core/workspace.js';
+import { saveOutline, setNodeBody } from '../../core/workspace.js';
 import { runBatch } from '../../core/cli.js';
 import { SAMPLE } from '../src/sample.js';
 import { PALETTE } from '../../core/colors.js';
@@ -545,7 +545,8 @@ for (const kind of ['reactflow']) {
   ok(!!(await page.$('.scaleframe')) && (await page.$$('.card.sel')).length === 3, 'Shift 框选 3 张 → 出现缩放框');
   const eh = await (await page.$('.scaleframe .sh-e')).boundingBox();
   await page.mouse.move(...mid(eh)); await page.mouse.down();
-  for (let i = 1; i <= 12; i++) await page.mouse.move(eh.x - (eh.x - left) * i / 12, eh.y);
+  // 拖过最左边再拖一段（挤到头之后继续收）→ 对齐成一列
+  for (let i = 1; i <= 12; i++) await page.mouse.move(eh.x - (eh.x - left) * 2 * i / 12, eh.y);
   const modeTxt = await page.$eval('.scaleframe .shmode', e => e.innerText).catch(() => '');
   await page.mouse.up(); await sleep(900);
   const L = lay(), xs = ['甲', '乙', '丙'].map(k => L[k].x), ys = ['甲', '乙', '丙'].map(k => L[k].y);
@@ -736,6 +737,7 @@ for (const kind of ['reactflow']) {
   const ws = mkdtempSync(join(tmpdir(), 'syn-ai-ui-')); noAi(ws, `http://127.0.0.1:${srv.address().port}/v1`);
   saveOutline(ws, '惊慌失措\n情绪恐惧\n情绪反应\n传感器\n咕噜人\n吓坏了');
   writeFileSync(join(ws, '__synapsis', '_配色.md'), words);
+  setNodeBody(ws, '传感器', '# 读数\n\n| 名 | 值 |\n|---|---|\n| 视野 | **90** |\n\n- 第一条\n- 第二条');
   writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 惊慌失措: { x: 0, y: 0 }, 情绪恐惧: { x: 260, y: 0 }, 情绪反应: { x: 520, y: 0 }, 传感器: { x: 0, y: 160 }, 咕噜人: { x: 260, y: 160 }, 吓坏了: { x: 520, y: 160 } }));
   const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
   const errs = []; page.on('pageerror', e => errs.push(e.message));
@@ -807,6 +809,29 @@ for (const kind of ['reactflow']) {
   ok(!/生命/.test(gmd()) && !(await page.$('.meta.edit input.mk')), '✕ → 删掉属性');
   await page.fill('.addrow td:first-child input', '血量'); await page.fill('.addrow td:nth-child(2) input', '120'); await page.press('.addrow td:nth-child(2) input', 'Enter'); await sleep(1500);
   ok((await cardP()).includes('血量120'), '回车也能加');
+  // 📄 卡片里展开正文（md：标题 / 表格 / 列表）
+  await page.mouse.click(700, 760); await sleep(200);
+  const tb = await page.$$eval('.card', cs => cs.filter(c => c.querySelector('.textbadge')).map(c => c.querySelector('.lab').textContent));
+  ok(tb.join() === '传感器', '只有有正文的卡片才有 📄 ' + tb);
+  await page.click('.card .textbadge'); await sleep(600);
+  const ct = await page.$eval('.card .cardtext', e => ({ h: !!e.querySelector('h4'), td: [...e.querySelectorAll('td')].map(t => t.textContent).join(), b: !!e.querySelector('td b'), li: e.querySelectorAll('li').length }));
+  ok(ct.h && ct.td === '视野,90' && ct.b && ct.li === 2, '点 📄 → 正文在卡片里渲染（标题 / 表格 / 粗体 / 列表） ' + JSON.stringify(ct));
+  await sleep(1000);
+  ok(JSON.parse(readFileSync(join(ws, '.synapsis', 'view.json'), 'utf8')).textOpen?.['传感器'] === true, '展开状态记进 view.json');
+  await page.click('.card .textbadge'); await sleep(400);
+  ok(!(await page.$('.card .cardtext')), '再点 → 收起');
+  await page.click('button:has-text("展开正文")'); await sleep(400);
+  ok((await page.$$('.card .cardtext')).length === 1 && !!(await page.$('button:has-text("收起正文")')), '顶栏「📄 展开正文」→ 本页带正文的全展开');
+  await page.click('button:has-text("收起正文")'); await sleep(400);
+  ok(!(await page.$('.card .cardtext')), '「📄 收起正文」→ 全收起');
+  // Shift + 拖 = 锁轴（斜着拖只横移）
+  const y0 = JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'))['吓坏了'].y;
+  const hb = await (await lab('吓坏了')).boundingBox(), hs = mid(hb);
+  await page.mouse.move(...hs); await page.mouse.down(); // 先拖起来再按 Shift（先按 Shift 再按下 = 框选）
+  for (let i = 1; i <= 8; i++) { await page.mouse.move(hs[0] - i * 12, hs[1] + i * 4); if (i === 2) await page.keyboard.down('Shift'); }
+  await page.mouse.up(); await page.keyboard.up('Shift'); await sleep(1200);
+  const L2 = JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'))['吓坏了'];
+  ok(L2.y === y0 && L2.x < 520 - 40, 'Shift + 斜着拖 → 只横移（y 不变） ' + JSON.stringify(L2) + ' y0=' + y0);
   // 右键空白「在这里新建」→ 新卡片在鼠标处
   await page.mouse.click(700, 600); await sleep(200);
   await page.mouse.click(700, 600, { button: 'right' }); await sleep(300);

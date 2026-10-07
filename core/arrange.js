@@ -47,13 +47,35 @@ export function minScale(rects, axis, anchor) {
   return hi;
 }
 
+// >v<🎨画布-框选挤压-收紧时逐张推进（👤 2026-10-08 反复强调）：每张卡想去等比缩放后的位置，但不能越过「已经摆好、和它在同一行（列）」的卡
+//   → 撞上的贴住停下，其余的继续靠近；s = 0 时 = 谁都不能再靠近了。以前是整体等比、第一对一贴住全体停住，或者直接跳成列 / 排。
+//   按离锚边由近到远摆；原本就重叠的两张互不阻挡（不然一收就被弹开）。返回 {rects, touched}
+export function packAxis(rects, axis, anchor, s) {
+  const [p, d, q, e] = A[axis];
+  const key = r => anchor === 'min' ? r[p] : r[p] + r[d];
+  const a = anchor === 'min' ? Math.min(...rects.map(key)) : Math.max(...rects.map(key));
+  const band = (m, n) => m[q] < n[q] + n[e] + GAP && n[q] < m[q] + m[e] + GAP;
+  const order = [...rects].sort((m, n) => anchor === 'min' ? key(m) - key(n) : key(n) - key(m));
+  const placed = [], orig = new Map(rects.map(r => [r.id, r]));
+  let touched = false;
+  for (const r of order) {
+    let k = a + (key(r) - a) * s; // 想去的锚侧边
+    for (const o of placed) {
+      if (!band(r, o) || overlaps(r, orig.get(o.id))) continue;
+      const lim = anchor === 'min' ? o[p] + o[d] + GAP : o[p] - GAP; // 贴住 o 时的锚侧边
+      if (anchor === 'min' ? k < lim : k > lim) { k = lim; touched = true; }
+    }
+    placed.push({ ...r, [p]: anchor === 'min' ? k : k - r[d] });
+  }
+  return { rects: rects.map(r => placed.find(x => x.id === r.id)), touched };
+}
+
 // 主入口：返回 {rects, mode: 'scale' | 'hold' | 'align'}
+//   s ≥ 1：拉开（等比）；0 ≤ s < 1：逐张推进；s < 0（拖过了锚边）：先停在挤到头，再拖 HOLD → 对齐成同列 / 同排，会重叠的依次排开
 export function scaleAxis(rects, axis, anchor, s) {
-  s = Math.max(0, s);
-  if (s >= 1 || rects.length < 2) return { rects: scaleRaw(rects, axis, anchor, s), mode: 'scale' };
-  const sMin = minScale(rects, axis, anchor);
-  if (s >= sMin) return { rects: scaleRaw(rects, axis, anchor, s), mode: s === 0 ? 'align' : 'scale' };
-  if (sMin === 0 || s > sMin - HOLD) return { rects: scaleRaw(rects, axis, anchor, sMin), mode: sMin === 0 ? 'align' : 'hold' };
+  if (s >= 1 || rects.length < 2) return { rects: scaleRaw(rects, axis, anchor, Math.max(0, s)), mode: 'scale' };
+  if (s >= 0) { const r = packAxis(rects, axis, anchor, s); return { rects: r.rects, mode: r.touched ? 'hold' : s === 0 ? 'align' : 'scale' }; }
+  if (s > -HOLD) { const r = packAxis(rects, axis, anchor, 0); return { rects: r.rects, mode: r.touched ? 'hold' : 'align' }; }
   return { rects: alignStack(rects, axis, anchor), mode: 'align' };
 }
 

@@ -330,3 +330,16 @@ button.aibtn.off { opacity: .7; }
 .card .props .pk::after { content: ':'; }
 .meta.edit td.mx { width: 22px; } .meta.edit td.mx button { padding: 0 4px; opacity: .35; } .meta.edit tr:hover td.mx button { opacity: 1; }
 .meta.edit input.mk { color: var(--dim); }
+
+/* 卡片里展开正文（📄） */
+.card .textbadge { cursor: pointer; font-size: 11px; opacity: .45; } .card .textbadge:hover, .card .textbadge.on { opacity: 1; }
+.card .cardtext { margin-top: 4px; max-height: 360px; overflow: auto; font-size: 12px; font-weight: 400; line-height: 1.55; border-top: 1px solid color-mix(in srgb, var(--c) 35%, var(--line)); padding: 4px 2px 2px; cursor: text; user-select: text; }
+.mdlite p { margin: 3px 0; } .mdlite h4, .mdlite h5, .mdlite h6 { margin: 8px 0 3px; color: color-mix(in srgb, var(--c, var(--accent)) 40%, var(--text)); }
+.mdlite h4 { font-size: 14px; } .mdlite h5 { font-size: 13px; } .mdlite h6 { font-size: 12px; }
+.mdlite ul, .mdlite ol { margin: 3px 0; padding-left: 18px; }
+.mdlite pre { background: var(--bg); padding: 4px 6px; border-radius: 3px; overflow: auto; font: var(--mono); font-size: 11px; margin: 4px 0; }
+.mdlite code { background: var(--bg); padding: 0 3px; border-radius: 2px; font: var(--mono); font-size: 11px; }
+.mdlite blockquote { margin: 3px 0; padding-left: 8px; border-left: 2px solid var(--line2); color: var(--dim); }
+.mdlite table { border-collapse: collapse; margin: 4px 0; font-size: 11px; }
+.mdlite th, .mdlite td { border: 1px solid var(--line2); padding: 2px 5px; text-align: left; vertical-align: top; }
+.mdlite th { background: color-mix(in srgb, var(--c, var(--accent)) 12%, var(--panel2)); }
