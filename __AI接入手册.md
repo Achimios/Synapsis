@@ -52,6 +52,7 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
                                新建节点，打印新 id；同级已有同名 → 报错（--if-missing 则直接返回已有 id）
                                根用 . （Git Bash 会把单独的 / 改写成 Git 安装目录）
   rename <id> <新名字>
+  move <id> <新父id|.>          挪到别的父节点下（正文 / 属性 / 图片 / 连线跟着走，打印新 id）；目标里重名 → 报错
   status <id> <done|partial|todo|dropped|none>   dropped = 弃用 ❌（不算完成度，check 跳过）
   link <从id> <到id> [--label 标签] [--kind 类型]   连线（已有则只改标签）
   unlink <从id> <到id>

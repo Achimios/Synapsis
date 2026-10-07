@@ -14,6 +14,7 @@ export const USAGE = `用法：node core/cli.js <命令> [参数] [--ws <被规�
                                新建节点，打印新 id；同级已有同名 → 报错（--if-missing 则直接返回已有 id）
                                根用 . （Git Bash 会把单独的 / 改写成 Git 安装目录）
   rename <id> <新名字>
+  move <id> <新父id|.>          挪到别的父节点下（正文 / 属性 / 图片 / 连线跟着走，打印新 id）；目标里重名 → 报错
   status <id> <done|partial|todo|dropped|none>   dropped = 弃用 ❌（不算完成度，check 跳过）
   link <从id> <到id> [--label 标签] [--kind 类型]   连线（已有则只改标签）
   unlink <从id> <到id>
@@ -33,7 +34,7 @@ import { PATTERN_FILE, DEFAULT_PATTERN_WORDS } from './patterns.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadWorkspace, workspaceOutline, checkWorkspace, groupStatus, saveOutline, ensureWorkspaceReadme, setNodeMeta, setNodeBody, setEdgeLabel, findNodes, MANUAL_MARK, DIR } from './workspace.js';
+import { loadWorkspace, workspaceOutline, checkWorkspace, groupStatus, saveOutline, ensureWorkspaceReadme, setNodeMeta, setNodeBody, setEdgeLabel, findNodes, moveNodes, MANUAL_MARK, DIR } from './workspace.js';
 import { spaceInfo, closestPairs } from './space.js';
 import { exportForLLM, withNode, withLabel, withStatus, withEdge, withoutEdge, withoutNode, ROOT } from './outline.js';
 
@@ -150,6 +151,7 @@ export function runWrite(root, cmd, args, argv = []) {
     if (label !== undefined || kind !== undefined) setEdgeLabel(root, a, b, label || '', kind || '');
     return `${a} -> ${b}` + (label ? `（${label}${kind ? '·' + kind : ''}）` : '');
   }
+  if (cmd === 'move') { need(a); return moveNodes(root, [a], isRoot(b) ? ROOT : need(b)).roots[0]; }
   if (cmd === 'unlink') { need(a); need(b); commit(withoutEdge(g, a, b)); return `已断开 ${a} -> ${b}`; }
   if (cmd === 'rm') { need(a); const r = commit(withoutNode(g, a)); return '已移进 _过期的/：' + r.removed.join('、'); }
   if (cmd === 'body') { const text = argv.literalBody ? b ?? '' : !b || b === '-' ? readFileSync(0, 'utf8') : readFileSync(b, 'utf8'); setNodeBody(root, a, text); return a + ' 正文已替换（' + text.length + ' 字）'; }
@@ -163,7 +165,7 @@ export function runWrite(root, cmd, args, argv = []) {
 }
 
 // >v<🤖LLM接口-batch-一批写命令一个进程跑完：[[命令, 参数…, {label,kind,after,ifMissing}?], …]；遇错停下
-export const WRITE_CMDS = ['add', 'rename', 'status', 'link', 'unlink', 'body', 'set', 'rm'];
+export const WRITE_CMDS = ['add', 'rename', 'move', 'status', 'link', 'unlink', 'body', 'set', 'rm'];
 export function runBatch(root, ops) {
   if (!Array.isArray(ops)) throw new Error('batch 要一个 JSON 数组：[["add",".","名字"], …]');
   const out = [];

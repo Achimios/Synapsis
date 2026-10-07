@@ -36,6 +36,12 @@ try {
   r = run('rename', '感知/听觉', '听觉（声源）');
   ok(r.out === '感知/听觉（声源）' && node('感知/听觉（声源）') && !node('感知/听觉'), 'rename ' + r.out + r.err);
   ok(loadWorkspace(root).graph.edges.find(x => x.from === '感知/视觉')?.label === '敌人位置', '改别的节点名字不丢边标签');
+  r = run('move', '感知/听觉（声源）', '决策');
+  ok(r.out === '决策/听觉（声源）' && node('决策/听觉（声源）') && !node('感知/听觉（声源）'), 'move 挪到别的父节点，打印新 id ' + r.out + r.err);
+  r = run('move', '决策/听觉（声源）', '决策');
+  ok(r.code !== 0 && /已经在这里/.test(r.err), 'move 到原处 → 报错 ' + r.err);
+  r = run('move', '决策/听觉（声源）', '感知');
+  ok(r.out === '感知/听觉（声源）', 'move 回来');
   r = run('set', '感知/视觉', 'code=src/eye.js#see', 'rate=10 Hz');
   ok(node('感知/视觉').meta.code === 'src/eye.js#see' && node('感知/视觉').meta.rate === '10 Hz', 'set 属性');
   r = run('set', '感知/视觉', 'rate=');
