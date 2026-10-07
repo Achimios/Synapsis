@@ -5,7 +5,7 @@ import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode
 import { colorMap } from './colors.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
 import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal, ScaffoldModal, SearchModal } from './panels.jsx';
-import { AiPanel, RelatedDock } from './ai.jsx';
+import { AiPanel, RelatedDock, AgentBox } from './ai.jsx';
 import { SAMPLE } from './sample.js';
 import './shell.css';
 
@@ -26,6 +26,9 @@ const withWs = path => '/api' + path + (WSQ ? (path.includes('?') ? '&' : '?') +
 const api = (path, opts) => fetch(withWs(path), opts && { ...opts, headers: { 'content-type': 'application/json' } })
   .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || (j.report && j.report.errors && JSON.stringify(j.report.errors)) || r.status); return j; });
 
+// >v<🎨画布-卡片属性-人加的属性显示在卡片上（👤 2026-10-08：加了属性画布上看不到）；结构 / 显示用的字段不算，最多 4 条
+const SYS_META = new Set(['to', 'label', 'status', 'order', 'color', 'vec', 'axes', 'evidence', 'rate', 'picw', 'img', 'kind']);
+const cardProps = meta => Object.entries(meta || {}).filter(([k, v]) => !SYS_META.has(k) && !k.startsWith('_') && !k.startsWith('W_') && !k.startsWith('映射') && typeof v !== 'object' && String(v).trim() !== '');
 export function Shell({ name, Canvas }) {
   const [mode, setMode] = useState(DEMO ? 'demo' : 'loading'); // demo | loading | ws | offline
   const [wsData, setWsData] = useState(null);
@@ -75,7 +78,7 @@ export function Shell({ name, Canvas }) {
     return { keys, u, v, S, pts, angle: angleDeg(u, v), labels: keys.map(k => directionLabel(space, k)) };
   }, [space, spaceAxes, realScope]);
   // >v<🤖AI辅助-接入-LM Studio 状态 / 语义配色（core/ai.js）：连不上就当没有，什么都不挡
-  const [aiStatus, setAiStatus] = useState(null), [aiOpen, setAiOpen] = useState(false), [semCols, setSemCols] = useState(null);
+  const [aiStatus, setAiStatus] = useState(null), [aiOpen, setAiOpen] = useState(false), [semCols, setSemCols] = useState(null), [agentOpen, setAgentOpen] = useState(false);
   const aiCheck = () => mode === 'ws' && api('/ai/status').then(setAiStatus).catch(() => setAiStatus({ ok: false, error: 'Synapsis 服务没回应' }));
   useEffect(() => { aiCheck(); }, [mode]);
   useEffect(() => {
@@ -105,6 +108,7 @@ export function Shell({ name, Canvas }) {
       nodes: v.nodes.map(n => ({
         ...n, color: colOf(n.id), dropped: isDropped(graph, n.id), sub: wsData?.nodes[n.id]?.meta?.rate || '',
         evidence: wsData?.nodes[n.id]?.meta?.evidence || '',
+        props: cardProps(wsData?.nodes[n.id]?.meta),
         vec: getMeta(n.id)?.vec ? parseVec(getMeta(n.id).vec) : null, vecAxes: pAxes,
         spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
         picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id],
@@ -484,6 +488,7 @@ export function Shell({ name, Canvas }) {
   // 画布快捷键（焦点在输入框里时不触发）
   useEffect(() => {
     const onKey = e => {
+      if (e.ctrlKey && !e.altKey && (e.key === 'j' || e.key === 'J')) { e.preventDefault(); e.stopPropagation(); if (mode === 'ws') setAgentOpen(o => !o); return; } // AI 指令框（输入框里也能用）
       if (e.ctrlKey && !e.altKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); e.stopPropagation(); setFinder({ mode: 'go' }); return; } // 在输入框里也能用
       const inText = e.target.closest && e.target.closest('textarea, input, [contenteditable="true"]');
       if (inText) return;
@@ -688,6 +693,7 @@ export function Shell({ name, Canvas }) {
           <button onClick={() => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; })}>{allOpen ? '全部收起' : '全部展开'}</button>
           {withPics.length > 0 && <button onClick={() => setPicFold(f => { const g = { ...f }; for (const n of withPics) g[n.id] = !allPicsFolded; return g; })} title="当前页所有卡片的图片一起收起 / 显示">{allPicsFolded ? '显示图片' : '收起图片'}</button>}
           <button onClick={() => setExportText(exportForLLM(graph, realScope))}>导出给 LLM</button>
+          {mode === 'ws' && <button title="AI 指令框（Ctrl+J）：用一句话让本地模型在当前页对齐 / 排列 / 连线 / 改状态…，先预览再执行" onClick={() => setAgentOpen(o => !o)}>💬 指令</button>}
           {mode === 'ws' && <button className={'aibtn ' + (aiStatus?.ok ? 'on' : 'off')} title={aiStatus?.ok ? 'LM Studio 已连上：语义配色 / 潜在关联 / 生成词表' : 'AI 辅助（LM Studio）：' + (aiStatus?.error || '检查中')} onClick={() => { setAiOpen(true); aiCheck(); }}>🤖 AI</button>}
           {mode === 'ws' && <button title="给这个项目补开发进度 / 待办 / 规矩那套文档（先检测，已有的不覆盖）" onClick={() => api('/scaffold').then(d => setScaffold(d.items)).catch(e => setSaveState('❌ ' + e.message))}>📄 项目文档…</button>}
           {local && <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>}
@@ -721,6 +727,15 @@ export function Shell({ name, Canvas }) {
       )}
       {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（I 开关）</div></aside>}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+      {agentOpen && mode === 'ws' && <AgentBox api={api} scope={realScope} selected={cardActions.multi?.length ? cardActions.multi : sel ? [sel] : []}
+        onPreview={ids => ids.length && cardActions.select?.(ids)} onClose={() => setAgentOpen(false)}
+        onApplied={async good => {
+          const d = await api('/ai/apply', { method: 'POST', body: JSON.stringify({ actions: good, boxes: cardActions.boxes?.() || {} }) });
+          lastSaved.current = d.report.outline; setText(d.report.outline); setWsData(d); recordSave(d.report.outline, d.report);
+          if (Object.keys(d.moves).length) move(d.moves);
+          if (d.select.length) cardActions.select?.(d.select);
+          setSaveState('AI 指令已执行 ' + good.length + ' 步（Ctrl+Z 撤销）');
+        }} />}
       {aiOpen && <AiPanel api={api} status={aiStatus} onStatus={setAiStatus} onClose={() => setAiOpen(false)} onWordsApplied={d => { setWsData(d); setSaveState('配色词表已更新：' + d.file); }} />}
       {finder && <SearchModal title={finder.mode === 'link' ? '连线：「' + graph.nodes.get(finder.from)?.label + '」→ 哪个节点？' : '跳到节点（Ctrl+F）'} items={searchItems} exclude={finder.from}
         onClose={() => setFinder(null)} onPick={id => finder.mode === 'link' ? connect(finder.from, id) : jumpTo(id)} />}
@@ -821,6 +836,8 @@ export function NodeCard({ node, img, dim, isSel }) {
         {node.children.length > 0 && <span className="kids fr" title="原地展开成框（F）：子节点画在框里，线直连" onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.toggleFrame(node.id); }}>⊞</span>}</div>
       {(node.sub || node.evidence) && <div className="sub">{node.evidence && <span className={'ev ev-' + (EVIDENCE[node.evidence] || 'x')} title="证据等级（evidence:）">{node.evidence}</span>}{node.sub}</div>}
+      {node.props?.length > 0 && <div className="props">{node.props.slice(0, 4).map(([k, v]) => <div key={k} title={k + ': ' + v}><span className="pk">{k}</span>{String(v)}</div>)}
+        {node.props.length > 4 && <div className="hint">… 还有 {node.props.length - 4} 条（I 看全部）</div>}</div>}
       {node.spaceAxes && <div className="axchips" title="空间节点：双击进去看成员的坐标投影">⊹ {node.spaceAxes.join(' · ')}</div>}
       {node.vec && <VecBars vec={node.vec} axes={node.vecAxes} />}
       {node.open && node.kids && <ul className="kidlist">{node.kids.map(k => (

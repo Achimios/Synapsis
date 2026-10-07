@@ -302,3 +302,31 @@ button.aibtn.off { opacity: .7; }
 .reldock .llm { width: 34px; flex: none; font-size: 9px; letter-spacing: -1px; color: var(--dim); }
 .reldock .llm.l3 { color: var(--ok); } .reldock .llm.l2 { color: var(--accent); }
 .reldock .why.short { color: var(--dim); background: none; padding: 0 6px; }
+
+/* AI 指令框（Ctrl+J） */
+.agentbox { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(680px, 94vw); max-height: 62vh; z-index: 900; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; box-shadow: 0 8px 28px rgba(0,0,0,.5); overflow: hidden; }
+.agentbox .bar { display: flex; gap: 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.agentbox .bar a { cursor: pointer; color: var(--dim); } .agentbox .bar a.on { color: var(--text); border-bottom: 2px solid var(--accent); }
+.agentbox .turns, .agentbox .logs { overflow: auto; padding: 6px 10px; flex: 1; min-height: 60px; }
+.agentbox .turn { margin: 6px 0; }
+.agentbox .turn .u { color: var(--text); } .agentbox .turn .a { color: var(--dim); margin-top: 2px; }
+.agentbox ul { list-style: none; margin: 4px 0; padding: 0 0 0 18px; }
+.agentbox .done li { color: var(--ok); }
+.agentbox .plan { border: 1px dashed var(--line2); border-radius: 4px; padding: 6px 8px; margin: 6px 0; }
+.agentbox .plan li.ok { color: var(--text); } .agentbox .plan li.no { color: var(--bad); }
+.agentbox .plan .row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.agentbox button.go { border-color: var(--ok); }
+.agentbox textarea.ask { border: 0; border-top: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; font-size: 14px; padding: 8px 10px; resize: none; outline: none; }
+.agentbox .logrow { border-bottom: 1px solid var(--line); }
+.agentbox .logrow .head { display: flex; gap: 8px; align-items: center; padding: 4px 0; cursor: pointer; }
+.agentbox .logrow .head .t { color: var(--dim); font: var(--mono); }
+.agentbox .logrow pre { white-space: pre-wrap; font: var(--mono); font-size: 11px; max-height: 260px; overflow: auto; background: var(--bg); padding: 6px; margin: 2px 0 6px; }
+.agentbox .bad { color: var(--bad); }
+
+/* 卡片上的属性 */
+.card .props { margin-top: 3px; font-size: 11px; line-height: 1.4; color: var(--dim); border-top: 1px dashed color-mix(in srgb, var(--c) 30%, var(--line)); padding-top: 2px; }
+.card .props > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .props .pk { color: color-mix(in srgb, var(--c) 45%, var(--text)); margin-right: 5px; }
+.card .props .pk::after { content: ':'; }
+.meta.edit td.mx { width: 22px; } .meta.edit td.mx button { padding: 0 4px; opacity: .35; } .meta.edit tr:hover td.mx button { opacity: 1; }
+.meta.edit input.mk { color: var(--dim); }

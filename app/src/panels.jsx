@@ -71,22 +71,32 @@ const countAll = n => n.descendants ?? n.children.length;
 // >v<🎨画布-属性面板-节点属性/出入边/正文（工作区模式下正文可改，失焦保存）
 // >v<🎨画布-属性可编辑-值失焦保存（清空 = 删掉这个键）；底下一行加新属性；空间相关的给快捷按钮（轴 / 坐标 / 映射）
 const LOCKED = new Set(['to', 'label', 'status', 'order']);
+// >v<🗂️属性面板-属性表-改名 / 改值失焦就存；清空值 = 值留空（不删属性），删属性点 ✕；新行填了名字，失焦也存（👤 2026-10-08）
 function MetaTable({ id, meta, editable, onMeta, hints = [] }) {
   const [k, setK] = useState(''), [v, setV] = useState('');
-  const keyRef = useRef(null);
+  const keyRef = useRef(null), addRef = useRef(null);
   useEffect(() => { setK(''); setV(''); }, [id]);
-  const add = () => { const kk = k.trim(); if (!kk || LOCKED.has(kk)) return; onMeta(id, { [kk]: v.trim() || null }); setK(''); setV(''); };
+  const keys = new Set(meta.map(([key]) => key));
+  const add = () => { const kk = k.trim(); if (!kk || LOCKED.has(kk) || keys.has(kk)) return; onMeta(id, { [kk]: v.trim() }); setK(''); setV(''); };
+  // 焦点离开整行才存（在名字和值之间切换不算）
+  const addBlur = e => { if (!addRef.current?.contains(e.relatedTarget)) add(); };
   const rows = meta.filter(([key]) => !LOCKED.has(key));
   if (!editable) return rows.length > 0 ? <table className="meta"><tbody>{rows.map(([key, val]) => <tr key={key}><td>{key}</td><td>{Array.isArray(val) ? val.join('；') : val}</td></tr>)}</tbody></table> : null;
+  const keyOk = (nk, old) => nk && nk !== old && !LOCKED.has(nk) && !keys.has(nk) && !/[:\r\n]/.test(nk);
   return (
     <table className="meta edit"><tbody>
-      {rows.map(([key, val]) => <tr key={key}><td>{key}</td><td>
-        <input key={id + key + val} defaultValue={Array.isArray(val) ? val.join('；') : val} disabled={Array.isArray(val)} title={Array.isArray(val) ? '列表值请在原文里改' : '失焦保存；清空 = 删掉这个属性'}
+      {rows.map(([key, val]) => <tr key={key}>
+        <td><input key={id + key} className="mk" defaultValue={key} disabled={Array.isArray(val)} title="属性名：改完失焦保存（不能和已有的重名）"
+          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { e.currentTarget.value = key; e.currentTarget.blur(); } }}
+          onBlur={e => { const nk = e.currentTarget.value.trim(); if (keyOk(nk, key)) onMeta(id, { [key]: null, [nk]: val }); else e.currentTarget.value = key; }} /></td>
+        <td><input key={id + key + val} defaultValue={Array.isArray(val) ? val.join('；') : val} disabled={Array.isArray(val)} title={Array.isArray(val) ? '列表值请在原文里改' : '失焦保存；清空 = 值留空（删属性点 ✕）'}
           onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { e.currentTarget.value = val; e.currentTarget.blur(); } }}
-          onBlur={e => { const nv = e.currentTarget.value.trim(); if (nv !== String(val)) onMeta(id, { [key]: nv || null }); }} /></td></tr>)}
-      <tr className="addrow"><td><input ref={keyRef} placeholder="＋ 属性" value={k} onChange={e => setK(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} /></td>
-        <td><input placeholder="值（回车添加）" value={v} onChange={e => setV(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} /></td></tr>
-      {hints.length > 0 && <tr><td colSpan={2} className="metahints">{hints.map(h => <button key={h.label} title={h.title} onClick={() => { setK(h.key); setV(h.value); keyRef.current?.focus(); }}>{h.label}</button>)}</td></tr>}
+          onBlur={e => { const nv = e.currentTarget.value.trim(); if (nv !== String(val)) onMeta(id, { [key]: nv }); }} /></td>
+        <td className="mx"><button title={'删掉属性「' + key + '」'} onClick={() => onMeta(id, { [key]: null })}>✕</button></td></tr>)}
+      <tr className="addrow" ref={addRef}><td><input ref={keyRef} placeholder="＋ 属性" value={k} onChange={e => setK(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} onBlur={addBlur} /></td>
+        <td><input placeholder="值（回车 / 失焦添加）" value={v} onChange={e => setV(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} onBlur={addBlur} /></td><td /></tr>
+      {k.trim() && keys.has(k.trim()) && <tr><td colSpan={3} className="hint bad">已经有「{k.trim()}」了</td></tr>}
+      {hints.length > 0 && <tr><td colSpan={3} className="metahints">{hints.map(h => <button key={h.label} title={h.title} onClick={() => { setK(h.key); setV(h.value); keyRef.current?.focus(); }}>{h.label}</button>)}</td></tr>}
     </tbody></table>
   );
 }
@@ -240,6 +250,7 @@ export function ScaffoldModal({ items, root, onCreate, onClose }) {
 
 export const KEYMAP = [
   ['选择与查看', [['单击卡片 / 大纲行', '选中，右侧显示概览'], ['I', '属性面板开关'], ['Tab', '左栏开关'], ['? / F1', '这一页']]],
+  ['AI', [['Ctrl+J', 'AI 指令框：一句话让本地模型在当前页做事（先预览，Enter 执行，Esc 不要）'], ['顶栏 🤖 AI', '连 LM Studio、选模型、语义配色、生成词表'], ['选中节点 → 右边「🔗 潜在关联」', '可能有关但还没连上的节点 / 文档']]],
   ['搜索', [['Ctrl+F', '全局搜索（名字 / 属性 / 正文）→ 跳过去'], ['大纲顶上的过滤框', '只看名字含这些字的节点']]],
   ['导航', [['双击卡片 / 大纲行的 →', '钻进去'], ['Alt+↑', '上一层'], ['鼠标侧键 / Alt+← →', '后退 / 前进'], ['大纲树里 ↑↓←→', '上下走 / 折叠展开'], ['▸N / 空格', '卡片里原地展开子级'], ['⊞ / F', '分组原地展开成框（子节点画在框里、线直连）']]],
   ['编辑', [['Enter', '新建同级'], ['Insert / Ctrl+Enter', '新建子级'], ['F2 / 双击大纲行', '改名'], ['Del', '删除（进 _过期的/）'], ['卡片边缘拖到另一张', '连线'], ['卡片底下 ◆ 拖到另一张顶上', '调节线（参数 / 修改器，不算数据流）'], ['L / 右键「连线到…」', '搜索目标连线（可以连到别的页）'], ['右键连线 / 属性面板 ✕', '删除连线'], ['Alt + 拖连线', '在线身上任意处按下，拿起离鼠标近的那端：放到别的节点 = 改接，放到空白 = 删除，拖着时右键 / Esc = 取消'], ['右键', '菜单：状态（❌ = 弃用）、颜色、属性、原文……'], ['Ctrl+Z', '撤销（结构、连线、拖动；删除也能撤回）'], ['Ctrl+Shift+Z / Ctrl+Y', '重做']]],

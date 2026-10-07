@@ -6,7 +6,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, restoreRemoved, pasteNodes, ensureColorWords, linkNodes, setEdgeLabel, rewireEdge, DIR } from '../core/workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText } from '../core/cli.js';
-import { aiConfig, saveAiConfig, aiStatus, related, rerank, explainRelation, semColors, suggestWords, applyWords } from '../core/ai.js';
+import { aiConfig, saveAiConfig, aiStatus, related, rerank, explainRelation, semColors, suggestWords, applyWords, readAiLog } from '../core/ai.js';
+import { runAgent, applyPlan, loadChat, clearChat } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
 const SYN_HOME = resolve(fileURLToPath(new URL('.', import.meta.url)), '..'); // AI 设置是本机的：<Synapsis>/.synapsis/ai.json
 
@@ -85,10 +86,16 @@ function workspaceApi() {
           if (url.pathname === '/scaffold' && req.method === 'POST') { if (!existsSync(join(root, DIR))) return send(404, { error: '不是 Synapsis 工作区' }); return send(200, { made: scaffoldWrite(root, (await body(req)).files) }); }
           // >v<🤖AI辅助-接口-LM Studio（core/ai.js）：连不上回 503，前端安静降级
           if (url.pathname.startsWith('/ai/')) {
-            const cfg = aiConfig(SYN_HOME, root);
+            const cfg = { ...aiConfig(SYN_HOME, root), log: existsSync(join(root, DIR)) ? join(root, '.synapsis', 'ai_log.jsonl') : null };
             if (url.pathname === '/ai/status') return send(200, await aiStatus(cfg));
+            if (url.pathname === '/ai/log') return send(200, { entries: cfg.log ? readAiLog(cfg.log, Number(url.searchParams.get('n')) || 60) : [] });
+            if (url.pathname === '/ai/chat' && req.method === 'GET') return send(200, { turns: loadChat(root) });
+            if (url.pathname === '/ai/chat' && req.method === 'DELETE') { clearChat(root); return send(200, { turns: [] }); }
+            // AI 指令框：问模型（只回动作草案）/ 👤 确认后执行
+            if (url.pathname === '/ai/apply' && req.method === 'POST') { const b = await body(req); const r = applyPlan(root, b.actions || [], b.boxes || {}); return send(200, { ...r, ...payload(root) }); }
             if (url.pathname === '/ai/config' && req.method === 'PUT') return send(200, await aiStatus(saveAiConfig(SYN_HOME, await body(req))));
             try {
+              if (url.pathname === '/ai/agent' && req.method === 'POST') { const b = await body(req); return send(200, await runAgent(root, b, cfg)); }
               if (url.pathname === '/ai/related') return send(200, { items: await related(root, url.searchParams.get('id') || '', cfg) });
               if (url.pathname === '/ai/rerank' && req.method === 'POST') { const b = await body(req); return send(200, { items: await rerank(root, b.id, b.items, cfg) }); }
               if (url.pathname === '/ai/explain' && req.method === 'POST') { const b = await body(req); return send(200, { text: await explainRelation(root, b.id, b.other, cfg) }); }

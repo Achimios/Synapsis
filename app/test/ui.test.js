@@ -458,7 +458,7 @@ for (const kind of ['reactflow']) {
   ok(/vec: 0\.5, -0\.5, 0/.test(readFileSync(join(ws, '__synapsis', '情绪空间', '备注.md'), 'utf8')), '属性面板「加坐标」写进 md');
   c = await coord('备注');
   ok(Math.abs(c[0] - 0.5) < 0.05 && Math.abs(c[1] + 0.5) < 0.05, '加了坐标立刻出现在散点图上 ' + c.map(x => x.toFixed(2)));
-  const vin = await page.$('.meta.edit tr:has(td:text-is("vec")) input');
+  const vin = await page.$('.meta.edit tr:has(input.mk[value="vec"]) td:nth-child(2) input');
   await vin.fill('0.5, -0.5, 0.9'); await page.keyboard.press('Enter'); await sleep(1000);
   ok(/vec: 0\.5, -0\.5, 0\.9/.test(readFileSync(join(ws, '__synapsis', '情绪空间', '备注.md'), 'utf8')), '属性值原地改，回车保存');
   const view = JSON.parse(readFileSync(join(ws, '.synapsis', 'view.json'), 'utf8'));
@@ -719,10 +719,13 @@ for (const kind of ['reactflow']) {
       const j = s ? JSON.parse(s) : {}, send = o => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(o)); };
       if (req.url === '/api/v0/models') return send({ data: [{ id: 'emb-x', type: 'embeddings' }, { id: 'chat-x', type: 'llm' }] });
       if (req.url === '/v1/embeddings') return send({ data: j.input.map((t, index) => ({ index, embedding: bag(t) })) });
-      const sys = j.messages?.[0]?.content || '', user = j.messages?.[1]?.content || '';
+      const sys = j.messages?.[0]?.content || '', user = j.messages?.at(-1)?.content || ''; // 最后一条 = 这次的话（前面可能是短记忆）
       const lines = user.split(/\r?\n/).map(l => l.match(/^(\d+)\. (.*)$/)).filter(Boolean);
       let out = '';
-      if (/归类配色/.test(sys)) out = lines.map(m => `${m[1]}: ${/吓/.test(m[2]) ? 1 : 0}`).join('\n');
+      const ref = name => (user.match(new RegExp('(n\\d+) ' + name)) || [])[1];
+      if (/思维导图 \/ 节点图工具/.test(sys)) out = /对齐/.test(user) ? JSON.stringify({ say: '将左对齐', actions: [{ do: 'align', ids: [ref('惊慌失措'), ref('传感器')], edge: 'left' }, { do: 'delete', ids: ['n1'] }] })
+        : /完成/.test(user) ? JSON.stringify({ say: '将标记完成', actions: [{ do: 'status', ids: [ref('咕噜人')], status: 'done' }] }) : '{"say":"删除请你自己来","actions":[]}';
+      else if (/归类配色/.test(sys)) out = lines.map(m => `${m[1]}: ${/吓/.test(m[2]) ? 1 : 0}`).join('\n');
       else if (/值得连起来的关系/.test(sys)) out = lines.map(m => `${m[1]}. x | ${/情绪/.test(m[2]) ? 3 : 0} | ${/情绪/.test(m[2]) ? '都讲情绪' : '无关'}`).join('\n');
       else if (/配色/.test(sys)) out = words;
       else out = '它们都和情绪有关。';
@@ -763,6 +766,47 @@ for (const kind of ['reactflow']) {
   ok(readFileSync(join(ws, '__synapsis', '_配色.md'), 'utf8').includes('- 粉: 情绪, 惊慌') && readdirSync(join(ws, '__synapsis', '_过期的')).some(f => f.startsWith('_配色_')), '写入 _配色.md，旧的备份进 _过期的/');
   await page.click('.aipanel .bar button'); await sleep(1500);
   ok(await col('惊慌失措') === PALETTE.粉, '新词表生效：惊慌失措 → 粉');
+  // AI 指令框（Ctrl+J）：说 → 预览（✓ 能做 / ✗ 不做）→ Enter 执行 → 坐标对齐、进撤销；日志页有记录
+  await page.mouse.click(700, 760); await page.keyboard.press('Control+j'); await sleep(500);
+  ok(!!(await page.$('.agentbox textarea.ask')), 'Ctrl+J → AI 指令框');
+  await page.keyboard.type('把惊慌失措和传感器左对齐'); await page.keyboard.press('Enter'); await sleep(1500);
+  const plan = await page.$$eval('.agentbox .plan li', ls => ls.map(l => l.className + ':' + l.textContent));
+  ok(plan.length === 2 && /^ok:✓ 对齐（左边）/.test(plan[0]) && /^no:✗ delete/.test(plan[1]), '预览：对齐 ✓，delete ✗（不执行） ' + plan);
+  await page.keyboard.press('Enter'); await sleep(2000);
+  const L = JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'));
+  ok(L['惊慌失措'].x === L['传感器'].x, 'Enter 执行 → 两张卡左边对齐 ' + JSON.stringify([L['惊慌失措'], L['传感器']]));
+  ok((await page.$$eval('.agentbox .done li', ls => ls.map(l => l.textContent))).some(t => t.includes('对齐')), '对话里记下做了什么');
+  await page.keyboard.type('咕噜人完成了'); await page.keyboard.press('Enter'); await sleep(1500);
+  await page.click('.agentbox button.go'); await sleep(2000);
+  ok(/status:\s*done/.test(readFileSync(join(ws, '__synapsis', '咕噜人.md'), 'utf8')), '点「执行」→ 咕噜人 ✅');
+  await page.mouse.click(700, 760); await sleep(200); await page.keyboard.press('Control+z'); await sleep(1800);
+  ok(!/status:\s*done/.test(readFileSync(join(ws, '__synapsis', '咕噜人.md'), 'utf8')), 'Ctrl+Z 撤销 AI 的改动');
+  await page.click('.agentbox .bar a:has-text("日志")'); await sleep(800);
+  ok((await page.$$('.agentbox .logrow')).length >= 2 && (await page.$eval('.agentbox .logrow b', e => e.textContent)).includes('AI 指令'), '日志页：每次调用都有记录');
+  await page.click('.agentbox .logrow .head'); await sleep(300);
+  ok((await page.$eval('.agentbox .logrow', e => e.textContent)).includes('原始回答'), '点开日志 → 发出的消息 + 原始回答');
+  await page.click('.agentbox .bar button[title^="关闭"]'); await sleep(300);
+  ok(!(await page.$('.agentbox')), '关闭指令框');
+  // 卡片上显示人加的属性
+  await page.mouse.click(700, 760); await sleep(200); // AI 预览时已选中它，再点一下会取消
+  await page.mouse.click(...mid(await (await lab('咕噜人')).boundingBox())); await sleep(300);
+  if (!(await page.$('.addrow'))) { await page.keyboard.press('i'); await sleep(500); }
+  const gmd = () => readFileSync(join(ws, '__synapsis', '咕噜人.md'), 'utf8');
+  const cardP = () => page.$$eval('.card', cs => cs.find(c => c.querySelector('.lab')?.textContent === '咕噜人')?.querySelector('.props')?.textContent || '');
+  // 属性表：失焦也能加（不用回车）、改名、清空值不删、✕ 删
+  await page.fill('.addrow td:first-child input', '血量'); await page.fill('.addrow td:nth-child(2) input', '120');
+  await page.click('.side h3'); await sleep(1500);
+  ok(/血量: 120/.test(gmd()) && (await cardP()).includes('血量120'), '新属性失焦就加上，并显示在卡片上 ' + await cardP());
+  const keyIn = await page.$('.meta.edit input.mk');
+  await keyIn.fill('生命'); await page.click('.side h3'); await sleep(1500);
+  ok(/生命: 120/.test(gmd()) && !/血量/.test(gmd()), '属性名可以改（血量 → 生命）');
+  const valIn = await page.$('.meta.edit tr:first-child td:nth-child(2) input');
+  await valIn.fill(''); await page.click('.side h3'); await sleep(1500);
+  ok(/生命: ""/.test(gmd()) && (await page.$$('.meta.edit input.mk')).length === 1, '清空值 → 属性还在（值留空） ' + gmd());
+  await page.click('.meta.edit td.mx button'); await sleep(1500);
+  ok(!/生命/.test(gmd()) && !(await page.$('.meta.edit input.mk')), '✕ → 删掉属性');
+  await page.fill('.addrow td:first-child input', '血量'); await page.fill('.addrow td:nth-child(2) input', '120'); await page.press('.addrow td:nth-child(2) input', 'Enter'); await sleep(1500);
+  ok((await cardP()).includes('血量120'), '回车也能加');
   // 右键空白「在这里新建」→ 新卡片在鼠标处
   await page.mouse.click(700, 600); await sleep(200);
   await page.mouse.click(700, 600, { button: 'right' }); await sleep(300);

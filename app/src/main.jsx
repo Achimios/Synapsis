@@ -197,6 +197,12 @@ function RFCanvas({ view, layout, selected, images, pics = [], plane, onSelect, 
 
   const onNodesChange = useCallback(ch => setNodes(ns => applyNodeChanges(ch, ns)), []);
   const nodesRef = useRef(nodes); nodesRef.current = nodes;
+  // AI 指令框用：选中一批（预览 / 执行「选中」）；量卡片（对齐 / 排列要宽高，坐标给存的那套）
+  cardActions.select = ids => { setMulti(ids); onSelect(ids.length === 1 ? ids[0] : ids.at(-1) ?? null); };
+  cardActions.boxes = () => Object.fromEntries(nodesRef.current.filter(n => n.measured?.width && n.type !== 'axes').map(n => {
+    const p = toLayout(n.id, n.position), o = n.origin || [0, 0];
+    return [n.id, { x: p.x - o[0] * n.measured.width, y: p.y - o[1] * n.measured.height, w: n.measured.width, h: n.measured.height }];
+  }));
   const shown = useMemo(() => sizeFrames(nodes), [nodes]);
   // 刚展开成框：框比原来的卡大，压住的顶层卡片挪到框右边（只在展开那一刻做一次；打开页面时已经展开的不动）
   const seenFrames = useRef(null);

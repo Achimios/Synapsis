@@ -50,7 +50,7 @@ export function parseFrontmatter(text) {
     if (!kv) continue;
     const [, k, v] = kv;
     if (v === '') { meta[k.trim()] = []; listKey = k.trim(); }
-    else { meta[k.trim()] = v.trim(); listKey = null; }
+    else { meta[k.trim()] = v.trim() === '""' ? '' : v.trim(); listKey = null; }
   }
   const body = t.slice(end + 4).replace(/^\n+/, '');
   return { meta, body };
@@ -62,6 +62,7 @@ export function serializeNode(meta, body) {
   for (const k of keys) {
     const v = meta[k];
     if (Array.isArray(v)) { if (!v.length) continue; lines.push(k + ':'); for (const x of v) lines.push('  - ' + x); }
+    else if (v === '' && !KEY_ORDER.includes(k)) lines.push(`${k}: ""`); // 人加的属性可以先空着值（👤 2026-10-08：清空值不该删掉属性）
     else if (v !== undefined && v !== null && v !== '') lines.push(`${k}: ${v}`);
   }
   lines.push('---', '');

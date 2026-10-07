@@ -1,5 +1,5 @@
 // >v<🤖AI辅助-界面-顶栏「🤖 AI」面板（连接状态 / 选模型 / 语义配色开关 / 生成词表）+ 画布右边缘「潜在关联」小窗（core/ai.js）
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 const opts = (list = [], cur) => {
   const ids = list.map(m => m.id);
@@ -97,6 +97,90 @@ export function RelatedDock({ api, id, label, onJump, onOpenFile, onLink }) {
             </li>
           );
         })}</ul></>}
+    </div>
+  );
+}
+
+// >v<🤖AI指令-界面-AI 指令框（Ctrl+J）：说一句 → 8B 给动作草案（✓ 能做 / ✗ 不做 + 原因）→ 预览（涉及的节点先选中高亮）→ Enter 执行 / Esc 不要。
+//   「日志」页 = 每次调对话模型的原始记录（core/ai.js aiLog）。短记忆存在工作区（「清空记忆」= 新话题）
+export function AgentBox({ api, scope, selected, onApplied, onPreview, onClose }) {
+  const [tab, setTab] = useState('chat');
+  const [turns, setTurns] = useState([]);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState('');
+  const [plan, setPlan] = useState(null); // {say, actions}
+  const [log, setLog] = useState(null);
+  const [openLog, setOpenLog] = useState(null);
+  const inp = useRef(null), list = useRef(null);
+  useEffect(() => { api('/ai/chat').then(d => setTurns(d.turns)).catch(() => {}); }, []);
+  useEffect(() => { if (tab === 'log') api('/ai/log').then(d => setLog(d.entries)).catch(e => setLog([{ kind: '❌', raw: e.message }])); }, [tab, turns.length]);
+  useEffect(() => { list.current && (list.current.scrollTop = list.current.scrollHeight); }, [turns, plan, busy]);
+  useEffect(() => { if (!busy) inp.current?.focus(); }, [busy, plan, tab]);
+  const send = () => {
+    const t = text.trim(); if (!t || busy) return;
+    setBusy('🧠 思考中…（第一次要等模型加载）'); setPlan(null);
+    api('/ai/agent', { method: 'POST', body: JSON.stringify({ scope, selected, text: t }) })
+      .then(d => {
+        setText(''); setBusy('');
+        setTurns(ts => [...ts, { user: t, say: d.say, done: [] }]);
+        const good = d.actions.filter(a => a.ok);
+        if (d.actions.length) { setPlan(d); onPreview([...new Set(good.flatMap(a => a.ids || [a.id, a.from, a.to].filter(Boolean)))]); }
+      })
+      .catch(e => setBusy('❌ ' + e.message));
+  };
+  const run = () => {
+    const good = plan.actions.filter(a => a.ok); if (!good.length) return setPlan(null);
+    setBusy('执行中…');
+    onApplied(good).then(() => { setTurns(ts => ts.map((x, i) => i === ts.length - 1 ? { ...x, done: good.map(a => a.desc) } : x)); setPlan(null); setBusy(''); })
+      .catch(e => setBusy('❌ ' + e.message));
+  };
+  const key = e => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (plan) setPlan(null); else onClose(); return; }
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault(); e.stopPropagation();
+      if (plan && !text.trim() && plan.actions.some(a => a.ok)) run(); else send();
+    }
+  };
+  const fmt = t => new Date(t).toLocaleTimeString();
+  return (
+    <div className="agentbox" onKeyDown={key}>
+      <div className="bar">
+        <b>🤖 AI 指令</b>
+        <a className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')}>💬 对话</a>
+        <a className={tab === 'log' ? 'on' : ''} onClick={() => setTab('log')}>📜 日志</a>
+        <span style={{ flex: 1 }} />
+        {tab === 'chat' && <button title="清空短记忆（换个话题）" onClick={() => api('/ai/chat', { method: 'DELETE' }).then(d => { setTurns(d.turns); setPlan(null); })}>🧹 清空记忆</button>}
+        <button title="关闭（Esc / Ctrl+J）" onClick={onClose}>✕</button>
+      </div>
+      {tab === 'chat' ? <>
+        <div className="turns" ref={list}>
+          {!turns.length && !plan && <div className="hint pad">在当前页交代要做的事，比如：<br />「把这几个左对齐」「按流程从左到右排开」「观测做完了」「在决策后面加一个执行」「个性调节决策」<br />它只能做：选中 / 对齐 / 排列 / 大纲排序 / 配色 / 状态 / 连线 / 删线 / 新建 / 改名（不能删节点）。每一步都先给你看，Enter 才执行，Ctrl+Z 能撤销。</div>}
+          {turns.map((t, i) => <div key={i} className="turn">
+            <div className="u">🙂 {t.user}</div>
+            {t.say && <div className="a">🤖 {t.say}</div>}
+            {t.done?.length > 0 && <ul className="done">{t.done.map((d, j) => <li key={j}>✓ {d}</li>)}</ul>}
+          </div>)}
+          {plan && plan.actions.length > 0 && <div className="plan">
+            <ul>{plan.actions.map((a, i) => <li key={i} className={a.ok ? 'ok' : 'no'}>{a.ok ? '✓ ' + a.desc : `✗ ${a.do || '?'}：${a.why}`}</li>)}</ul>
+            {plan.actions.some(a => a.ok)
+              ? <div className="row"><button className="go" onClick={run}>✓ 执行（Enter）</button><button onClick={() => setPlan(null)}>✗ 不要（Esc）</button><span className="hint">✗ 的不会执行</span></div>
+              : <div className="hint">没有能执行的动作</div>}
+          </div>}
+          {busy && <div className={'hint pad' + (busy.startsWith('❌') ? ' bad' : '')}>{busy}</div>}
+        </div>
+        <textarea ref={inp} className="ask" rows={2} value={text} onChange={e => setText(e.target.value)}
+          placeholder={plan?.actions.some(a => a.ok) ? 'Enter = 执行上面的动作；或者接着说（改主意 / 补充）' : '说要做什么…（Enter 发送，Shift+Enter 换行）' + (selected.length ? `　已选 ${selected.length} 个` : '')} />
+      </> : <div className="logs">
+        {!log ? <div className="hint pad">读取中…</div> : !log.length ? <div className="hint pad">还没有调用记录</div> : log.map((l, i) => <div key={i} className="logrow">
+          <div className="head" onClick={() => setOpenLog(openLog === i ? null : i)}>
+            <span className="t">{fmt(l.t)}</span><b>{l.kind}</b><span className="hint">{l.model} · {l.ms} ms</span>{l.error && <span className="bad">❌ {l.error}</span>}
+          </div>
+          {openLog === i && <div className="body">
+            {(l.messages || []).map((m, j) => <details key={j} open={m.role !== 'system'}><summary>{m.role}（{m.content.length} 字）</summary><pre>{m.content}</pre></details>)}
+            <details open><summary>原始回答</summary><pre>{l.raw}</pre></details>
+          </div>}
+        </div>)}
+      </div>}
     </div>
   );
 }

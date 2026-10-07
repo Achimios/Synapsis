@@ -73,9 +73,33 @@ export async function embed(cfg, texts, cacheFile = null) {
 const cacheOf = root => join(root, '.synapsis', 'embed.json');
 
 // —— 对话：一次性短回答。Qwen3 的思考用 /no_think 关掉，回来的 <think> 段剥掉 ——
-export async function chat(cfg, system, user, maxTokens = 300) {
-  const r = await post(cfg, '/chat/completions', { model: cfg.chat, temperature: 0.3, max_tokens: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content: user + '\n/no_think' }] });
-  return (r.choices?.[0]?.message?.content || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+// opts.kind = 日志里的用途名；opts.history = 之前几轮 [{role, content}]（AI 指令框的短记忆）
+export async function chat(cfg, system, user, maxTokens = 300, opts = {}) {
+  const messages = [{ role: 'system', content: system }, ...(opts.history || []), { role: 'user', content: user + '\n/no_think' }];
+  const t0 = Date.now();
+  let raw = '', err = null;
+  try {
+    const r = await post(cfg, '/chat/completions', { model: cfg.chat, temperature: opts.temperature ?? 0.3, max_tokens: maxTokens, messages });
+    raw = r.choices?.[0]?.message?.content || '';
+  } catch (e) { err = e; }
+  aiLog(cfg, { kind: opts.kind || 'chat', model: cfg.chat, ms: Date.now() - t0, messages, raw, error: err?.message });
+  if (err) throw err;
+  return raw.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+}
+
+// >v<🤖AI辅助-日志-每次调对话模型：用途 / 模型 / 耗时 / 发出去的全部消息 / 原始回答 / 出错，追加到工作区 .synapsis/ai_log.jsonl（超过 2MB 砍掉前一半）
+//   cfg.log = 日志文件路径（服务端按工作区填；没填 = 不记）。界面：AI 指令框的「日志」页
+export function aiLog(cfg, entry) {
+  if (!cfg.log) return;
+  try {
+    mkdirSync(dirname(cfg.log), { recursive: true });
+    writeFileSync(cfg.log, JSON.stringify({ t: new Date().toISOString(), ...entry }) + '\n', { flag: 'a' });
+    const s = readFileSync(cfg.log, 'utf8');
+    if (s.length > 2e6) writeFileSync(cfg.log, s.slice(s.indexOf('\n', s.length / 2) + 1));
+  } catch { /* 日志写不了不影响功能 */ }
+}
+export function readAiLog(file, n = 60) {
+  try { return readFileSync(file, 'utf8').trim().split('\n').slice(-n).reverse().map(l => JSON.parse(l)); } catch { return []; }
 }
 
 // 节点用来算相似度的文字：名字 + 正文开头（不放所在路径和属性：同一分组的兄弟 / 同样带 axes、kind 的节点会因此全都「很像」，2026-10-08 实测）
@@ -115,7 +139,7 @@ export async function related(root, id, cfg, k = 20) {
 export async function explainRelation(root, id, other, cfg) {
   const ws = loadWorkspace(root);
   const b = other.kind === 'file' ? projectDocs(root).find(d => d.path === other.id)?.text || other.id : nodeText(ws, other.id);
-  return chat(cfg, '你在帮人整理一个项目的思维导图。给你两个条目，用一句中文（不超过 50 字）说出它们之间可能有什么关系、为什么值得连起来。看不出有意义的关系就回答「看不出明显关系」。只输出这一句。', `A：${nodeText(ws, id)}\n\nB：${b}`, 200);
+  return chat(cfg, '你在帮人整理一个项目的思维导图。给你两个条目，用一句中文（不超过 50 字）说出它们之间可能有什么关系、为什么值得连起来。看不出有意义的关系就回答「看不出明显关系」。只输出这一句。', `A：${nodeText(ws, id)}\n\nB：${b}`, 200, { kind: "关系说明" });
 }
 
 // >v<🤖AI辅助-精排-嵌入只看「字面像不像」（👤 2026-10-08：嵌入不够用）→ 对话模型（8B）给嵌入挑出的前 N 条逐条打 0~3 分 + 一句理由
@@ -127,7 +151,7 @@ export async function rerank(root, id, items, cfg) {
   const raw = await chat(cfg, `你在帮人整理一个项目的思维导图，判断候选条目和目标条目有没有值得连起来的关系（因果、组成、输入输出、同一机制、互相制约）。
 只是用词相近、但讲的不是一回事 → 0 分。评分：0 无关，1 弱相关，2 有关，3 强相关。
 每个候选输出一行，格式严格是：序号: 分数 | 理由（不超过 25 字）
-不要输出别的任何文字。`, `目标：${nodeText(ws, id).replace(/\s+/g, ' ').slice(0, 300)}\n\n候选：\n${list.map((it, i) => `${i + 1}. ${textOf(it)}`).join('\n')}`, 60 + list.length * 40);
+不要输出别的任何文字。`, `目标：${nodeText(ws, id).replace(/\s+/g, ' ').slice(0, 300)}\n\n候选：\n${list.map((it, i) => `${i + 1}. ${textOf(it)}`).join('\n')}`, 60 + list.length * 40, { kind: "精排", temperature: 0.1 });
   const got = new Map();
   // 8B 实测会把名字也复述一遍（「1. 名字 | 2 | 理由」）→ 按竖线切开，取第一个单独是 0~3 的段当分数，它后面的段当理由
   for (const line of raw.split(/\r?\n/)) {
@@ -160,7 +184,7 @@ export async function semColors(root, cfg) {
     const part = todo.slice(i, i + 60);
     const raw = await chat(cfg, `你在帮人给思维导图的节点归类配色。类别（编号. 关键词）：
 ${rows}
-对每个节点名，判断它最属于哪个类别；都不贴切就写 0。每行输出「节点序号: 类别编号」，不要别的文字。`, part.map((l, j) => `${j + 1}. ${l}`).join('\n'), 20 + part.length * 12);
+对每个节点名，判断它最属于哪个类别；都不贴切就写 0。每行输出「节点序号: 类别编号」，不要别的文字。`, part.map((l, j) => `${j + 1}. ${l}`).join('\n'), 20 + part.length * 12, { kind: "语义配色", temperature: 0.1 });
     const got = {};
     for (const m of raw.matchAll(/(\d+)\s*[:：.、]\s*(\d+)/g)) got[+m[1] - 1] = +m[2] - 1;
     part.forEach((l, j) => { const r = got[j]; cache[l] = r >= 0 && r < rules.length ? r : -1; });
@@ -179,7 +203,7 @@ export async function suggestWords(root, cfg) {
 按节点名的主题把它们分成 4~7 组，每组一个颜色，每组列 4~10 个「关键词」（短词，2~4 个字，节点名里会出现的那种词，不要整句节点名）。
 只输出词表行，每行格式严格是：- 颜色: 词, 词, 词
 不要输出任何别的文字。`;
-  const raw = await chat(cfg, sys, `现有词表（可以参考、改进）：\n${(ws.colorWords ?? DEFAULT_WORDS).split(/\r?\n/).filter(l => /^\s*[-*]/.test(l)).join('\n')}\n\n节点名：\n${labels.join('、')}`, 800);
+  const raw = await chat(cfg, sys, `现有词表（可以参考、改进）：\n${(ws.colorWords ?? DEFAULT_WORDS).split(/\r?\n/).filter(l => /^\s*[-*]/.test(l)).join('\n')}\n\n节点名：\n${labels.join('、')}`, 800, { kind: "生成词表" });
   const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => /^[-*]\s*[^:：]+[:：]/.test(l));
   const head = DEFAULT_WORDS.split('\n- ')[0].trimEnd();
   const text = head + '\n\n' + lines.join('\n') + '\n';
