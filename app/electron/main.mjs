@@ -28,7 +28,8 @@ const touchRecent = dir => writeRecent([{ dir, name: basename(dir), opened: new 
 async function startServer() {
   process.chdir(APP); // vite.config.js 里的相对路径以 app/ 为准
   try {
-    const s = await createServer({ configFile: join(APP, 'vite.config.js'), root: APP, server: { port: PORT, strictPort: true }, logLevel: 'warn' });
+    // 只监听本机回环：不对局域网开放，也不该触发 Windows 防火墙「公共网络访问」弹窗
+    const s = await createServer({ configFile: join(APP, 'vite.config.js'), root: APP, server: { host: '127.0.0.1', port: PORT, strictPort: true }, logLevel: 'warn' });
     await s.listen();
   } catch (e) { console.log('[synapsis] 端口已被占用，复用已有服务：', e.message); }
 }
