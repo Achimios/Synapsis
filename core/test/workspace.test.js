@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, linkNodes, moveNodes, DIR } from '../workspace.js';
+import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, linkNodes, moveNodes, movePic, DIR } from '../workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../scaffold.js';
 import { SAMPLE } from '../../app/src/sample.js';
 
@@ -234,6 +234,22 @@ try {
     moveNodes(r6, ['甲'], '丙');
     ok(loadWorkspace(r6).graph.nodes.has('丙/甲/子'), '分组连同子孙一起挪');
   } finally { rmSync(r6, { recursive: true, force: true }); }
+
+  // 图片归属：散图 → 节点的图；节点的图 → 散图（坐标键一并去掉）
+  const r7 = mkdtempSync(join(tmpdir(), 'syn-pic-'));
+  try {
+    saveOutline(r7, '组\n  甲\n乙');
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const lp = saveLooseImage(r7, '', PNG).path;
+    saveLayout(r7, { ['@pic:' + lp]: { x: 5, y: 5 } });
+    const a = movePic(r7, lp, '乙');
+    let w7 = loadWorkspace(r7);
+    ok(/^_pics_乙\//.test(a.path) && existsSync(join(r7, DIR, a.path)) && !existsSync(join(r7, DIR, lp)) && !w7.layout['@pic:' + lp], '散图拖到卡片 → 进 _pics_乙/，坐标键去掉 ' + a.path);
+    const b = movePic(r7, a.path, null, '组');
+    ok(/^组\/_pics\//.test(b.path) && existsSync(join(r7, DIR, b.path)), '节点的图拖到「组」页空白 → 变成组页的散图 ' + b.path);
+    let bad = ''; try { movePic(r7, '../x.png', '乙'); } catch (e) { bad = e.message; }
+    ok(/不是图片/.test(bad), '路径越界 → 拒绝');
+  } finally { rmSync(r7, { recursive: true, force: true }); }
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

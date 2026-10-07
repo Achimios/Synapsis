@@ -380,7 +380,18 @@ for (const kind of ['reactflow']) {
   await page.click('button:has-text("收起图片")'); await sleep(400);
   ok((await page.$$('.loosepic.folded')).length === 1, '全局收起也收起散图');
   await page.click('button:has-text("显示图片")'); await sleep(400);
-  const lb = await (await page.$('.loosepic')).boundingBox();
+  // 散图拖到卡片上 = 归给它；卡片里的图拖到空白 = 又变回散图
+  await page.click('.react-flow__controls-fitview'); await sleep(600); // 卡片可能被平移到左栏底下
+  const tc = await (await page.$('.react-flow__node[data-id="游戏AI/感知"] .lab')).boundingBox();
+  let lb = await (await page.$('.loosepic')).boundingBox();
+  await page.mouse.move(lb.x + lb.width / 2, lb.y + lb.height / 2); await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(lb.x + lb.width / 2 + (tc.x + tc.width / 2 - lb.x - lb.width / 2) * i / 10, lb.y + lb.height / 2 + (tc.y + tc.height / 2 - lb.y - lb.height / 2) * i / 10);
+  await page.mouse.up(); await sleep(1800);
+  const sensePics = join(ws, '__synapsis', '游戏AI', '感知', '_pics_感知'); // 感知是分组 → 图在它自己的文件夹里
+  ok(existsSync(sensePics) && readdirSync(sensePics).length === 1 && readdirSync(looseDir).length === 0 && !(await page.$('.loosepic')), '散图拖到「感知」上 → 归给它（进 _pics_感知/）');
+  await page.dragAndDrop('.react-flow__node[data-id="游戏AI/感知"] .pics img', '.react-flow__pane', { targetPosition: { x: 120, y: 520 } }); await sleep(1800);
+  ok(readdirSync(looseDir).length === 1 && readdirSync(sensePics).length === 0 && (await page.$$('.loosepic')).length === 1, '卡片里的图拖到空白 → 又变成这一页的散图');
+  lb = await (await page.$('.loosepic')).boundingBox();
   await page.mouse.click(lb.x + lb.width / 2, lb.y + lb.height / 2); await sleep(200);
   await page.keyboard.press('Delete'); await sleep(1500);
   ok((await page.$$('.loosepic')).length === 0 && readdirSync(looseDir).length === 0, '选中散图 Del → 删掉（文件进 _过期的/）');

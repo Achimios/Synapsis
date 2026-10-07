@@ -300,6 +300,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
         // 放到别的卡片上 = 放进它里面；框里的卡拖出框 = 拿出来放到当前页（👤 2026-10-08）
         const ids = (dragged || [n]).map(d => d.id), t = dropRef.current; setDropAt(null);
         const framedKids = ids.filter(id => nodesRef.current.find(x => x.id === id)?.parentId);
+        if (t && !t.startsWith('@') && ids.every(id => id.startsWith('@pic:'))) { cardActions.movePics?.(ids.map(id => id.slice(5)), t); return; } // 散图拖到卡片上 = 归给它
         if (t && !ids.every(id => view.parentOf?.get(id) === t || nodesRef.current.find(x => x.id === id)?.parentId === t)) { cardActions.moveInto?.(ids, t.startsWith('@portal:') ? t.slice(8) : t); return; }
         if (!t && framedKids.length === ids.length && cardActions.toFlow) { cardActions.moveInto?.(ids, null, cardActions.toFlow({ x: e.clientX, y: e.clientY })); return; } const cur = id => nodesRef.current.find(x => x.id === id)?.position; /* 用画布上的（锁轴后的）坐标 */ onMove(Object.fromEntries((dragged || [n]).map(d => [d.id, toLayout(d.id, cur(d.id) || d.position)]))); }}
       onConnect={c => onConnect(c.source, c.target, c.sourceHandle === 'mo' || c.targetHandle === 'mi')}

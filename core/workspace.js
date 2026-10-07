@@ -391,6 +391,25 @@ export function removeLooseImage(root, relPath) {
   writeLayout(base, lay);
 }
 
+// >v<🖼️图片-归属-散图拖到卡片上 = 归给那个节点（进它的 _pics_名字/）；节点的图拖到空白 = 变成那一页的散图（进 _pics/）（👤 待办）
+//   relPath = 相对 __synapsis 的图片路径（必须在某个 _pics/ 或 _pics_名字/ 里）；to = 节点 id，或 null（→ scope 页的散图）。返回 {path}
+export function movePic(root, relPath, to, scope = ROOT) {
+  const ws = loadWorkspace(root), base = ws.base, f = join(base, relPath);
+  if (relPath.includes('..') || !/(^|\/)_pics(_[^/]+)?\/[^/]+$/.test(relPath) || !existsSync(f)) throw new Error('不是图片：' + relPath);
+  let dir;
+  if (to != null) { const n = ws.graph.nodes.get(to); if (!n || to === ROOT) throw new Error('没有这个节点：' + to); dir = picsDir(n.file, n.label); }
+  else { const n = ws.graph.nodes.get(scope); if (!n) throw new Error('没有这一页：' + scope); const d = pageDir(base, n); dir = d ? join(d, '_pics') : picsDir(n.file, n.label); }
+  if (dirname(f) === dir) return { path: relPath };
+  mkdirSync(dir, { recursive: true });
+  const ext = relPath.slice(relPath.lastIndexOf('.'));
+  let name = relPath.split('/').pop();
+  for (let k = 2; existsSync(join(dir, name)); k++) name = `${stamp()}_${k}${ext}`;
+  renameSync(f, join(dir, name));
+  const lay = { ...loadWorkspace(root).layout };
+  if (lay['@pic:' + relPath]) { delete lay['@pic:' + relPath]; writeLayout(base, lay); }
+  return { path: posix(relative(base, join(dir, name))) };
+}
+
 // >v<🧭导航-视图记忆-每个工作区的 .synapsis/view.json：各页平移缩放、上次所在页、展开状态、左栏（本机状态，不进 git）
 export function loadView(root) {
   try { return JSON.parse(readFileSync(join(root, '.synapsis', 'view.json'), 'utf8')); } catch { return {}; }

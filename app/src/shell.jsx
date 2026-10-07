@@ -6,6 +6,7 @@ import { colorMap } from './colors.js';
 import { patternMap, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
 import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal, ScaffoldModal, SearchModal, DRAG_NODE } from './panels.jsx';
+const DRAG_PIC = 'application/x-synapsis-pic';
 import { AiPanel, RelatedDock, AgentBox } from './ai.jsx';
 import { MdLite } from './mdlite.jsx';
 import { SAMPLE } from './sample.js';
@@ -606,6 +607,18 @@ export function Shell({ name, Canvas }) {
     } catch (e) { setSaveState('❌ 移动失败：' + e.message); return false; }
   };
   cardActions.moveInto = moveInto;
+  // >v<🖼️图片-归属-散图拖到卡片上 = 归给它；卡片里的图拖到空白 = 变散图（落在鼠标处）、拖到别的卡 = 换主人（core movePic）
+  const movePics = async (paths, to, at = null) => {
+    if (mode !== 'ws' || !paths.length) return;
+    try {
+      let d = null; const out = [];
+      for (const p of paths) { d = await api('/move-pic', { method: 'POST', body: JSON.stringify({ path: p, to, scope: realScope }) }); out.push(d.pic.path); }
+      setWsData(d);
+      if (!to && at) move(Object.fromEntries(out.map((p, i) => ['@pic:' + p, { x: Math.round(at.x + i * 30), y: Math.round(at.y + i * 30) }])), { silent: true });
+      setSaveState(to ? `图片归给「${graph.nodes.get(to)?.label}」` : '图片变成这一页的散图');
+    } catch (e) { setSaveState('❌ 图片移动失败：' + e.message); }
+  };
+  cardActions.movePics = movePics;
   const mouse = useRef(null);
   useEffect(() => { const m = e => { mouse.current = { x: e.clientX, y: e.clientY }; }; window.addEventListener('pointermove', m); return () => window.removeEventListener('pointermove', m); }, []);
   const pasteNodes = async ids => {
@@ -671,6 +684,16 @@ export function Shell({ name, Canvas }) {
   const onDrop = e => {
     // dataTransfer 只在事件同步阶段可读 → 先全部取出来
     const dt = e.dataTransfer;
+    const picDrag = dt?.getData(DRAG_PIC);
+    if (picDrag) { // 卡片里的图拖出来
+      e.preventDefault();
+      let info = null; try { info = JSON.parse(picDrag); } catch { return; }
+      const card = document.elementsFromPoint(e.clientX, e.clientY).map(el => el.closest?.('.react-flow__node')).find(n => n && !n.dataset.id.startsWith('@'));
+      const t = card?.dataset.id;
+      if (t === info.from) return; // 放回自己身上 = 不动
+      movePics([info.path], t || null, t ? null : cardActions.toFlow ? cardActions.toFlow({ x: e.clientX, y: e.clientY }) : null);
+      return;
+    }
     const treeNode = dt?.getData(DRAG_NODE);
     if (treeNode) { // 从大纲树拖来的：落在卡片上 = 放进它；落在空白 = 挪到当前页、落在鼠标处
       e.preventDefault();
@@ -929,7 +952,7 @@ export function NodeCard({ node, img, dim, isSel }) {
         <li key={k.id} title="双击跳进去" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
           <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span>{k.renaming ? <RenameInput id={k.id} label={k.label} /> : <span className={k.status === 'dropped' ? 'strike' : ''}>{k.label}</span>}{k.n > 0 && <span className="kn">▸{k.n}</span>}
         </li>))}</ul>}
-      {showPics && <div className={'pics n' + Math.min(img.length, 3)}>{img.map((u, i) => <img key={u} src={u} draggable={false} title="双击放大" onDoubleClick={e => { e.stopPropagation(); cardActions.lightbox?.(img, i); }} />)}
+      {showPics && <div className={'pics n' + Math.min(img.length, 3)}>{img.map((u, i) => <img key={u} src={u} className="nodrag" draggable title="双击放大；拖到空白 = 变散图，拖到别的卡 = 换给它" onDragStart={e => { const p = new URL(u, location.href).searchParams.get('p'); e.dataTransfer.setData(DRAG_PIC, JSON.stringify({ path: p, from: node.id })); e.dataTransfer.effectAllowed = 'move'; }} onDoubleClick={e => { e.stopPropagation(); cardActions.lightbox?.(img, i); }} />)}
         <span className="picgrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} /></div>}
     </div>
   );

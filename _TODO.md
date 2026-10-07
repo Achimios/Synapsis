@@ -15,7 +15,7 @@
 - [ ] 键位可自定义：从 `KEYMAP` 表接 Synapsis 本机 `.synapsis/keys.json`（键位是人的习惯，不跟项目走）—— 键位稳定后再做
 
 - [ ] 嵌入接口（👤 问要不要先写 → **先不写**：没有用它的功能。等做 Ctrl+K 语义搜索 / 自动分组时再写：`core/embed.js` 接 LM Studio 的 OpenAI 兼容 `/v1/embeddings`，嵌入文本 = 名字 + 属性 + 正文前 N 字，缓存在 `.synapsis/embed/`，模型默认 Qwen3-Embedding-0.6B）
-- [ ] 散图拖到卡片上 = 归给那个节点；节点图拖出卡片 = 变散图
+- [x] 散图拖到卡片上 = 归给那个节点；节点图拖出卡片 = 变散图（core movePic）
 - [x] CLI 跨父移动节点（`move <id> <新父id|.>`，moveNodes 带新旧 id 对应）
 
 ## 👤 2026-10-08 插队（先做）
