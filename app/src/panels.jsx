@@ -1,5 +1,5 @@
 // 右键菜单、属性面板、文件树（外部区）、文件预览。外壳把状态和动作传进来，这里只管显示。
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, Children } from 'react';
 
 import { PALETTE } from './colors.js';
 import { PATTERNS, PATTERN_HINT } from './patterns.js';
@@ -52,14 +52,14 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         <span>颜色</span>
         {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={node.colorSet === k ? 'on' : ''} style={{ background: c }} onClick={() => { onClose(); actions.color(node.id, k); }} />)}
         <button title="自动（按分组 / 名字配色，子节点跟着父节点）" className={!node.colorSet ? 'on auto' : 'auto'} onClick={() => { onClose(); actions.color(node.id, null); }}>自动</button>
-        {actions.colorWords && <button title="自动配色按名字里的词认颜色：打开这个工作区的词表 __synapsis/_配色.md（没有就按默认建一份）" className="auto" onClick={() => { onClose(); actions.colorWords(); }}>词表…</button>}
+        {actions.colorWords && <button title="自动配色按名字里的词认颜色：打开这个工作区的词表 __synapsis/_配色.md（没有就按默认建一份）" className="auto" onClick={() => { onClose(); actions.colorWords(); }}>配色词表…</button>}
       </div>}
       {actions.pattern && <div className="mi row swatches pats" onPointerDown={e => e.stopPropagation()}>
         <span>图案</span>
         {Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (node.patternSet === k ? ' on' : !node.patternSet && node.pattern === k ? ' auto-on' : '')} style={{ '--c': node.color }} onClick={() => { onClose(); actions.pattern(node.id, k); }} />)}
         <button title="自动（按图案词表 / AI 归类）" className={!node.patternSet ? 'on auto' : 'auto'} onClick={() => { onClose(); actions.pattern(node.id, null); }}>自动</button>
         <button title="不要底纹" className={node.patternSet === '无' ? 'on auto' : 'auto'} onClick={() => { onClose(); actions.pattern(node.id, '无'); }}>无</button>
-        {actions.patternWords && <button title="打开图案词表 __synapsis/_图案.md" className="auto" onClick={() => { onClose(); actions.patternWords(); }}>词表…</button>}
+        {actions.patternWords && <button title="打开图案词表 __synapsis/_图案.md" className="auto" onClick={() => { onClose(); actions.patternWords(); }}>图案词表…</button>}
       </div>}
       {item('🔗 连线到…', () => actions.linkTo(node.id), { key: 'L' })}
       {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'Tab' })}
@@ -140,14 +140,14 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
           onBlur={e => { const v = e.target.value.trim(); if (v && v !== n.label) onRename(id, v); else e.target.value = n.label; }} /></h3>
         <div className="row">状态 {STATUS.map(([s, ic]) => <button key={s} className={n.status === s ? 'on' : ''} onClick={() => onStatus(id, s)}>{ic}</button>)}
           <button title="清除状态（不标）" onClick={() => onStatus(id, null)}>—</button></div>
-        {onColor && <div className="row swatches">颜色 <span className="cur" style={{ background: color }} title={'现在：' + color + (wsNode?.meta?.color ? '（手动）' : '（自动）')} />
+        {onColor && <div className="row swatches"><span className="rl">颜色</span><span className="cur" style={{ background: color }} title={'现在：' + color + (wsNode?.meta?.color ? '（手动）' : '（自动）')} />
           {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={wsNode?.meta?.color === k ? 'on' : ''} style={{ background: c }} onClick={() => onColor(id, k)} />)}
           <button className={'auto' + (!wsNode?.meta?.color ? ' on' : '')} title="自动（按分组 / 词表配色）" onClick={() => onColor(id, null)}>自动</button>
-          {onColorWords && <button className="auto" title="自动配色按名字里的词认颜色：打开这个工作区的词表 __synapsis/_配色.md" onClick={onColorWords}>词表…</button>}</div>}
-        {onPattern && <div className="row swatches pats">图案 {Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (wsNode?.meta?.pattern === k ? ' on' : !wsNode?.meta?.pattern && pattern === k ? ' auto-on' : '')} onClick={() => onPattern(id, k)} />)}
+          {onColorWords && <button className="auto words" title="自动配色按名字里的词认颜色：打开这个工作区的词表 __synapsis/_配色.md" onClick={onColorWords}>配色词表…</button>}</div>}
+        {onPattern && <div className="row swatches pats"><span className="rl">图案</span>{Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (wsNode?.meta?.pattern === k ? ' on' : !wsNode?.meta?.pattern && pattern === k ? ' auto-on' : '')} style={{ '--c': color }} onClick={() => onPattern(id, k)} />)}
           <button className={'auto' + (!wsNode?.meta?.pattern ? ' on' : '')} title="自动（按图案词表 / AI 归类）" onClick={() => onPattern(id, null)}>自动</button>
           <button className={'auto' + (wsNode?.meta?.pattern === '无' ? ' on' : '')} title="不要底纹" onClick={() => onPattern(id, '无')}>无</button>
-          {onPatternWords && <button className="auto" title="打开图案词表 __synapsis/_图案.md" onClick={onPatternWords}>词表…</button>}</div>}
+          {onPatternWords && <button className="auto words" title="打开图案词表 __synapsis/_图案.md" onClick={onPatternWords}>图案词表…</button>}</div>}
         <MetaTable id={id} meta={meta} editable={editable} onMeta={onMeta} hints={metaHints} />
         {(ins.length > 0 || outs.length > 0) && <div className="edges">
           {ins.length > 0 && <><div className="eh in">← 输入{sub.size > 1 ? '（含子节点）' : ''}</div><ul>{ins.map(e => edgeRow(e, e.from, e.to))}</ul></>}
@@ -194,7 +194,7 @@ export function FilePanel({ file, onClose }) {
 // >v<🌳大纲模型-大纲树-左栏默认页：点一下 = 导航 + 看内容（不进编辑）；双击 / F2 = 原地改名；▸ 折叠；→ 钻进；↑↓←→ 键盘走
 // >v<🌳左栏-大纲树拖动-拖一行到另一行上 = 放进它里面；拖到树下面的空白 = 挪到根；拖到画布的卡片上也行（👤 2026-10-08 第 9 条）
 export const DRAG_NODE = 'application/x-synapsis-node';
-export function OutlineTree({ graph, selected, scope, renaming, status, onPick, onDrill, onRename, onCommit, onCancel, onMove }) {
+export function OutlineTree({ graph, selected, scope, renaming, status, onPick, onDrill, onRename, onCommit, onCancel, onMove, colors }) {
   const [over, setOver] = useState(null); // 拖动时悬停的行（'' = 根 / 空白）
   const [open, setOpen] = useState({});
   const [q, setQ] = useState(''); // 过滤：只留名字命中的和它们的祖先（全部展开）
@@ -205,7 +205,7 @@ export function OutlineTree({ graph, selected, scope, renaming, status, onPick, 
   for (const f of [scope, selected]) for (let c = f; c && graph.nodes.has(c); c = graph.nodes.get(c).parent) focus.add(c);
   const isOpen = (id, depth) => flt ? true : open[id] ?? (depth < 2 || focus.has(id));
   const rows = [];
-  const walk = (id, depth) => { for (const c of graph.nodes.get(id).children) { if (flt && !flt.keep.has(c)) continue; const n = graph.nodes.get(c); rows.push({ n, depth }); if (n.children.length && isOpen(c, depth)) walk(c, depth + 1); } };
+  const walk = (id, depth, top = null) => { for (const c of graph.nodes.get(id).children) { if (flt && !flt.keep.has(c)) continue; const n = graph.nodes.get(c); rows.push({ n, depth, top: top ?? c }); if (n.children.length && isOpen(c, depth)) walk(c, depth + 1, top ?? c); } };
   walk('', 0);
   useEffect(() => { box.current?.querySelector('.orow.sel')?.scrollIntoView({ block: 'nearest' }); }, [selected]);
   const onKey = e => {
@@ -217,14 +217,18 @@ export function OutlineTree({ graph, selected, scope, renaming, status, onPick, 
   };
   return (
     <>
+    <div className="otools">
     <input className="ofilter" value={q} placeholder="过滤…（名字）" onChange={e => setQ(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') setQ(''); else if (e.key === 'Enter' && flt?.hits.size) onPick([...flt.hits][0]); }} />
+    <button className="ghost" title="全部展开" onClick={() => setOpen(Object.fromEntries([...graph.nodes.values()].filter(n => n.children.length).map(n => [n.id, true])))}>⊞</button>
+    <button className="ghost" title="全部折叠（只留第一层）" onClick={() => setOpen(Object.fromEntries([...graph.nodes.values()].filter(n => n.children.length).map(n => [n.id, false])))}>⊟</button>
+    </div>
     <div className={'otree' + (over === '' ? ' dropr' : '')} ref={box} tabIndex={0} onKeyDown={onKey}
       onDragOver={e => { if (onMove && e.dataTransfer.types.includes(DRAG_NODE)) { e.preventDefault(); if (e.target === box.current) setOver(''); } }}
       onDragLeave={e => { if (e.target === box.current) setOver(null); }}
       onDrop={e => { const id = e.dataTransfer.getData(DRAG_NODE); if (id && e.target === box.current) { e.preventDefault(); setOver(null); onMove(id, ''); } }}>
       {flt && !rows.length && <div className="hint" style={{ padding: 6 }}>没有名字含「{q}」的节点（Ctrl+F 可以搜属性和正文）</div>}
-      {rows.map(({ n, depth }) => (
-        <div key={n.id} className={'orow' + (n.id === selected ? ' sel' : '') + (n.id === scope && scope ? ' scope' : '') + (flt?.hits.has(n.id) ? ' hit' : '') + (over === n.id ? ' dropin' : '')} style={{ paddingLeft: 4 + depth * 12 }}
+      {rows.map(({ n, depth, top }) => (
+        <div key={n.id} className={'orow' + (n.id === selected ? ' sel' : '') + (n.id === scope && scope ? ' scope' : '') + (flt?.hits.has(n.id) ? ' hit' : '') + (over === n.id ? ' dropin' : '') + (depth === 0 ? ' top' : n.children.length ? ' grp' : '')} style={{ paddingLeft: 4 + depth * 14, '--d': depth, '--g': colors?.get(top) || 'var(--line2)' }}
           draggable={!!onMove && renaming !== n.id} onDragStart={e => { e.dataTransfer.setData(DRAG_NODE, n.id); e.dataTransfer.effectAllowed = 'move'; }}
           onDragOver={e => { if (onMove && e.dataTransfer.types.includes(DRAG_NODE)) { e.preventDefault(); e.stopPropagation(); setOver(n.id); } }}
           onDragLeave={() => setOver(o => o === n.id ? null : o)} onDragEnd={() => setOver(null)}
@@ -272,7 +276,7 @@ export function ScaffoldModal({ items, root, onCreate, onClose }) {
 
 const KEY_HUE = { 选择与查看: ['👆', '#4d9bff'], AI: ['🤖', '#a97cff'], 搜索: ['🔎', '#36c6c0'], 导航: ['🧭', '#5cc46a'], 编辑: ['✏️', '#ff9636'], 复制: ['📋', '#e6c440'], 移动: ['📦', '#36c6c0'], 选择: ['🎯', '#ff79c2'], 排列: ['📐', '#9a9a9a'], 图片: ['🖼️', '#ff5f5f'] };
 export const KEYMAP = [
-  ['选择与查看', [['单击卡片 / 大纲行', '选中，右侧显示概览'], ['I', '属性面板开关'], ['Tab', '左栏开关'], ['? / F1', '这一页']]],
+  ['选择与查看', [['单击卡片 / 大纲行', '选中，右侧显示概览'], ['I', '属性面板开关'], ['Tab', '左栏开关'], ['Ctrl+Tab / 顶栏右端 ▸', '右栏（属性）开关'], ['? / F1', '这一页']]],
   ['AI', [['Ctrl+J', 'AI 指令框：一句话让本地模型在当前页做事（先预览，Enter 执行，Esc 不要）'], ['顶栏 🤖 AI', '连 LM Studio、选模型、语义配色、生成词表'], ['选中节点 → 右边「🔗 潜在关联」', '可能有关但还没连上的节点 / 文档']]],
   ['搜索', [['Ctrl+F', '全局搜索（名字 / 属性 / 正文）→ 跳过去'], ['大纲顶上的过滤框', '只看名字含这些字的节点']]],
   ['导航', [['双击卡片 / 大纲行的 →', '钻进去'], ['Alt+↑', '上一层'], ['鼠标侧键 / Alt+← →', '后退 / 前进'], ['大纲树里 ↑↓←→', '上下走 / 折叠展开'], ['▸N / 空格', '卡片里原地展开子级'], ['⊞ / F', '分组原地展开成框（子节点画在框里、线直连）']]],
@@ -315,6 +319,34 @@ export function HelpModal({ onClose }) {
           <section key={g} style={{ '--hue': KEY_HUE[g]?.[1] }}><h4>{KEY_HUE[g]?.[0] || '•'} {g}</h4><table><tbody>{rows.map(([k, v]) => <tr key={k}><td><kbd>{k}</kbd></td><td>{v}</td></tr>)}</tbody></table></section>
         ))}</div>
       </div>
+    </div>
+  );
+}
+
+// >v<🧭顶栏-溢出菜单-第二行按钮放得下几个显示几个，放不下的收进右端「⋯」，点开 = 竖列表（👤 2026-10-08：顶栏不够宽）
+//   宽度按「上次显示时量到的」记；窗口 / 栏宽一变（ResizeObserver）就重排
+export function OverflowBar({ children }) {
+  const items = Children.toArray(children).filter(Boolean);
+  const box = useRef(null), widths = useRef({}), [n, setN] = useState(items.length), [open, setOpen] = useState(false);
+  const keys = items.map(c => c.key);
+  const fit = () => {
+    const el = box.current; if (!el) return;
+    for (const c of el.querySelectorAll(':scope > .ti')) widths.current[c.dataset.k] = c.offsetWidth + 6;
+    const W = el.clientWidth - 12, ws = keys.map(k => widths.current[k] ?? 80), total = ws.reduce((a, b) => a + b, 0);
+    let k = ws.length;
+    if (total > W) { let sum = 0; k = 0; while (k < ws.length && sum + ws[k] <= W - 40) sum += ws[k++]; }
+    setN(k);
+  };
+  useLayoutEffect(fit);
+  useEffect(() => { const ro = new ResizeObserver(fit); ro.observe(box.current); return () => ro.disconnect(); }, [keys.join('|')]);
+  useEffect(() => { if (!open) return; const c = e => { if (!e.target.closest?.('.moremenu, .morebtn')) setOpen(false); }; window.addEventListener('pointerdown', c, true); return () => window.removeEventListener('pointerdown', c, true); }, [open]);
+  return (
+    <div className="bar tools" ref={box}>
+      {items.slice(0, n).map(c => <span key={c.key} className="ti" data-k={c.key}>{c}</span>)}
+      {n < items.length && <span className="more">
+        <button className="morebtn" title={'还有 ' + (items.length - n) + ' 个按钮'} onClick={() => setOpen(o => !o)}>⋯</button>
+        {open && <div className="moremenu" onClick={() => setOpen(false)}>{items.slice(n)}</div>}
+      </span>}
     </div>
   );
 }

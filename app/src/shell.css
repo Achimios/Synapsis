@@ -1,6 +1,6 @@
 /* >v<🎨外观-主题-PureRef 风：深灰画布、细边、小字、信息密度高（👤用户是 motion designer，以前拿 PureRef 做笔记） */
 :root {
-  --bg: #1c1c1c;        /* 画布 */
+  --bg: #202020;        /* 画布（👤 2026-10-08：更接近两侧栏） */
   --panel: #232323;     /* 栏、面板 */
   --panel2: #2b2b2b;    /* 卡片、输入框 */
   --hover: #333;
@@ -18,7 +18,7 @@
 }
 /* >v<🎨外观-白色主题（👤 2026-10-08）：顶栏 ☀ / 🌙 切换，记在本机（localStorage syn.theme），不跟项目走 */
 :root[data-theme="light"] {
-  --bg: #f3f3f1; --panel: #ffffff; --panel2: #fafaf8; --hover: #ececec;
+  --bg: #fdfdfc; --panel: #ffffff; --panel2: #ffffff; --hover: #efefef;
   --line: #dedede; --line2: #c6c6c6; --text: #222; --dim: #6b6b6b; --faint: #a9a9a9;
   --accent: #2f7be0; --in: #2b6fe0; --out: #e07612; --ok: #2e9a44; --bad: #d9473a; --sel: #333;
   --selbg: #cfe2ff; --chip: #ececec; --chip2: #dcdcdc; --strong: #000; --scroll: #c9c9c9;
@@ -193,11 +193,11 @@ pre.raw { margin: 0; white-space: pre-wrap; word-break: break-word; font: var(--
 /* 大纲树 */
 .otree { flex: 1; overflow: auto; padding: 2px 0; outline: none; }
 .orow { display: flex; align-items: center; gap: 3px; padding: 0 6px 0 0; line-height: 20px; cursor: pointer; white-space: nowrap; }
-.orow:hover { background: var(--hover); }
-.orow.sel { background: var(--selbg); color: var(--strong); }
+.orow:hover { background-color: var(--hover); }
+.orow.sel { background-color: var(--selbg); color: var(--strong); }
 .orow.scope > .olab { color: var(--accent); font-weight: 600; }
-.orow .ocaret { width: 14px; flex: none; text-align: center; color: var(--dim); font-size: 11px; }
-.orow .ocaret:hover { color: var(--text); }
+.orow .ocaret { width: 18px; height: 18px; line-height: 18px; flex: none; text-align: center; color: var(--dim); font-size: 13px; border-radius: 3px; }
+.orow .ocaret:hover { color: var(--strong); background: var(--chip2); }
 .orow .ost { font-size: 9px; width: 12px; flex: none; text-align: center; }
 .orow .olab { overflow: hidden; text-overflow: ellipsis; }
 .orow .odrill { margin-left: auto; color: var(--faint); font-size: 10px; padding: 0 4px; border-radius: 3px; visibility: hidden; }
@@ -381,3 +381,27 @@ button.patsw.on { outline: 2px solid var(--accent); } button.patsw.auto-on { out
 .lightbox { position: fixed; inset: 0; z-index: 1100; background: rgba(0,0,0,.82); display: flex; align-items: center; justify-content: center; cursor: zoom-out; }
 .lightbox img { max-width: 94vw; max-height: 90vh; object-fit: contain; box-shadow: 0 10px 40px rgba(0,0,0,.6); cursor: default; }
 .lightbox .lbcount { position: absolute; bottom: 18px; color: #ddd; font-size: 13px; }
+
+/* 属性面板：颜色 / 图案两行对齐，词表按钮写明是哪张表（👤 2026-10-08：颜色的「词表…」折到下一行像丢了） */
+.side .row.swatches { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding-left: 40px; position: relative; }
+.side .row.swatches > .rl { position: absolute; left: 0; }
+.side .swatches button.words { margin-left: 2px; }
+button.patsw { width: 26px; height: 18px; background-color: color-mix(in srgb, var(--c, var(--accent)) 10%, var(--panel2)); border-color: color-mix(in srgb, var(--c, var(--accent)) 45%, var(--line2)); }
+
+/* 大纲树（👤 2026-10-08，参照 Obsidian 彩色文件夹）：第一层 = 彩色标题条；下面每层一根该组颜色的竖向引导线 */
+.orow { line-height: 22px; background-image: repeating-linear-gradient(90deg, transparent 0 9px, color-mix(in srgb, var(--g) 50%, transparent) 9px 10px, transparent 10px 14px); background-size: calc(var(--d) * 14px) 100%; background-repeat: no-repeat; background-position: 4px 0; }
+.orow.top { margin: 5px 5px 1px; border-radius: 5px; background-color: color-mix(in srgb, var(--g) 30%, var(--panel)); font-size: 13.5px; font-weight: 600; line-height: 27px; color: var(--strong); }
+.orow.top:hover { background-color: color-mix(in srgb, var(--g) 42%, var(--panel)); }
+.orow.top.sel { background-color: color-mix(in srgb, var(--g) 50%, var(--panel)); box-shadow: 0 0 0 2px var(--accent); }
+.orow.top .ost { font-size: 11px; }
+.otools { display: flex; align-items: center; gap: 2px; padding-right: 4px; }
+.otools .ofilter { flex: 1; min-width: 0; }
+.otools button { padding: 0 5px; font-size: 14px; color: var(--dim); }
+.otools button:hover { color: var(--strong); }
+.orow.grp > .olab { font-weight: 600; color: color-mix(in srgb, var(--g) 35%, var(--text)); }
+/* 顶栏两行：第一行面包屑 + 保存状态；第二行按钮，放不下的进「⋯」 */
+.bar.tools { overflow: visible; gap: 0; }
+.bar.tools .ti { display: inline-flex; margin-right: 6px; }
+.bar.tools .more { margin-left: auto; position: relative; }
+.moremenu { position: absolute; right: 0; top: 26px; z-index: 950; display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 6px; background: var(--panel); border: 1px solid var(--line2); border-radius: 5px; box-shadow: 0 6px 20px rgba(0,0,0,.35); min-width: 160px; }
+.moremenu button { text-align: left; }

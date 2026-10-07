@@ -5,7 +5,7 @@ import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode
 import { colorMap } from './colors.js';
 import { patternMap, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
-import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal, ScaffoldModal, SearchModal, DRAG_NODE } from './panels.jsx';
+import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
 const DRAG_PIC = 'application/x-synapsis-pic';
 import { AiPanel, RelatedDock, AgentBox } from './ai.jsx';
 import { MdLite } from './mdlite.jsx';
@@ -75,6 +75,7 @@ export function Shell({ name, Canvas }) {
     return () => window.removeEventListener('keydown', k, true);
   }, [!!lightbox]);
   const [portalModes, setPortalModes] = useState({}); // 每页的传送门：show | fade | hide（记进 view.json）
+  const [cardPropsOn, setCardPropsOn] = useState(true); // 卡片上显示属性（👤 2026-10-08：卡片太高时关掉；记进 view.json）
   const [theme, setTheme] = useState(() => load('syn.theme', 'dark')); // 本机偏好，不跟项目走
   useEffect(() => { document.documentElement.dataset.theme = theme; save('syn.theme', theme); }, [theme]);
   const [localPicw, setLocalPicw] = useState(() => load('syn.pw', {}));
@@ -137,7 +138,7 @@ export function Shell({ name, Canvas }) {
       nodes: v.nodes.map(n => ({
         ...n, color: colOf(n.id), pattern: PATTERNS[patterns.get(n.id)] || '', dropped: isDropped(graph, n.id), sub: wsData?.nodes[n.id]?.meta?.rate || '',
         evidence: wsData?.nodes[n.id]?.meta?.evidence || '',
-        props: cardProps(wsData?.nodes[n.id]?.meta),
+        props: cardPropsOn ? cardProps(wsData?.nodes[n.id]?.meta) : [],
         vec: getMeta(n.id)?.vec ? parseVec(getMeta(n.id).vec) : null, vecAxes: pAxes,
         spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
         picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id], body: wsData?.nodes[n.id]?.body || '', textOpen: !!textOpen[n.id],
@@ -145,11 +146,11 @@ export function Shell({ name, Canvas }) {
         framed: !space && !!framed[n.id] && n.children.length > 0, frame: v.parentOf.get(n.id) ?? null,
         kids: n.children.map(c => { const k = graph.nodes.get(c); return { id: c, label: k.label, status: k.status, n: k.children.length, renaming: canvasRename === c }; }),
       })),
-      portals: v.portals.filter(p => pm !== 'hide' || keepPortal.has(p.id)).map(p => ({ ...p, label: '↗ ' + (graph.nodes.get(p.target)?.label || p.target), color: colOf(p.id), dropped: isDropped(graph, p.target), faded: pm === 'fade' })),
+      portals: v.portals.filter(p => pm !== 'hide' || keepPortal.has(p.id)).map(p => ({ ...p, label: '↗ ' + (graph.nodes.get(p.target)?.label || p.target), color: colOf(p.id), dropped: isDropped(graph, p.target), faded: pm === 'fade' && !keepPortal.has(p.id) })), // 淡化时，和选中节点相连的也不淡（同隐藏）
       // 线 = 出发节点的颜色；kind 是「离散」→ 虚线（聚合的边要每条都离散才虚）
-      edges: v.edges.filter(e => pm !== 'hide' || [e.from, e.to].every(x => !x.startsWith('@portal:') || keepPortal.has(x))).map(e => ({ ...e, fadedPortal: pm === 'fade' && [e.from, e.to].some(x => x.startsWith('@portal:')), text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e), color: colOf(e.from), dropped: [e.from, e.to].some(x => isDropped(graph, x.startsWith('@portal:') ? x.slice(8) : x)), dashed: e.raw.every(r => DISCRETE.test(kind.get(r) || '')), mod: e.raw.every(r => MOD.test(kind.get(r) || '')) })),
+      edges: v.edges.filter(e => pm !== 'hide' || [e.from, e.to].every(x => !x.startsWith('@portal:') || keepPortal.has(x))).map(e => ({ ...e, fadedPortal: pm === 'fade' && [e.from, e.to].some(x => x.startsWith('@portal:') && !keepPortal.has(x)), text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e), color: colOf(e.from), dropped: [e.from, e.to].some(x => isDropped(graph, x.startsWith('@portal:') ? x.slice(8) : x)), dashed: e.raw.every(r => DISCRETE.test(kind.get(r) || '')), mod: e.raw.every(r => MOD.test(kind.get(r) || '')) })),
     };
-  }, [graph, realScope, wsData, expanded, picFold, textOpen, localPicw, space, getMeta, colors, patterns, canvasRename, framed, portalModes, selected]);
+  }, [graph, realScope, wsData, expanded, picFold, textOpen, localPicw, space, getMeta, colors, patterns, canvasRename, framed, portalModes, selected, cardPropsOn]);
   // >v<🖼️图片-卡片显示-节点的 _pics_名字/ 里所有图（旧版 frontmatter img: 也认）
   const images = useMemo(() => {
     if (local) return localImages;
@@ -176,7 +177,7 @@ export function Shell({ name, Canvas }) {
       // 页面刷新（开发服务重启、Ctrl+R）后接上撤销记录：只在文件和上次记下的一致时接（外面改过就不接，免得撤销盖掉别人的改动）
       const sv = (() => { try { return JSON.parse(sessionStorage.getItem(HIST_KEY)); } catch { return null; } })();
       if (sv?.committed?.text === d.outline) { hist2.current.undo = sv.undo || []; hist2.current.redo = sv.redo || []; }
-      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
+      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); if (v.cardProps === false) setCardPropsOn(false); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
       setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
     }).catch(e => { setMode('offline'); setText(load('syn.text', SAMPLE)); setPositions(load('syn.pos.' + name, {})); setSaveState('⚠️ 没连上工作区（' + e.message + '），本地离线模式'); });
   }, []);
@@ -230,9 +231,9 @@ export function Shell({ name, Canvas }) {
   // 工作区：视图状态停手 0.6s 写进 .synapsis/view.json
   useEffect(() => {
     if (mode !== 'ws') return;
-    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, framed, panelW, leftHidden, picFold, textOpen, portalModes, propsOpen, spaceAxes, scope: realScope }) }).catch(() => {}), 600);
+    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, framed, panelW, leftHidden, picFold, textOpen, portalModes, cardProps: cardPropsOn, propsOpen, spaceAxes, scope: realScope }) }).catch(() => {}), 600);
     return () => clearTimeout(t);
-  }, [viewports, expanded, framed, panelW, leftHidden, picFold, textOpen, portalModes, propsOpen, spaceAxes, realScope, mode]);
+  }, [viewports, expanded, framed, panelW, leftHidden, picFold, textOpen, portalModes, cardPropsOn, propsOpen, spaceAxes, realScope, mode]);
   const onViewport = useCallback((sc, vp) => setViewports(v => ({ ...v, [sc]: vp })), []);
   const go = useCallback(next => {
     if (next === realScope) return;
@@ -544,7 +545,8 @@ export function Shell({ name, Canvas }) {
       if (inText) return;
       if (helpOpen && e.key === 'Escape') { setHelpOpen(false); return; }
       if (e.ctrlKey && !e.altKey && (e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y')) { e.preventDefault(); e.stopPropagation(); (e.key.toLowerCase() === 'y' || e.shiftKey ? redo : undo)(); return; }
-      if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); setLeftHidden(h => !h); } // 👤 Tab = 侧栏开关
+      if (e.key === 'Tab' && e.ctrlKey) { e.preventDefault(); e.stopPropagation(); setPropsOpen(o => !o); } // 👤 Ctrl+Tab = 右栏开关
+      else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); setLeftHidden(h => !h); } // 👤 Tab = 侧栏开关
       else if ((e.key === 'Insert' || (e.key === 'Enter' && e.ctrlKey)) && sel) { e.preventDefault(); e.stopPropagation(); addNode(true); }
       else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); addNode(false); }
       else if (e.key === 'ArrowUp' && e.altKey) { e.preventDefault(); up(); }
@@ -790,7 +792,7 @@ export function Shell({ name, Canvas }) {
           <span className="hint" title={leftTab === 'text' ? '缩进 = 子级\n-> 名称 = 连线\n✅ ◐ ○ = 状态，❌ = 弃用' : ''}>{leftTab === 'text' ? '?' : leftTab === 'files' && mode !== 'ws' ? '样例模式没有项目文件' : ''}</span>
         </div>
         <textarea ref={taRef} value={text} spellCheck={false} onChange={e => setText(e.target.value)} onKeyDown={onTaKey} style={{ display: leftTab === 'text' ? '' : 'none' }} />
-        {leftTab === 'outline' && <OutlineTree graph={graph} selected={selected} scope={realScope} renaming={renaming} status={STATUS_ICON} onMove={mode === 'ws' ? (id, parent) => moveInto([id], parent) : null}
+        {leftTab === 'outline' && <OutlineTree graph={graph} selected={selected} scope={realScope} renaming={renaming} status={STATUS_ICON} colors={colors} onMove={mode === 'ws' ? (id, parent) => moveInto([id], parent) : null}
           onPick={pick} onDrill={id => { go(id); setSelected(null); }} onRename={id => setRenaming(id)} onCommit={commitRename} onCancel={() => setRenaming(null)} />}
         {leftTab === 'files' && mode === 'ws' && <FileTree tree={tree} onOpen={onTreeOpen} current={fileView?.path} />}
         {leftTab !== 'files' && graph.errors.length > 0 && <div className="errs">{graph.errors.map((er, i) => <div key={i}>第 {er.line} 行：{er.msg}</div>)}</div>}
@@ -801,8 +803,12 @@ export function Shell({ name, Canvas }) {
           <span className="crumbs">{crumbs.map((c, i) => <span key={c.id}>{i > 0 && ' › '}<a onClick={() => { go(c.id); setSelected(null); }}>{c.label}</a></span>)}</span>
           <span className="grow" />
           <span className="save-wrap"><span className={'save' + (saveState.startsWith('❌') || saveState.startsWith('⚠') ? ' bad' : '')} title={wsData?.root || ''}>{mode === 'ws' ? (wsData?.root || '').split(/[\\/]/).slice(-1)[0] + ' · ' : mode === 'demo' ? '样例 · ' : ''}{saveState}</span></span>
+          <button className="ghost sidetoggle" onClick={() => setPropsOpen(o => !o)} title="显示 / 隐藏右栏（属性）  Ctrl+Tab">{propsOpen ? '▸' : '◂'}</button>
+        </div>
+        <OverflowBar>
           <button onClick={() => addNode(false)} title="在当前层新建（选中节点时建在它后面）；建完直接打字改名">＋ 节点</button>
           <button onClick={() => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; })}>{allOpen ? '全部收起' : '全部展开'}</button>
+          {mode === 'ws' && <button className={cardPropsOn ? '' : 'off'} title="卡片上显示人加的属性（卡片太高就关掉；属性面板里照样能看能改）" onClick={() => setCardPropsOn(o => !o)}>🏷 {cardPropsOn ? '收起属性' : '显示属性'}</button>}
           {withText.length > 0 && <button title="当前页所有带正文的卡片：一起展开 / 收起正文（单张点卡片上的 📄）" onClick={() => setTextOpen(f => { const g = { ...f }; for (const n of withText) { if (allTextOpen) delete g[n.id]; else g[n.id] = true; } return g; })}>{allTextOpen ? '📄 收起正文' : '📄 展开正文'}</button>}
           {withPics.length > 0 && <button onClick={() => setPicFold(f => { const g = { ...f }; for (const n of withPics) g[n.id] = !allPicsFolded; return g; })} title="当前页所有卡片的图片一起收起 / 显示">{allPicsFolded ? '显示图片' : '收起图片'}</button>}
           {view.portals.length + (portalModes[realScope] === 'hide' ? 1 : 0) > 0 && <button className="portalbtn" title="这一页的传送门（别的层的节点）：显示 → 淡化 → 隐藏（隐藏时和选中节点相连的仍显示）" onClick={() => setPortalModes(m => ({ ...m, [realScope]: { show: 'fade', fade: 'hide', hide: 'show' }[m[realScope] || 'show'] }))}>↗ 传送门：{{ show: '显示', fade: '淡化', hide: '隐藏' }[portalModes[realScope] || 'show']}</button>}
@@ -813,7 +819,7 @@ export function Shell({ name, Canvas }) {
           {local && <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>}
           <button className="themebtn" title={theme === 'light' ? '换深色主题' : '换白色主题'} onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}>{theme === 'light' ? '🌙' : '☀'}</button>
           <button className="keysbtn" title="快捷键一览（? 或 F1）" onClick={() => setHelpOpen(true)}>⌨ 快捷键</button>
-        </div>
+        </OverflowBar>
         {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className="canvas" onDragOver={e => e.preventDefault()} onDrop={onDrop}>
           {plane && <div className="planebar" title="投影方向可以是轴，也可以是某个成员的方向（= 换一组基看同一批点）。拖动卡片 = 改它在这两个方向上的坐标">
             <b>空间</b>

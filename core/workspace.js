@@ -19,7 +19,7 @@ import { join, dirname, relative, isAbsolute } from 'node:path';
 import { PATTERN_FILE, DEFAULT_PATTERN_WORDS, parsePatternWords } from './patterns.js';
 import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, withCopies, withEdge, withoutEdge, withMoved, ROOT } from './outline.js';
 import { checkSpaces } from './space.js';
-import { WORDS_FILE, DEFAULT_WORDS, parseColorWords } from './colors.js';
+import { WORDS_FILE, DEFAULT_WORDS, OLD_DEFAULT_WORDS, parseColorWords } from './colors.js';
 
 export const DIR = '__synapsis';
 const NODE_FILE = '_node.md';
@@ -330,6 +330,7 @@ export function ensurePatternWords(root) {
 export function ensureColorWords(root) {
   const f = join(root, DIR, WORDS_FILE);
   if (!existsSync(f)) { mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, DEFAULT_WORDS); }
+  else if (sameText(readFileSync(f, 'utf8'), OLD_DEFAULT_WORDS)) writeFileSync(f, DEFAULT_WORDS); // 没改过的旧默认 → 新默认
   return f;
 }
 

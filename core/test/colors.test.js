@@ -43,7 +43,7 @@ ok(pw.rules.length === 3 && pw.bad.length === 1 && pw.rules[2].words.join() === 
 c = colorMap(g, () => undefined, words);
 ok(c.get('战术层') === PALETTE.青 && c.get('战术层/巡逻') === PALETTE.青 && c.get('工具链') === '#123456', '自定义词表生效');
 ok(c.get('游戏NPC组/观测') !== PALETTE.蓝, '词表里没有的词（观测）不再认蓝');
-ok(parseColorWords(DEFAULT_WORDS).bad.length === 0 && parseColorWords(DEFAULT_WORDS).rules.length === 6, '默认词表自己能解析');
+ok(parseColorWords(DEFAULT_WORDS).bad.length === 0 && parseColorWords(DEFAULT_WORDS).rules.length === 9, '默认词表自己能解析，9 种颜色都用上');
 
 console.log(`colors: ${pass} 过 / ${fail} 挂`);
 process.exit(fail ? 1 : 0);

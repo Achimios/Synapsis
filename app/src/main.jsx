@@ -308,7 +308,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
       // 记住的视图优先；第一次进这个范围才 fitView
       fitView={!viewport} fitViewOptions={{ padding: 0.2 }} defaultViewport={viewport}
       onMoveEnd={(_, vp) => onViewport(vp)}>
-      <Background gap={24} size={1} color={theme === 'light' ? '#cfcfcf' : '#333'} />
+      <Background gap={24} size={1} color={theme === 'light' ? '#dcdcdc' : '#333'} />
       <Controls showInteractive={false} />
       <MiniMap pannable zoomable nodeColor={n => n.data?.node?.color || n.data?.portal?.color || "#444"} nodeStrokeColor="#666" maskColor={theme === 'light' ? 'rgba(255,255,255,.6)' : 'rgba(0,0,0,.55)'} />
       <FlowBridge />

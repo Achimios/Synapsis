@@ -777,6 +777,13 @@ for (const kind of ['reactflow']) {
   const mid = b => [b.x + b.width / 2, b.y + b.height / 2];
   const col = label => page.$$eval('.card', (cs, l) => { const c = cs.find(x => x.querySelector('.title')?.textContent.includes(l)); return c && c.style.getPropertyValue('--c'); }, label);
   ok(await page.$('button.aibtn.on'), '顶栏 🤖 AI 亮（连上了）');
+  // 顶栏两行：窗口窄 → 放不下的按钮收进「⋯」竖列表
+  await page.setViewportSize({ width: 900, height: 850 }); await sleep(600);
+  ok(!!(await page.$('.bar.tools .morebtn')) && !!(await page.$('.crumbs a')), '窗口变窄 → 第二行右端出现 ⋯，面包屑还在第一行');
+  await page.click('.bar.tools .morebtn'); await sleep(300);
+  ok((await page.$$('.moremenu button')).length >= 2, '点 ⋯ → 竖列表列出放不下的按钮');
+  await page.keyboard.press('Escape'); await page.mouse.click(450, 800); await sleep(200);
+  await page.setViewportSize({ width: 1400, height: 850 }); await sleep(600);
   ok(await col('惊慌失措') === PALETTE.紫, '词表里有「惊慌」→ 紫（词表）');
   ok(await col('吓坏了') === PALETTE.紫 && await col('咕噜人') !== PALETTE.紫, '语义配色：吓坏了 词表没命中、模型归到紫那行 → 紫；咕噜人 归「无」→ 不是紫');
   // 潜在关联：选 情绪恐惧 → 右边小签 → 点开 → 精排后 情绪反应 第一（理由），咕噜人 变淡
