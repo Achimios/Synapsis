@@ -301,6 +301,28 @@ export function TextFind({ active, taRef, text, inputRef, children }) {
   </>;
 }
 
+// >v<🧭导航-操作历史栏-大纲栏右边的竖栏（Shift+Tab 开关，👤 2026-10-08）：撤销栈的每一步一句人话，最新的在上面。
+//   点一行 = 回到「做完这一步」的样子（连续撤销 / 重做到那里）；灰的 = 撤销掉、还能重做的。刷新页面不丢，关窗口才清
+const ago = t => { if (!t) return ''; const s = Math.round((Date.now() - t) / 1000); return s < 60 ? s + ' 秒前' : s < 3600 ? Math.round(s / 60) + ' 分前' : new Date(t).toLocaleTimeString().slice(0, 5); };
+export function HistoryPanel({ hist, busy, onJump, onClose }) {
+  const { undo = [], redo = [] } = hist || {};
+  const rows = [
+    ...redo.map((e, j) => ({ e, key: 'r' + j, steps: redo.length - j, future: true })), // redo 栈顶 = 下一个能重做的，排在「现在」正上方
+    ...undo.map((e, i) => ({ e, key: 'u' + i, steps: -(undo.length - 1 - i), cur: i === undo.length - 1 })).reverse(),
+  ];
+  return <aside className="histcol">
+    <div className="bar"><b>🕘 历史</b><span className="hint">{undo.length} 步</span><span style={{ flex: 1 }} /><button className="ghost" title="关闭（Shift+Tab）" onClick={onClose}>✕</button></div>
+    <div className="hlist">
+      {!rows.length && <div className="hint pad">还没有改动。<br />增删改名、状态、连线、拖动、属性、正文……每一步都会记在这里，点一行就回到那一步。</div>}
+      {rows.map(r => <div key={r.key} className={'hrow' + (r.future ? ' future' : '') + (r.cur ? ' cur' : '')} title={r.future ? '点一下：重做到这一步' : r.cur ? '现在的样子' : '点一下：撤销回做完这一步的样子'}
+        onClick={() => !busy && r.steps && onJump(r.steps)}>
+        <span className="hd">{r.cur ? '●' : r.future ? '↷' : '·'}</span><span className="ht">{r.e.desc || (r.e.op ? '改属性 / 正文' : '改了大纲')}</span><span className="ha">{ago(r.e.t)}</span>
+      </div>)}
+      {undo.length > 0 && <div className="hrow base" title="撤销全部：回到这次打开（或上次刷新）时的样子" onClick={() => !busy && onJump(-undo.length)}><span className="hd">○</span><span className="ht">打开时的样子</span></div>}
+    </div>
+  </aside>;
+}
+
 export function FilePanel({ file, onClose }) {
   return (
     <aside className="side wide">

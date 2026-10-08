@@ -1,11 +1,12 @@
 // 外壳：左大纲（真源）、面包屑、导出、快捷键、贴图、工作区读写。
 // 画布组件（main.jsx，React Flow）只负责「显示 view + 回报用户操作」。
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { describeChange } from './history.js';
 import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, autoLayout, lineOf, resolveLabel, isDropped, withCopies, withoutEdge, ROOT } from './outline.js';
 import { colorMap } from './colors.js';
 import { patternMap, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
-import { ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, OutlineTree, HelpModal, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
+import { ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, HistoryPanel, OutlineTree, HelpModal, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
 const DRAG_PIC = 'application/x-synapsis-pic';
 import { AiPanel, RelatedDock, AgentBox } from './ai.jsx';
 import { MdLite } from './mdlite.jsx';
@@ -75,6 +76,7 @@ export function Shell({ name, Canvas }) {
     return () => window.removeEventListener('keydown', k, true);
   }, [!!lightbox]);
   const [portalModes, setPortalModes] = useState({}); // 每页的传送门：show | fade | hide（记进 view.json）
+  const [histOpen, setHistOpen] = useState(false), [histBusy, setHistBusy] = useState(false); // 操作历史栏（Shift+Tab；记进 view.json）
   const [cardPropsOn, setCardPropsOn] = useState(true); // 卡片上显示属性（👤 2026-10-08：卡片太高时关掉；记进 view.json）
   const [theme, setTheme] = useState(() => load('syn.theme', 'dark')); // 本机偏好，不跟项目走
   useEffect(() => { document.documentElement.dataset.theme = theme; save('syn.theme', theme); }, [theme]);
@@ -177,7 +179,7 @@ export function Shell({ name, Canvas }) {
       // 页面刷新（开发服务重启、Ctrl+R）后接上撤销记录：只在文件和上次记下的一致时接（外面改过就不接，免得撤销盖掉别人的改动）
       const sv = (() => { try { return JSON.parse(sessionStorage.getItem(HIST_KEY)); } catch { return null; } })();
       if (sv?.committed?.text === d.outline) { hist2.current.undo = sv.undo || []; hist2.current.redo = sv.redo || []; }
-      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); if (v.cardProps === false) setCardPropsOn(false); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
+      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); if (v.cardProps === false) setCardPropsOn(false); if (v.histOpen) setHistOpen(true); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
       setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
     }).catch(e => { setMode('offline'); setText(load('syn.text', SAMPLE)); setPositions(load('syn.pos.' + name, {})); setSaveState('⚠️ 没连上工作区（' + e.message + '），本地离线模式'); });
   }, []);
@@ -231,9 +233,9 @@ export function Shell({ name, Canvas }) {
   // 工作区：视图状态停手 0.6s 写进 .synapsis/view.json
   useEffect(() => {
     if (mode !== 'ws') return;
-    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, framed, panelW, leftHidden, picFold, textOpen, portalModes, cardProps: cardPropsOn, propsOpen, spaceAxes, scope: realScope }) }).catch(() => {}), 600);
+    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, framed, panelW, leftHidden, picFold, textOpen, portalModes, cardProps: cardPropsOn, histOpen, propsOpen, spaceAxes, scope: realScope }) }).catch(() => {}), 600);
     return () => clearTimeout(t);
-  }, [viewports, expanded, framed, panelW, leftHidden, picFold, textOpen, portalModes, cardPropsOn, propsOpen, spaceAxes, realScope, mode]);
+  }, [viewports, expanded, framed, panelW, leftHidden, picFold, textOpen, portalModes, cardPropsOn, histOpen, propsOpen, spaceAxes, realScope, mode]);
   const onViewport = useCallback((sc, vp) => setViewports(v => ({ ...v, [sc]: vp })), []);
   const go = useCallback(next => {
     if (next === realScope) return;
@@ -293,19 +295,21 @@ export function Shell({ name, Canvas }) {
   // 撤销删除 = 先把 _过期的/ 里的文件搬回原处，再写回删除前的大纲（正文、属性、图片都在）。
   // 属性 / 正文编辑（含颜色、图案）也在撤销栈里（op 条目，见 saveMeta / saveBody）；不在撤销范围：空间页拖动改 vec。只在工作区模式。
   const hist2 = useRef({ undo: [], redo: [], committed: null, applying: false });
-  const persistHist = () => { const h = hist2.current; try { sessionStorage.setItem(HIST_KEY, JSON.stringify({ undo: h.undo.slice(-50), redo: h.redo.slice(-50), committed: h.committed })); } catch { /* 配额满：只是刷新后接不上 */ } };
+  const [histTick, setHistTick] = useState(0); // 历史栏跟着刷新
+  const persistHist = () => { setHistTick(x => x + 1); const h = hist2.current; try { sessionStorage.setItem(HIST_KEY, JSON.stringify({ undo: h.undo.slice(-50), redo: h.redo.slice(-50), committed: h.committed })); } catch { /* 配额满：只是刷新后接不上 */ } };
   const recordSave = (t, report) => {
     const h = hist2.current, c = h.committed;
     if (!c) return;
     if (h.applying) { h.applying = false; if (report.restore?.length && h.undo.length) h.undo.at(-1).restore = report.restore; } // 重做了一次删除：撤销它要搬回的是这次的文件
-    else if (c.text !== t) { h.undo.push({ text: c.text, positions: c.positions, restore: report.restore?.length ? report.restore : null, hint: report.moveMap?.length ? report.moveMap : null }); h.redo = []; }
+    else if (c.text !== t) { h.undo.push({ text: c.text, positions: c.positions, restore: report.restore?.length ? report.restore : null, hint: report.moveMap?.length ? report.moveMap : null, desc: describeChange(c.text, t, report).desc, t: Date.now() }); h.redo = []; }
     h.committed = { text: t, positions: c.positions };
     persistHist();
   };
   const recordMove = changes => {
     const h = hist2.current, c = h.committed;
     if (!c || h.applying) return;
-    h.undo.push({ text: c.text, positions: c.positions, restore: null }); h.redo = [];
+    const n = Object.keys(changes).length;
+    h.undo.push({ text: c.text, positions: c.positions, restore: null, desc: n === 1 ? '拖动 ' + (graph.nodes.get(Object.keys(changes)[0])?.label || '图片') : `拖动 / 排列 ${n} 张卡`, t: Date.now() }); h.redo = [];
     const p = { ...c.positions };
     for (const [k, v] of Object.entries(changes)) p[k] = { ...p[k], ...v };
     h.committed = { text: c.text, positions: p };
@@ -332,17 +336,24 @@ export function Shell({ name, Canvas }) {
     const h = hist2.current;
     if (mode !== 'ws' || !h.committed) return setSaveState('撤销只在工作区模式');
     const e = h.undo.pop(); if (!e) return setSaveState('没有可撤销的');
-    if (e.op) { h.redo.push(e); persistHist(); applyOp(e, 'undo').then(() => setSaveState('已撤销' + (e.op === 'meta' ? '属性修改' : '正文修改') + ' · 还能撤 ' + h.undo.length + ' 步')); return; }
-    h.redo.push({ text: h.committed.text, positions: h.committed.positions, hint: flip(e.hint) });
-    applyHist(e).then(() => setSaveState('已撤销' + (e.restore ? '（删掉的节点从 _过期的/ 搬回来了）' : '') + ' · 还能撤 ' + h.undo.length + ' 步'));
+    if (e.op) { h.redo.push(e); persistHist(); return applyOp(e, 'undo').then(() => setSaveState('已撤销' + (e.op === 'meta' ? '属性修改' : '正文修改') + ' · 还能撤 ' + h.undo.length + ' 步')); }
+    h.redo.push({ text: h.committed.text, positions: h.committed.positions, hint: flip(e.hint), desc: e.desc, t: e.t });
+    return applyHist(e).then(() => setSaveState('已撤销' + (e.restore ? '（删掉的节点从 _过期的/ 搬回来了）' : '') + ' · 还能撤 ' + h.undo.length + ' 步'));
   };
   const redo = () => {
     const h = hist2.current;
     if (mode !== 'ws' || !h.committed) return;
     const e = h.redo.pop(); if (!e) return setSaveState('没有可重做的');
-    if (e.op) { h.undo.push(e); persistHist(); applyOp(e, 'redo').then(() => setSaveState('已重做')); return; }
-    h.undo.push({ text: h.committed.text, positions: h.committed.positions, restore: null, hint: flip(e.hint) });
-    applyHist(e).then(() => setSaveState('已重做'));
+    if (e.op) { h.undo.push(e); persistHist(); return applyOp(e, 'redo').then(() => setSaveState('已重做')); }
+    h.undo.push({ text: h.committed.text, positions: h.committed.positions, restore: null, hint: flip(e.hint), desc: e.desc, t: e.t });
+    return applyHist(e).then(() => setSaveState('已重做'));
+  };
+  // 历史栏点一行：连续撤销（steps < 0）/ 重做（steps > 0）到那一步；一步一步等上一步落地
+  const jumpHist = async steps => {
+    setHistBusy(true);
+    try { for (let i = 0; i < Math.abs(steps); i++) await (steps < 0 ? undo() : redo()); }
+    finally { setHistBusy(false); }
+    setSaveState(steps < 0 ? `已撤销 ${-steps} 步（历史栏）` : `已重做 ${steps} 步（历史栏）`);
   };
   // >v<🌳大纲模型-新建节点-Enter 同级 / Tab 子级（父节点原地展开）/ 工具栏＋；建完光标跳到大纲那一行、名字选中，直接打字改名
   const pendingRename = useRef(null);
@@ -500,7 +511,7 @@ export function Shell({ name, Canvas }) {
     api('/raw?p=' + encodeURIComponent(nodeFile(sel))).then(r => setRawText(r.text ?? r.note)).catch(e => setRawText('读取失败：' + e.message));
   }, [propsTab, sel, wsData]);
   // >v<🧭导航-撤销重做-属性 / 正文编辑也进撤销栈（👤 待办）：记 {op, id, undo: 改之前, redo: 改之后}，撤销 = 把旧值写回
-  const pushOp = e => { const h = hist2.current; if (!h.committed) return; h.undo.push(e); h.redo = []; persistHist(); };
+  const pushOp = e => { const h = hist2.current; if (!h.committed) return; const lb = graph.nodes.get(e.id)?.label || e.id; h.undo.push({ ...e, desc: e.op === 'meta' ? `改属性 ${lb}：${Object.keys(e.redo).join('、')}` : `改正文 ${lb}`, t: Date.now() }); h.redo = []; persistHist(); };
   const saveMeta = (id, patch, opt = {}) => {
     const old = wsData?.nodes[id]?.meta || {};
     if (!opt.silent) pushOp({ op: 'meta', id, undo: Object.fromEntries(Object.keys(patch).map(k => [k, k in old ? old[k] : null])), redo: patch });
@@ -547,6 +558,7 @@ export function Shell({ name, Canvas }) {
       if (e.shiftKey && !e.ctrlKey && !e.altKey && e.code === 'KeyF') { e.preventDefault(); e.stopPropagation(); if (mode === 'ws') setAgentOpen(o => !o); return; } // 👤 2026-10-08 Shift+F = AI 指令框（单手）
       if (e.ctrlKey && !e.altKey && (e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y')) { e.preventDefault(); e.stopPropagation(); (e.key.toLowerCase() === 'y' || e.shiftKey ? redo : undo)(); return; }
       if (e.key === 'Tab' && e.ctrlKey) { e.preventDefault(); e.stopPropagation(); setPropsOpen(o => !o); } // 👤 Ctrl+Tab = 右栏开关
+      else if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); e.stopPropagation(); setHistOpen(o => !o); } // 👤 Shift+Tab = 操作历史栏
       else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); setLeftHidden(h => !h); } // 👤 Tab = 侧栏开关
       else if ((e.key === 'Insert' || (e.key === 'Enter' && e.ctrlKey)) && sel) { e.preventDefault(); e.stopPropagation(); addNode(true); }
       else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); addNode(false); }
@@ -809,6 +821,7 @@ export function Shell({ name, Canvas }) {
         {leftTab === 'files' && mode === 'ws' && <FileTree tree={tree} onOpen={onTreeOpen} current={fileView?.path} api={api} />}
         {leftTab !== 'files' && graph.errors.length > 0 && <div className="errs">{graph.errors.map((er, i) => <div key={i}>第 {er.line} 行：{er.msg}</div>)}</div>}
       </aside>
+      {histOpen && mode === 'ws' && <HistoryPanel hist={hist2.current} tick={histTick} busy={histBusy} onClose={() => setHistOpen(false)} onJump={jumpHist} />}
       <main>
         <div className="bar top">
           <button className="ghost" onClick={() => setLeftHidden(h => !h)} title="显示/隐藏左栏（大纲、文件）">{leftHidden ? '▸' : '◂'}</button>
@@ -820,6 +833,7 @@ export function Shell({ name, Canvas }) {
         <OverflowBar>
           <button onClick={() => addNode(false)} title="在当前层新建（选中节点时建在它后面）；建完直接打字改名">＋ 节点</button>
           <button onClick={() => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; })}>{allOpen ? '全部收起' : '全部展开'}</button>
+          {mode === 'ws' && <button className={histOpen ? '' : 'off'} title="操作历史：每一步改了什么，点一行回到那一步（Shift+Tab）" onClick={() => setHistOpen(o => !o)}>🕘 历史</button>}
           {mode === 'ws' && <button className={cardPropsOn ? '' : 'off'} title="卡片上显示人加的属性（卡片太高就关掉；属性面板里照样能看能改）" onClick={() => setCardPropsOn(o => !o)}>🏷 {cardPropsOn ? '收起属性' : '显示属性'}</button>}
           {withText.length > 0 && <button title="当前页所有带正文的卡片：一起展开 / 收起正文（单张点卡片上的 📄）" onClick={() => setTextOpen(f => { const g = { ...f }; for (const n of withText) { if (allTextOpen) delete g[n.id]; else g[n.id] = true; } return g; })}>{allTextOpen ? '📄 收起正文' : '📄 展开正文'}</button>}
           {withPics.length > 0 && <button onClick={() => setPicFold(f => { const g = { ...f }; for (const n of withPics) g[n.id] = !allPicsFolded; return g; })} title="当前页所有卡片的图片一起收起 / 显示">{allPicsFolded ? '显示图片' : '收起图片'}</button>}

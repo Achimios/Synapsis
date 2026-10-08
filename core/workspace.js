@@ -269,6 +269,9 @@ export function saveOutline(root, text, hint = null) {
   const layout = {};
   // 新节点（cid = null）：前端可能先写了坐标（右键「在这里新建」），留着
   for (const [nid, cid] of map) if (cid !== null && ws.layout[cid]) layout[nid] = ws.layout[cid]; else if (cid === null && ws.layout[nid]) layout[nid] = ws.layout[nid];
+  // 删掉的节点：坐标留着（撤销删除 / 从历史栏回去时卡片回原位；同名新建也接着用）。改名搬走的旧 id 不留
+  const carried = new Set([...map.values()].filter(Boolean));
+  for (const k of Object.keys(ws.layout)) if (!k.startsWith('@') && !carried.has(k) && !(k in layout)) layout[k] = ws.layout[k];
   for (const k of Object.keys(ws.layout)) if (k.startsWith('@portal:')) layout[k] = ws.layout[k];
   for (const k of Object.keys(ws.layout)) if (k.startsWith('@pic:')) {
     const p = k.slice(5), hit = Object.keys(picKeys).find(o => p.startsWith(o));

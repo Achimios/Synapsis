@@ -45,6 +45,14 @@ try {
   ok(!existsSync(f) && existsSync(B('游戏AI/感知/敌人观察.md')), '改名 = 搬文件');
   ok(readFileSync(B('游戏AI/感知/敌人观察.md'), 'utf8').includes('人写的说明'), '改名后正文还在');
   ok(loadWorkspace(root).layout['游戏AI/感知/敌人观察']?.x === 11, '改名后坐标跟着走');
+  ok(!('游戏AI/感知/敌方观察' in loadWorkspace(root).layout), '改名后旧 id 的坐标不留');
+  { // 删掉再写回（撤销删除 / 历史栏回去）→ 卡片回原位：删掉的节点坐标留着
+    const before = workspaceOutline(loadWorkspace(root));
+    saveOutline(root, before.split('\n').filter(l => !l.trim().replace(/^\S*[✅◐○❌]\s*/u, '').startsWith('敌人观察')).join('\n'));
+    const gone = !loadWorkspace(root).graph.nodes.has('游戏AI/感知/敌人观察');
+    saveOutline(root, before);
+    ok(gone && loadWorkspace(root).layout['游戏AI/感知/敌人观察']?.x === 11, '删掉再写回 → 坐标还是原来的');
+  }
 
   // 分组改名：子节点整体搬
   saveOutline(root, workspaceOutline(loadWorkspace(root)).replace(/^  感知$/m, '  观测'));

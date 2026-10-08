@@ -548,6 +548,24 @@ for (const kind of ['reactflow']) {
   await page.reload(); await sleep(1800);
   await page.mouse.click(700, 700); await page.keyboard.press('Control+z'); await sleep(1800);
   ok(existsSync(join(ws, '__synapsis', '丙.md')) && !!(await card('丙')), '删除 → 刷新页面 → Ctrl+Z 仍能撤回 ' + await save());
+  // 操作历史栏（Shift+Tab）：每一步一句人话；点一行 = 回到做完那一步
+  await page.mouse.click(700, 700); await page.keyboard.press('Shift+Tab'); await sleep(300);
+  ok(!!(await page.$('.histcol')), 'Shift+Tab → 操作历史栏（大纲栏右边）');
+  const hrows = () => page.$$eval('.histcol .hrow', rs => rs.map(r => r.className.replace('hrow', '').trim() + ':' + r.querySelector('.ht').textContent));
+  let hr = await hrows();
+  ok(hr.length === 1 && hr[0] === 'future:删除 丙', '历史里写着「删除 丙」，撤销掉了 → 灰的（还能重做）；删甲那几步在撤销后又删丙时被新分支替掉 ' + hr);
+
+  await page.mouse.click(...mid(await (await card('丁')).boundingBox())); await sleep(200);
+  await page.keyboard.press('Delete'); await sleep(1600);
+  hr = await hrows();
+  ok(hr[0].startsWith('cur:') && hr[0].includes('删除 丁') && !hr.some(t => t.startsWith('future:')), '新的一步排最上面、是「现在」；可重做的清掉了 ' + hr);
+  await page.click('.histcol .hrow.base'); await sleep(4000);
+  ok(existsSync(join(ws, '__synapsis', '甲.md')) && existsSync(join(ws, '__synapsis', '丁.md')) && !!(await card('丁')), '点「打开时的样子」→ 连续撤销到最开始：甲、丁都回来了 ' + await save());
+  await page.click('.histcol .hrow.future >> nth=0'); await sleep(4000);
+  ok(!existsSync(join(ws, '__synapsis', '丁.md')), '点最上面灰的那行 → 一路重做回来：丁又删了 ' + await save());
+  await page.keyboard.press('Control+z'); await sleep(1800);
+  await page.click('.histcol button[title^="关闭"]'); await sleep(200);
+  ok(!(await page.$('.histcol')), '关闭历史栏');
   // 弃用 ❌：右键 → 文件 status: dropped，卡片灰 + 删除线，连着它的线变灰变淡；「—」清除；删除项带 🗑️
   await page.mouse.click(...mid(await (await card('乙')).boundingBox()), { button: 'right' }); await sleep(300);
   ok((await page.$eval('.ctx .mi.danger', e => e.innerText)).includes('🗑️'), '右键删除项是 🗑️');

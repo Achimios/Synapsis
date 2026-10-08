@@ -434,3 +434,14 @@ button.patsw { width: 26px; height: 18px; background-color: color-mix(in srgb, v
 .tamirror mark { color: transparent; background: rgba(255, 196, 0, .33); border-radius: 2px; }
 .tamirror mark.cur { background: rgba(255, 140, 0, .85); box-shadow: 0 0 0 1px rgba(255, 140, 0, .9); }
 .files .fi.hit { color: var(--strong); font-weight: 600; }
+/* 操作历史栏（👤 2026-10-08）：大纲栏右边 */
+.histcol { width: 240px; flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--panel); min-height: 0; }
+.histcol .hlist { flex: 1; overflow: auto; padding: 4px 0; }
+.histcol .hrow { display: flex; align-items: baseline; gap: 6px; padding: 4px 10px; font-size: 12.5px; cursor: pointer; border-left: 3px solid transparent; }
+.histcol .hrow:hover { background: var(--hover); }
+.histcol .hrow.cur { background: var(--selbg); border-left-color: var(--accent); color: var(--strong); cursor: default; }
+.histcol .hrow.future { opacity: .45; font-style: italic; }
+.histcol .hrow.base { color: var(--dim); border-top: 1px dashed var(--line); margin-top: 4px; }
+.histcol .hd { width: 10px; flex: none; color: var(--dim); }
+.histcol .ht { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.histcol .ha { flex: none; font-size: 10.5px; color: var(--dim); }
