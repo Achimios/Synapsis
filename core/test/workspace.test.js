@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, linkNodes, moveNodes, movePic, grepProject, DIR } from '../workspace.js';
+import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, scanAnchors, anchorMatches, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, linkNodes, moveNodes, movePic, grepProject, DIR } from '../workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../scaffold.js';
 import { SAMPLE } from '../../app/src/sample.js';
 
@@ -244,6 +244,34 @@ try {
     setNodeMeta(rEv, '眼睛/看见', { evidence: '实测', code: null });
     ok(loadWorkspace(rEv).graph.nodes.get('眼睛/看见').meta.evidence_hash === undefined, '没有 code → 没快照可记');
   } finally { rmSync(rEv, { recursive: true, force: true }); }
+  // FK 读回 L2：代码里的 >v< ⇄ 节点的 anchor:，双向对照，只提示
+  const rAn = mkdtempSync(join(tmpdir(), 'syn-anchor-'));
+  try {
+    saveOutline(rAn, '眼睛\n  ✅ 看见\n  ✅ 听见\n  ◐ 嗅\n  ❌ 旧的');
+    mkdirSync(join(rAn, 'src'), { recursive: true });
+    writeFileSync(join(rAn, 'src', 'a.js'), '// >v<👁️视觉-看见-主流程\nexport const a = 1;\n// >v<👁️视觉-边缘-没人认领的\n');
+    writeFileSync(join(rAn, 'src', 'b.py'), '# >v<🔊听觉-听见-说明\n');
+    writeFileSync(join(rAn, 'doc.md'), '讲解：// >v<📝文档-不算\n');
+    writeFileSync(join(rAn, 'src', 'c.js'), "console.log('>v<'); // 字符串里的不算\n");
+    const an = () => checkWorkspace(loadWorkspace(rAn)).filter(i => String(i.kind || '').startsWith('anchor'));
+    ok(scanAnchors(rAn).length === 3, '只认代码文件里「注释符 + >v<」开头的行（md / 字符串不算）');
+    ok(an().length === 0, '图里没人写 anchor → 完全不吭声（不逐条报孤儿，也不提示）');
+    setNodeMeta(rAn, '眼睛/看见', { anchor: '👁️视觉-看见' });
+    setNodeMeta(rAn, '眼睛/听见', { anchor: '>v<🔊听觉' });
+    let r = an();
+    ok(!r.some(i => i.kind === 'anchor-missing'), '节点说有、代码里也有 → 不报（含只写大标题 / 带 >v< 前缀）');
+    const orphan = r.filter(i => i.kind === 'anchor-orphan');
+    ok(orphan.length === 1 && orphan[0].where === 'src/a.js:3' && orphan[0].level === 'info', '代码里有、图里没节点 → 孤儿，info，指到文件:行');
+    setNodeMeta(rAn, '眼睛/嗅', { anchor: '👃嗅觉-没写过' });
+    r = an();
+    const miss = r.filter(i => i.kind === 'anchor-missing');
+    ok(miss.length === 1 && miss[0].where === '眼睛/嗅' && miss[0].level === 'warn' && miss[0].msg.includes('partial'), '节点说有、代码找不到 → warn，带上图里标的状态（主张和观测并排）');
+    setNodeMeta(rAn, '眼睛/旧的', { anchor: '👃嗅觉-旧' });
+    ok(an().filter(i => i.kind === 'anchor-missing').length === 1, '弃用的节点不查');
+    ok(loadWorkspace(rAn).graph.nodes.get('眼睛/嗅').status === 'partial', '只提示：status 没被改');
+    ok(checkWorkspace(loadWorkspace(rAn)).filter(i => i.level === 'error').length === 0, '不产生 error');
+    ok(anchorMatches('🔊听觉-听见', '🔊听觉-听见-说明') && !anchorMatches('🔊听', '🔊听觉-听见'), '前缀要落在分隔符上，不会半个词命中');
+  } finally { rmSync(rAn, { recursive: true, force: true }); }
   // 项目骨架：检测已有 / 同类，只写勾上且不存在的
   const r4 = mkdtempSync(join(tmpdir(), 'syn-scaffold-'));
   try {

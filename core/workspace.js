@@ -438,6 +438,64 @@ export function saveView(root, patch) {
   return v;
 }
 
+// >v<✅自检-锚点读回-代码里的 >v< 标记 ⇄ 图里节点的 anchor:（FK 读回 L2，👤 2026-10-08）：双向对照，只提示、不改图。
+//   只认代码文件里「注释符 + >v<」开头的行（文档里讲解 >v< 的不算）；一条锚点 = >v< 之后到行尾，键 = 前两段（emoji大标题-小标题）。
+const ANCHOR_EXT = /\.(js|jsx|ts|tsx|mjs|cjs|py|css|scss|html|vue|svelte|vbs|bat|ps1|sh|lua|gd|cs|java|kt|go|rs|c|cc|cpp|h|hpp)$/i;
+const ANCHOR_LINE = /^\s*(?:\/\/|\/\*|#|--|<!--|;|'|rem)\s*>v<\s*(\S.*?)\s*(?:\*\/|-->)?\s*$/i;
+export function scanAnchors(root) {
+  const out = [];
+  const walk = items => {
+    for (const it of items) {
+      if (it.dir) { if (it.name !== '_过期的') walk(it.children); continue; }
+      if (!ANCHOR_EXT.test(it.name)) continue;
+      let text;
+      try { const f = join(root, it.path); if (statSync(f).size > 1e6) continue; text = readFileSync(f, 'utf8'); } catch { continue; }
+      if (!text.includes('>v<')) continue;
+      text.split(/\r?\n/).forEach((line, i) => {
+        const m = ANCHOR_LINE.exec(line);
+        if (m) out.push({ text: m[1], key: m[1].split(/[（(\s]/)[0].split('-').slice(0, 2).join('-'), path: it.path, line: i + 1 });
+      });
+    }
+  };
+  walk(listTree(root, 3000).tree);
+  return out;
+}
+// 节点 anchor 写法：「🤖AI指令-宽松版」，可以只写大标题，多个用 | 分开；开头带 >v< 也认
+export const nodeAnchors = meta => String(meta?.anchor || '').split('|').map(s => s.replace(/^\s*>v<\s*/, '').trim()).filter(Boolean);
+// 节点锚点 a 指向代码锚点 t：整句相同，或 a 是 t 的前缀且下一个字符是分隔（- 或空白）
+export const anchorMatches = (a, t) => t === a || (t.startsWith(a) && /[-\s]/.test(t[a.length]));
+export function checkAnchors(ws) {
+  const issues = [], g = ws.graph;
+  const code = scanAnchors(ws.root);
+  const claims = []; // 非弃用节点的主张
+  let anyAnchor = false;
+  for (const n of g.nodes.values()) {
+    if (n.id === ROOT) continue;
+    const list = nodeAnchors(n.meta);
+    if (!list.length) continue;
+    anyAnchor = true;
+    if (!isDropped(g, n.id)) claims.push({ n, list });
+  }
+  for (const { n, list } of claims) for (const a of list) {
+    if (!code.some(c => anchorMatches(a, c.text)))
+      issues.push({ level: 'warn', where: n.id, kind: 'anchor-missing', msg: `anchor「${a}」在代码里找不到（重构删掉了？改名了？）${n.status ? '——图里标的是 ' + n.status : ''}` });
+  }
+  if (!code.length) return issues;
+  if (!anyAnchor) return issues; // 没人写 anchor: 就完全不吭声（👤 2026-10-08：图是思考草稿，和代码差得远是常态，不该默认提醒）
+  // 按大标题合并成一条，免得一个没建模的区域刷出几十行；where 指到第一处
+  const seen = new Set(), by = new Map();
+  for (const c of code) {
+    if (seen.has(c.key)) continue; seen.add(c.key);
+    if ([...g.nodes.values()].some(n => n.id !== ROOT && nodeAnchors(n.meta).some(a => anchorMatches(a, c.text) || anchorMatches(a, c.key)))) continue;
+    const big = c.key.split('-')[0];
+    if (!by.has(big)) by.set(big, { first: c, subs: [] });
+    by.get(big).subs.push(c.key.split('-')[1] || '');
+  }
+  for (const [big, { first, subs }] of by)
+    issues.push({ level: 'info', where: `${first.path}:${first.line}`, kind: 'anchor-orphan', msg: `代码里有 >v<${big} 的 ${subs.length} 处没有节点认领：${subs.slice(0, 6).join('、')}${subs.length > 6 ? '…' : ''}（图落后于代码？认领 = 给某个节点写 anchor: ${big}）` });
+  return issues;
+}
+
 // >v<✅自检-graph check-悬空边、无状态、节点 code 指向不存在的文件
 export function checkWorkspace(ws) {
   const issues = [...ws.graph.errors.map(e => ({ level: 'error', where: e.file, msg: e.msg }))];
@@ -465,6 +523,7 @@ export function checkWorkspace(ws) {
   if (ws.patternWords != null) for (const l of parsePatternWords(ws.patternWords).bad) issues.push({ level: 'warn', where: PATTERN_FILE, msg: '认不出的一行（图案只能是 网格 点阵 斜纹 横纹 波纹）：' + l });
   const g = ws.graph;
   issues.push(...checkSpaces(g, id => g.nodes.get(id)?.meta, (from, ref) => resolveLabel(g.nodes, from, ref) || (g.nodes.has(ref) ? ref : null)));
+  issues.push(...checkAnchors(ws));
   return issues;
 }
 
