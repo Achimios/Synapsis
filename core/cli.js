@@ -158,7 +158,9 @@ export function runWrite(root, cmd, args, argv = []) {
     need(a);
     const patch = {};
     for (const kv of args.slice(1)) { const i = kv.indexOf('='); if (i < 1) throw new Error('属性要写成 键=值：' + kv); const k = kv.slice(0, i).trim(), v = kv.slice(i + 1).trim(); if (['to', 'label', 'status', 'order'].includes(k)) throw new Error(k + ' 不能用 set 改（用 link / rename / status）'); patch[k] = v === '' ? null : v; }
-    setNodeMeta(root, a, patch); return a + ' 属性已改：' + Object.keys(patch).join('、');
+    setNodeMeta(root, a, patch);
+    const snap = ('evidence' in patch || 'code' in patch) && loadWorkspace(root).graph.nodes.get(a)?.meta.evidence_hash;
+    return a + ' 属性已改：' + Object.keys(patch).join('、') + (snap ? `（实测：已记下 code 文件的快照，之后文件改了 check 会提示）` : '');
   }
   return null;
 }

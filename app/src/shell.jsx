@@ -33,7 +33,7 @@ const api = (path, opts) => fetch(withWs(path), opts && { ...opts, headers: { 'c
 initStash(api); // 界面暂存（关窗口不丢，托盘重启才清）：先去服务端取回来
 
 // >v<🎨画布-卡片属性-人加的属性显示在卡片上（👤 2026-10-08：加了属性画布上看不到）；结构 / 显示用的字段不算，最多 4 条
-const SYS_META = new Set(['to', 'label', 'status', 'order', 'color', 'vec', 'axes', 'evidence', 'rate', 'picw', 'img', 'kind']);
+const SYS_META = new Set(['to', 'label', 'status', 'order', 'color', 'vec', 'axes', 'evidence', 'evidence_hash', 'rate', 'picw', 'img', 'kind']);
 const cardProps = meta => Object.entries(meta || {}).filter(([k, v]) => !SYS_META.has(k) && !k.startsWith('_') && !k.startsWith('W_') && !k.startsWith('映射') && typeof v !== 'object' && String(v).trim() !== '');
 export function Shell({ name, Canvas }) {
   const [mode, setMode] = useState(DEMO ? 'demo' : 'loading'); // demo | loading | ws | offline

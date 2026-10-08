@@ -116,7 +116,7 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
   const [body, setBody] = useState(wsNode?.body || '');
   useEffect(() => setBody(wsNode?.body || ''), [id, wsNode?.body]);
   if (!n) return null;
-  const meta = Object.entries(wsNode?.meta || {}).filter(([k]) => k !== 'to');
+  const meta = Object.entries(wsNode?.meta || {}).filter(([k]) => k !== 'to' && k !== 'evidence_hash'); // evidence_hash = 实测快照，机器记的，不给人改
   // 分组自己没有边 → 显示「经由子节点」的对外连接（子树内部的边不算）
   const sub = new Set(); const walk = x => { sub.add(x); for (const c of graph.nodes.get(x)?.children || []) walk(c); }; walk(id);
   const ins = edges.filter(e => sub.has(e.to) && !sub.has(e.from)), outs = edges.filter(e => sub.has(e.from) && !sub.has(e.to));

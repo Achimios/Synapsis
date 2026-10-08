@@ -16,6 +16,7 @@
 //   正文（人写的，Synapsis 不动）
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, unlinkSync, rmdirSync, cpSync } from 'node:fs';
 import { join, dirname, relative, isAbsolute } from 'node:path';
+import { createHash } from 'node:crypto';
 import { PATTERN_FILE, DEFAULT_PATTERN_WORDS, parsePatternWords } from './patterns.js';
 import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, withCopies, withEdge, withoutEdge, withMoved, ROOT } from './outline.js';
 import { checkSpaces } from './space.js';
@@ -321,7 +322,17 @@ export function setNodeMeta(root, id, patch) {
   if (!n || id === ROOT) throw new Error('没有这个节点：' + id);
   const meta = { ...n.meta, ...(fileName(n.label) !== n.label ? { label: n.label } : {}), ...(n.status ? { status: n.status } : {}), ...(n.order !== Infinity ? { order: String(n.order) } : {}) };
   for (const [k, v] of Object.entries(patch)) { if (v === null) delete meta[k]; else meta[k] = v; }
+  // 实测快照（审阅 §2.3）：标 evidence=实测（或实测的节点换了 code）时，记下 code 文件当时的内容 hash；之后 check 发现文件变了就提示。
+  //   只在这两种改动时刷新 —— 改颜色、状态之类不动快照，否则「实测之后改过」会被悄悄抹掉。不是实测 → 快照没意义，删掉。
+  if (meta.evidence !== '实测') delete meta[EVIDENCE_HASH];
+  else if ('evidence' in patch || 'code' in patch) { const h = codeHash(codeFile(ws.root, meta.code)); if (h) meta[EVIDENCE_HASH] = h; else delete meta[EVIDENCE_HASH]; }
   writeFileSync(n.file, serializeNode(meta, n.body));
+}
+// >v<✅自检-实测快照-code 文件内容的短 hash（换行统一成 \n，免得 git 的 CRLF 转换被当成「改过」）；最小版：只比整个文件，不做依赖分析
+export const EVIDENCE_HASH = 'evidence_hash';
+export const codeFile = (root, code) => !code || code === 'null' ? null : join(root, String(code).split('#')[0]);
+export function codeHash(file) {
+  try { if (!file || !statSync(file).isFile()) return null; return createHash('sha1').update(readFileSync(file, 'utf8').replace(/\r\n/g, '\n')).digest('hex').slice(0, 10); } catch { return null; }
 }
 
 // >v<🎨画布-配色词表-没有 _配色.md 就按默认词表写一份（界面「词表…」按钮），返回它的路径
@@ -439,6 +450,11 @@ export function checkWorkspace(ws) {
       if (!existsSync(p)) issues.push({ level: 'error', where: n.id, msg: 'code 指向不存在的文件：' + f });
       else if (sym && statSync(p).isFile() && !new RegExp('(^|[^\\w$])' + sym.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^\\w$])').test(readFileSync(p, 'utf8')))
         issues.push({ level: 'error', where: n.id, msg: `code 的符号 #${sym} 在 ${f} 里找不到` });
+      // 实测之后代码改过：只提示，不作废（证据会过期，但不是一改就全废）
+      if (n.meta.evidence === '实测' && n.meta[EVIDENCE_HASH] && existsSync(p)) {
+        const h = codeHash(p);
+        if (h && h !== n.meta[EVIDENCE_HASH]) issues.push({ level: 'info', where: n.id, msg: `实测之后 ${f} 改过，结论可能要重验（重验后 set ${n.id} evidence=实测 刷新快照）` });
+      }
     } else if (n.status === 'done' && !n.isGroup) issues.push({ level: 'info', where: n.id, msg: '标了 done 但没写 code' });
     if (n.children.length && n.status) {
       const agg = groupStatus(ws.graph, n.id);

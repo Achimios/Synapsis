@@ -216,6 +216,34 @@ try {
     const isDrop = checkWorkspace(wDrop);
     ok(!isDrop.some(i => i.where.startsWith('组/不做了') || i.where === '组/废叶'), 'check 跳过弃用节点和它的子孙 ' + JSON.stringify(isDrop));
   } finally { rmSync(rDrop, { recursive: true, force: true }); }
+  // 实测快照：标 evidence=实测 时记下 code 文件的 hash；之后文件改了 check 给 info（只提示，不作废）
+  const rEv = mkdtempSync(join(tmpdir(), 'syn-ev-'));
+  try {
+    saveOutline(rEv, '眼睛\n  ✅ 看见');
+    mkdirSync(join(rEv, 'src'), { recursive: true });
+    const src = join(rEv, 'src', 'eye.js');
+    writeFileSync(src, 'export function see() {\r\n  return 1;\r\n}\r\n');
+    const stale = () => checkWorkspace(loadWorkspace(rEv)).filter(i => i.where === '眼睛/看见' && i.msg.includes('改过'));
+    setNodeMeta(rEv, '眼睛/看见', { code: 'src/eye.js#see', evidence: '实测' });
+    const h0 = loadWorkspace(rEv).graph.nodes.get('眼睛/看见').meta.evidence_hash;
+    ok(/^[0-9a-f]{10}$/.test(h0 || ''), '标 实测 → 记下 code 文件快照 ' + h0);
+    ok(stale().length === 0, '文件没变 → 不提示');
+    writeFileSync(src, 'export function see() {\n  return 1;\n}\n');
+    ok(stale().length === 0, '只是 CRLF ⇄ LF（git 换行转换）→ 不算改过');
+    setNodeMeta(rEv, '眼睛/看见', { rate: '5 Hz' });
+    ok(loadWorkspace(rEv).graph.nodes.get('眼睛/看见').meta.evidence_hash === h0, '改别的属性不动快照');
+    writeFileSync(src, 'export function see() {\n  return 2;\n}\n');
+    ok(stale().length === 1 && stale()[0].level === 'info', '实测之后代码改过 → info 提示');
+    ok(checkWorkspace(loadWorkspace(rEv)).every(i => i.level !== 'error'), '只提示，不报错、不作废（evidence 仍是 实测）');
+    setNodeMeta(rEv, '眼睛/看见', { evidence: '实测' });
+    ok(stale().length === 0, '重验后再标一次 实测 → 刷新快照，提示消失');
+    setNodeMeta(rEv, '眼睛/看见', { evidence: '设计' });
+    ok(loadWorkspace(rEv).graph.nodes.get('眼睛/看见').meta.evidence_hash === undefined, '不是 实测 → 快照删掉');
+    writeFileSync(src, 'x');
+    ok(stale().length === 0, '不是 实测 就不查');
+    setNodeMeta(rEv, '眼睛/看见', { evidence: '实测', code: null });
+    ok(loadWorkspace(rEv).graph.nodes.get('眼睛/看见').meta.evidence_hash === undefined, '没有 code → 没快照可记');
+  } finally { rmSync(rEv, { recursive: true, force: true }); }
   // 项目骨架：检测已有 / 同类，只写勾上且不存在的
   const r4 = mkdtempSync(join(tmpdir(), 'syn-scaffold-'));
   try {
