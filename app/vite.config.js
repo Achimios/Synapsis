@@ -108,7 +108,7 @@ function workspaceApi() {
             if (url.pathname === '/ai/key' && req.method === 'PUT') { const b = await body(req); saveKey(SYN_HOME, b.provider || 'deepseek', b.key || ''); return send(200, await aiStatus(aiConfig(SYN_HOME))); }
             // 本地模型的上下文长度：先估显存，再「卸载 → 按新长度加载」（core/lmstudio.js，走 LM Studio 的 lms 命令行）
             if (url.pathname === '/ai/lms/estimate') { try { return send(200, await lmsEstimate(url.searchParams.get('model') || cfg.chat, Number(url.searchParams.get('ctx')))); } catch (e) { return send(500, { error: e.message }); } }
-            if (url.pathname === '/ai/lms/load' && req.method === 'POST') { const b = await body(req); try { const r = await lmsReload(b.model || cfg.chat, b.ctx); return send(200, { ...r, status: await aiStatus(aiConfig(SYN_HOME)) }); } catch (e) { return send(500, { error: e.message }); } }
+            if (url.pathname === '/ai/lms/load' && req.method === 'POST') { const b = await body(req); try { const r = await lmsReload(b.model || cfg.chat, b.ctx); if (aiConfig(SYN_HOME).chat !== r.key && (b.model || cfg.chat).replace(/:\d+$/, '') === r.key) saveAiConfig(SYN_HOME, { chat: r.key }); return send(200, { ...r, status: await aiStatus(aiConfig(SYN_HOME)) }); } catch (e) { return send(500, { error: e.message }); } }
             if (url.pathname === '/ai/config' && req.method === 'PUT') return send(200, await aiStatus(saveAiConfig(SYN_HOME, await body(req))));
             try {
               if (url.pathname === '/ai/agent' && req.method === 'POST') { const b = await body(req); return send(200, await runAgent(root, b, cfg)); }

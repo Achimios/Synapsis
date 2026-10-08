@@ -4,7 +4,8 @@ import { MdLite } from './mdlite.jsx';
 
 const opts = (list = [], cur) => {
   const ids = list.map(m => m.id);
-  return [...(cur && !ids.includes(cur) ? [cur] : []), ...ids].map(id => <option key={id} value={id}>{(m => m?.online ? '☁ ' + m.name + '（在线，按量计费）' : id + (m?.loaded ? '（已加载）' : ''))(list.find(m => m.id === id))}</option>);
+  // 当前设置的模型不在列表里（比如「qwen3-8b:2」是 LM Studio 某次加载的实例名，卸载后就没了）→ 标出来，别让人以为有两个
+  return [...(cur && !ids.includes(cur) ? [cur] : []), ...ids].map(id => <option key={id} value={id}>{(m => !m ? id + '（LM Studio 里没有了，换一个）' : m.online ? '☁ ' + m.name + '（在线，按量计费）' : id + (m.loaded ? '（已加载）' : ''))(list.find(m => m.id === id))}</option>);
 };
 
 const kfmt = n => n >= 1e6 ? Math.round(n / 1048576) + 'M' : n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(n);
