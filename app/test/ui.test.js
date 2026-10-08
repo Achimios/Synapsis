@@ -850,11 +850,18 @@ for (const kind of ['reactflow']) {
   words = '- 粉: 情绪, 惊慌\n- 蓝: 传感\n';
   await page.click('button.aibtn'); await sleep(800);
   ok((await page.$eval('.aistat', e => e.textContent)).includes('已连上'), 'AI 面板：已连上');
-  await page.click('.aipanel button:has-text("生成词表")'); await sleep(1500);
-  ok((await page.$eval('.aipanel textarea', e => e.value)).includes('- 粉: 情绪, 惊慌'), '生成词表 → 草稿出现在文本框');
-  await page.click('.aipanel button:has-text("写入")'); await sleep(1500);
+  ok(!(await page.$('.aipanel button:has-text("生成词表")')), '设置页只放设置：没有「生成词表」按钮');
+  await page.click('.aipanel .bar button'); await sleep(500);
+  // 生成词表在指令框的「🎨 配色词表」页（👤「这种操作不该丢配置页面」）
+  await page.mouse.click(700, 760); await page.keyboard.press('Shift+F'); await sleep(500);
+  await page.click('.agentbox .bar a:has-text("配色词表")'); await sleep(300);
+  await page.click('.agentbox .wordstab button:has-text("生成词表")'); await sleep(1500);
+  ok((await page.$eval('.agentbox .wordstab textarea', e => e.value)).includes('- 粉: 情绪, 惊慌'), '生成词表 → 草稿出现在文本框');
+  await page.click('.agentbox .wordstab textarea'); await page.keyboard.press('End'); await page.keyboard.press('Enter'); await sleep(200);
+  ok(!(await page.$('.agentbox .plan')) && (await page.$eval('.agentbox .wordstab textarea', e => e.value)).endsWith('\n'), '词表文本框里 Enter = 换行，不会当成发指令');
+  await page.click('.agentbox .wordstab button:has-text("写入")'); await sleep(1500);
   ok(readFileSync(join(ws, '__synapsis', '_配色.md'), 'utf8').includes('- 粉: 情绪, 惊慌') && readdirSync(join(ws, '__synapsis', '_过期的')).some(f => f.startsWith('_配色_')), '写入 _配色.md，旧的备份进 _过期的/');
-  await page.click('.aipanel .bar button'); await sleep(1500);
+  await page.click('.agentbox .bar a:has-text("对话")'); await page.click('.agentbox .bar button[title^="关闭"]'); await sleep(1500);
   ok(await col('惊慌失措') === PALETTE.粉, '新词表生效：惊慌失措 → 粉');
   // AI 指令框（Ctrl+J）：说 → 预览（✓ 能做 / ✗ 不做）→ Enter 执行 → 坐标对齐、进撤销；日志页有记录
   await page.mouse.click(700, 760); await page.keyboard.press('Shift+F'); await sleep(500);

@@ -25,16 +25,10 @@ export function CtxMeter({ ctx, usage }) {
   return <span className={'ctxmeter' + (pct > 1 ? ' over' : pct > 0.8 ? ' warn' : '')} title={tip}>🧠 {usage?.total_tokens ? '' : '≈'}{kfmt(used)} / {cap ? kfmt(cap) : '?'}</span>;
 }
 
-export function AiPanel({ api, status, onStatus, onClose, onWordsApplied }) {
-  const [draft, setDraft] = useState(null), [busy, setBusy] = useState('');
+export function AiPanel({ api, status, onStatus, onClose }) {
+  const [busy, setBusy] = useState('');
   const cfg = status?.cfg || {};
   const save = patch => api('/ai/config', { method: 'PUT', body: JSON.stringify(patch) }).then(onStatus).catch(e => setBusy('❌ ' + e.message));
-  const gen = () => {
-    setBusy('生成中…（对话模型第一次加载要等一会儿）');
-    api('/ai/words', { method: 'POST' }).then(d => { setDraft(d.text); setBusy(d.bad.length ? `有 ${d.bad.length} 行认不出，写入前可以手改` : `${d.rules} 行，看过可以手改再写入`); }).catch(e => setBusy('❌ ' + e.message));
-  };
-  const apply = () => api('/ai/words/apply', { method: 'POST', body: JSON.stringify({ text: draft }) })
-    .then(d => { onWordsApplied(d); setDraft(null); setBusy('已写入 ' + d.file + '（旧的备份在 __synapsis/_过期的/）'); }).catch(e => setBusy('❌ ' + e.message));
   // >v<🤖AI辅助-设置分页-👤 2026-10-08「一页本地，一页在线，通用设置丢哪？」→ 上面「通用」（谁用本地谁用在线、语义配色、生成词表），下面两页分别配本地 / 在线
   const [tab, setTab] = useState(cfg.agentSrc === 'online' && !cfg.offline ? 'online' : 'local');
   const src = (k, label, hint) => (
@@ -51,11 +45,7 @@ export function AiPanel({ api, status, onStatus, onClose, onWordsApplied }) {
             {src('agentSrc', 'AI 指令框 / 问答 / 生成词表 / 「?」关系说明', '（一次一问，用在线更聪明）')}
             {src('bulkSrc', '潜在关联精排 / 语义配色归类', '（高频、后台自动跑，默认本地，免得悄悄花钱）')}
             <label className="chk"><input type="checkbox" checked={!!cfg.semColors} onChange={e => save({ semColors: e.target.checked })} />语义配色：词表没认出的节点让对话模型归到词表某一行（结果缓存，有新节点才再问）</label>
-            <div className="row"><button onClick={gen} disabled={!status?.ok}>✨ 按这个工作区的节点生成词表…</button><span className="hint">{busy}</span></div>
-            {draft != null && <>
-              <textarea className="mono" value={draft} onChange={e => setDraft(e.target.value)} rows={14} />
-              <div className="row"><button onClick={apply}>写入 _配色.md</button><button onClick={() => setDraft(null)}>不要</button></div>
-            </>}
+            <div className="hint">按节点生成配色词表在 AI 指令框（Shift+F）的「🎨 配色词表」页 —— 这里只放设置。{busy}</div>
           </div>
           <div className="bar tabs aitabs">{[['local', '本地（LM Studio）'], ['online', '☁ 在线（DeepSeek）']].map(([k, t]) => <a key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t}</a>)}</div>
           {tab === 'local' ? <LocalTab {...{ api, status, cfg, save, onStatus }} /> : <OnlineTab {...{ api, status, cfg, save, onStatus }} />}
@@ -181,7 +171,29 @@ export function RelatedDock({ api, id, label, onJump, onOpenFile, onLink }) {
 
 // >v<🤖AI指令-界面-AI 指令框（Shift+F）：说一句 → 8B 给动作草案（✓ 能做 / ✗ 不做 + 原因）→ 预览（涉及的节点先选中高亮）→ Enter 执行 / Esc 不要。
 //   「日志」页 = 每次调对话模型的原始记录（core/ai.js aiLog）。短记忆存在工作区（「清空记忆」= 新话题）
-export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, onClose }) {
+// >v<🤖AI辅助-生成词表-按这个工作区的节点让对话模型起草 _配色.md（看过、可手改，再写入；旧的进 _过期的/）。
+//   👤 2026-10-08「这种操作不该丢 AI 配置页面…丢指令页面」→ 指令框的一页
+function WordsTab({ api, onWordsApplied }) {
+  const [draft, setDraft] = useState(null), [busy, setBusy] = useState('');
+  const gen = () => {
+    setBusy('生成中…');
+    api('/ai/words', { method: 'POST' }).then(d => { setDraft(d.text); setBusy(d.bad.length ? `有 ${d.bad.length} 行认不出，写入前可以手改` : `${d.rules} 行，看过可以手改再写入`); }).catch(e => setBusy('❌ ' + e.message));
+  };
+  const apply = () => api('/ai/words/apply', { method: 'POST', body: JSON.stringify({ text: draft }) })
+    .then(d => { onWordsApplied?.(d); setDraft(null); setBusy('已写入 ' + d.file + '（旧的备份在 __synapsis/_过期的/）'); }).catch(e => setBusy('❌ ' + e.message));
+  return (
+    <div className="wordstab">
+      <div className="hint">配色词表 = __synapsis/_配色.md：节点名里有某行的词，就用那行的颜色。这里让 AI 按这个工作区现有的节点起草一份。</div>
+      <div className="row"><button onClick={gen}>✨ 按这个工作区的节点生成词表…</button><span className="hint">{busy}</span></div>
+      {draft != null && <>
+        <textarea className="mono" value={draft} onChange={e => setDraft(e.target.value)} rows={14} />
+        <div className="row"><button onClick={apply}>写入 _配色.md</button><button onClick={() => setDraft(null)}>不要</button></div>
+      </>}
+    </div>
+  );
+}
+
+export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, onClose, onWordsApplied }) {
   const [tab, setTab] = useState('chat');
   const [turns, setTurns] = useState([]);
   const [text, setText] = useState('');
@@ -218,7 +230,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   };
   const key = e => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (plan) setPlan(null); else onClose(); return; }
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.target === inp.current) { // 只认指令输入框（词表页的文本框里 Enter = 换行）
       e.preventDefault(); e.stopPropagation();
       if (plan && !text.trim() && plan.actions.some(a => a.ok)) run(); else send();
     }
@@ -230,6 +242,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
         <b>🤖 AI 指令</b>
         <a className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')}>💬 对话</a>
         <a className={tab === 'log' ? 'on' : ''} onClick={() => setTab('log')}>📜 日志</a>
+        <a className={tab === 'words' ? 'on' : ''} onClick={() => setTab('words')}>🎨 配色词表</a>
         <span style={{ flex: 1 }} />
         <CtxMeter ctx={ctx} usage={usage} />
         {tab === 'chat' && <button title="清空短记忆（换个话题）" onClick={() => api('/ai/chat', { method: 'DELETE' }).then(d => { setTurns(d.turns); setPlan(null); setUsage(null); })}>🧹 清空记忆</button>}
@@ -255,7 +268,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
         </div>
         <textarea ref={inp} className="ask" rows={2} value={text} onChange={e => setText(e.target.value)}
           placeholder={plan?.actions.some(a => a.ok) ? 'Enter = 执行上面的动作；或者接着说（改主意 / 补充）' : '说要做什么…（Enter 发送，Shift+Enter 换行）' + (selected.length ? `　已选 ${selected.length} 个` : '')} />
-      </> : <div className="logs">
+      </> : tab === 'words' ? <WordsTab api={api} onWordsApplied={onWordsApplied} /> : <div className="logs">
         {!log ? <div className="hint pad">读取中…</div> : !log.length ? <div className="hint pad">还没有调用记录</div> : log.map((l, i) => <div key={i} className="logrow">
           <div className="head" onClick={() => setOpenLog(openLog === i ? null : i)}>
             <span className="t">{fmt(l.t)}</span><b>{l.kind}</b><span className="hint">{l.model} · {l.ms} ms</span>{l.error && <span className="bad">❌ {l.error}</span>}

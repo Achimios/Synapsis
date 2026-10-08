@@ -880,6 +880,7 @@ export function Shell({ name, Canvas }) {
       </div>}
       {agentOpen && mode === 'ws' && <AgentBox api={api} scope={realScope} boxes={() => cardActions.boxes?.() || {}} selected={cardActions.multi?.length ? cardActions.multi : sel ? [sel] : []}
         onPreview={ids => ids.length && cardActions.select?.(ids)} onClose={() => setAgentOpen(false)}
+        onWordsApplied={d => { setWsData(d); setSaveState('配色词表已更新：' + d.file); }}
         onApplied={async good => {
           const d = await api('/ai/apply', { method: 'POST', body: JSON.stringify({ actions: good, boxes: cardActions.boxes?.() || {} }) });
           lastSaved.current = d.report.outline; setText(d.report.outline); setWsData(d); recordSave(d.report.outline, d.report);
@@ -887,7 +888,7 @@ export function Shell({ name, Canvas }) {
           if (d.select.length) cardActions.select?.(d.select);
           setSaveState('AI 指令已执行 ' + good.length + ' 步（Ctrl+Z 撤销）');
         }} />}
-      {aiOpen && <AiPanel api={api} status={aiStatus} onStatus={setAiStatus} onClose={() => setAiOpen(false)} onWordsApplied={d => { setWsData(d); setSaveState('配色词表已更新：' + d.file); }} />}
+      {aiOpen && <AiPanel api={api} status={aiStatus} onStatus={setAiStatus} onClose={() => setAiOpen(false)} />}
       {finder && <SearchModal title={finder.mode === 'link' ? '连线：「' + graph.nodes.get(finder.from)?.label + '」→ 哪个节点？' : '跳到节点（Ctrl+F）'} items={searchItems} exclude={finder.from}
         onClose={() => setFinder(null)} onPick={id => finder.mode === 'link' ? connect(finder.from, id) : jumpTo(id)} />}
       {scaffold && <ScaffoldModal items={scaffold} root={wsData?.root || ''} onClose={() => setScaffold(null)}
