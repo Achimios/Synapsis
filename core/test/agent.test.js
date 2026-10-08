@@ -4,11 +4,13 @@ import { createServer } from 'node:http';
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadSkills, pageContext, parseReply, applyPlan, runAgent, loadChat, clearChat, systemPrompt } from '../agent.js';
+import { loadSkills, pageContext, parseReply, applyPlan, runAgent, loadChat, clearChat, systemPrompt, isQuestion } from '../agent.js';
 import { validateAction, planMoves, VALIDATORS } from '../plan.js';
 import { saveOutline, loadWorkspace, workspaceOutline, DIR } from '../workspace.js';
 import { parseOutline } from '../outline.js';
 import { readAiLog } from '../ai.js';
+import { knowledgeChunks, pickKnowledge } from '../knowledge.js';
+import { KEYMAP } from '../keymap.js';
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { c ? pass++ : (fail++, console.log('✗', m)); };
@@ -18,6 +20,15 @@ const skills = loadSkills();
 ok(skills.map(s => s.do).sort().join() === Object.keys(VALIDATORS).sort().join(), '说明书 ↔ 校验器一一对应 ' + skills.map(s => s.do));
 ok(skills.every(s => s.args && s.body.includes('{"do":"' + s.do + '"')), '每份说明书都有参数说明和例子');
 ok(systemPrompt(skills).includes('不能删除节点'), '系统提示词里写明不能删节点');
+
+// 软件知识：同一份源（快捷键表 + AI 接入手册），按问题挑段
+const kc = knowledgeChunks();
+ok(KEYMAP.every(([g]) => kc.some(c => c.src === '快捷键·' + g)) && kc.some(c => c.src.startsWith('手册·')), '知识 = 快捷键表每一组 + 手册各节 ' + kc.length);
+ok(pickKnowledge('怎么切白色主题')[0]?.src === '快捷键·界面', '「怎么切白色主题」→ 快捷键·界面');
+ok(pickKnowledge('图片怎么放大')[0]?.src === '快捷键·图片' && pickKnowledge('CLI 怎么用')[0]?.src.startsWith('手册·'), '图片 → 快捷键·图片；CLI → 手册');
+ok(pickKnowledge('有哪些快捷键').length === KEYMAP.length, '泛泛问快捷键 → 整张快捷键表');
+ok(pickKnowledge('').length === 0 && pickKnowledge('怎么？').length === 0, '没有实词 → 不塞知识');
+ok(pickKnowledge('怎么把节点放进另一个节点').reduce((s, c) => s + c.text.length, 0) <= 2400, '不超预算');
 
 // 动作校验
 const g = parseOutline('观测 -> 决策\n  敌方\n决策\n行动\n兜底');
@@ -98,7 +109,8 @@ try {
   let calls = 0, lastMsgs = null;
   srv = createServer((req, res) => { let s = ''; req.on('data', c => s += c); req.on('end', () => {
     const j = JSON.parse(s); calls++; lastMsgs = j.messages;
-    const content = calls === 1 ? '好的我来帮你' : '{"say":"选上了","actions":[{"do":"select","ids":["n1","n9"]},{"do":"delete","ids":["n1"]}]}';
+    const last = j.messages.at(-1).content;
+    const content = j.messages[0].content.includes('使用说明助手') ? '- 按 Ctrl+Z 撤销\n- Ctrl+Y 重做' : calls === 1 ? '好的我来帮你' : '{"say":"选上了","actions":[{"do":"select","ids":["n1","n9"]},{"do":"delete","ids":["n1"]}]}';
     res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content } }] }));
   }); });
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
@@ -114,6 +126,14 @@ try {
   ok(log.length === 3 && log[0].kind === 'AI 指令' && log.some(l => l.kind === 'AI 指令（重试）') && log[0].raw && log[0].ms >= 0, '日志：每次调用都记（用途 / 原始输出 / 耗时） ' + log.map(l => l.kind));
   clearChat(root);
   ok(loadChat(root).length === 0, '清空记忆');
+  // 问用法：消息里带上挑出来的软件知识，回答不被当成「嘴上说做了」
+  const qa = await runAgent(root, { scope: '', selected: [], text: '怎么撤销？' }, cfg);
+  const um = lastMsgs.at(-1).content;
+  ok(um.includes('【软件知识】') && um.includes('Ctrl+Z') && qa.knowledge.includes('快捷键·编辑'), '问「怎么撤销」→ 消息里带上快捷键表的「编辑」段 ' + qa.knowledge);
+  ok(qa.mode === 'answer' && qa.say.startsWith('- 按 Ctrl+Z') && qa.actions.length === 0 && !lastMsgs.some(m => m.role === 'assistant'), '问句走问答：纯文本回答、不出动作、不带做事的历史');
+  ok(loadChat(root).at(-1)?.say === qa.say, '问答也记进短记忆');
+  ok(isQuestion('怎么连线？') && isQuestion('有哪些快捷键') && isQuestion('能撤销吗') && !isQuestion('把这几个左对齐') && !isQuestion('观测做完了') && !isQuestion('在决策后面加一个执行'), '问句判断：问用法 vs 交代事');
+  clearChat(root);
 } finally {
   if (srv) { srv.closeAllConnections(); await new Promise(r => srv.close(r)); }
   rmSync(root, { recursive: true, force: true });

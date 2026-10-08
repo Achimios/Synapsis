@@ -1,5 +1,6 @@
 // >v<🤖AI辅助-界面-顶栏「🤖 AI」面板（连接状态 / 选模型 / 语义配色开关 / 生成词表）+ 画布右边缘「潜在关联」小窗（core/ai.js）
 import { useState, useEffect, useRef } from 'react';
+import { MdLite } from './mdlite.jsx';
 
 const opts = (list = [], cur) => {
   const ids = list.map(m => m.id);
@@ -122,7 +123,7 @@ export function AgentBox({ api, scope, selected, onApplied, onPreview, onClose }
     api('/ai/agent', { method: 'POST', body: JSON.stringify({ scope, selected, text: t }) })
       .then(d => {
         setText(''); setBusy('');
-        setTurns(ts => [...ts, { user: t, say: d.say, done: [] }]);
+        setTurns(ts => [...ts, { user: t, say: d.say, done: [], know: d.knowledge }]);
         const good = d.actions.filter(a => a.ok);
         if (d.actions.length) { setPlan(d); onPreview([...new Set(good.flatMap(a => a.ids || [a.id, a.from, a.to].filter(Boolean)))]); }
       })
@@ -154,10 +155,11 @@ export function AgentBox({ api, scope, selected, onApplied, onPreview, onClose }
       </div>
       {tab === 'chat' ? <>
         <div className="turns" ref={list}>
-          {!turns.length && !plan && <div className="hint pad">在当前页交代要做的事，比如：<br />「把这几个左对齐」「按流程从左到右排开」「观测做完了」「在决策后面加一个执行」「个性调节决策」<br />它只能做：选中 / 对齐 / 排列 / 大纲排序 / 配色 / 状态 / 连线 / 删线 / 新建 / 改名 / 移进别的节点（不能删节点）。每一步都先给你看，Enter 才执行，Ctrl+Z 能撤销。</div>}
+          {!turns.length && !plan && <div className="hint pad">在当前页交代要做的事，比如：<br />「把这几个左对齐」「按流程从左到右排开」「观测做完了」「在决策后面加一个执行」「个性调节决策」<br />它只能做：选中 / 对齐 / 排列 / 大纲排序 / 配色 / 状态 / 连线 / 删线 / 新建 / 改名 / 移进别的节点（不能删节点）。每一步都先给你看，Enter 才执行，Ctrl+Z 能撤销。<br />也可以问怎么用：「怎么连线」「有哪些快捷键」「怎么切白色主题」—— 它查快捷键表和 AI 接入手册回答。</div>}
           {turns.map((t, i) => <div key={i} className="turn">
             <div className="u">🙂 {t.user}</div>
-            {t.say && <div className="a">🤖 {t.say}</div>}
+            {t.say && <div className="a">{t.say.includes('\n') ? <><span>🤖</span><MdLite text={t.say} /></> : '🤖 ' + t.say}</div>}
+            {t.know?.length > 0 && !t.done?.length && <div className="know" title={t.know.join('\n')}>📖 参考了：{[...new Set(t.know.map(k => k.split('·')[0]))].join('、')}（{t.know.length} 段）</div>}
             {t.done?.length > 0 && <ul className="done">{t.done.map((d, j) => <li key={j}>✓ {d}</li>)}</ul>}
           </div>)}
           {plan && plan.actions.length > 0 && <div className="plan">

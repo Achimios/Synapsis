@@ -317,7 +317,9 @@ button.aibtn.off { opacity: .7; }
 .agentbox .bar a { cursor: pointer; color: var(--dim); } .agentbox .bar a.on { color: var(--text); border-bottom: 2px solid var(--accent); }
 .agentbox .turns, .agentbox .logs { overflow: auto; padding: 6px 10px; flex: 1; min-height: 60px; }
 .agentbox .turn { margin: 6px 0; }
-.agentbox .turn .u { color: var(--text); } .agentbox .turn .a { color: var(--dim); margin-top: 2px; }
+.agentbox .turn .u { color: var(--text); } .agentbox .turn .a { color: var(--dim); margin-top: 2px; white-space: pre-wrap; }
+.agentbox .turn .a .mdlite { white-space: normal; color: var(--text); margin-top: 2px; }
+.agentbox .turn .know { font-size: 11px; color: var(--dim); opacity: .7; margin-top: 2px; }
 .agentbox ul { list-style: none; margin: 4px 0; padding: 0 0 0 18px; }
 .agentbox .done li { color: var(--ok); }
 .agentbox .plan { border: 1px dashed var(--line2); border-radius: 4px; padding: 6px 8px; margin: 6px 0; }
