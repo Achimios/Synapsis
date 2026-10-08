@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { listMemories, memoryIndex, readMemories, writeMemory, LEVELS } from '../memory.js';
+import { listMemories, memoryIndex, readMemories, writeMemory, indexStatus, LEVELS } from '../memory.js';
 import { runAgent, applyPlan, pageContext } from '../agent.js';
 import { validateAction } from '../plan.js';
 import { saveOutline, loadWorkspace, workspaceOutline } from '../workspace.js';
@@ -33,6 +33,16 @@ try {
   ok(V({ do: 'remember', name: '偏好', text: 'x' }).ok && !V({ do: 'remember', name: 'a/b', text: 'x' }).ok && !V({ do: 'remember', name: 'a', text: 'x', level: '全局' }).ok, 'remember：名字能当文件名、level 只认 项目 / 用户');
   applyPlan(root, [V({ do: 'remember', name: '偏好', text: '喜欢扁平化指挥', level: '用户' })], {}, { home });
   ok(readMemories(home, root, ['偏好']).text.includes('扁平化'), '确认后 applyPlan 写进用户级记忆');
+
+  // 类型 + 索引上限（2026-10-08）
+  ok(!V({ do: 'remember', name: 'a', text: 'x', type: '随便' }).ok && V({ do: 'remember', name: 'a', text: 'x', type: 'feedback' }).ok && V({ do: 'remember', name: 'a', text: 'x' }).ok, 'remember：type 只认 user / feedback / project / reference，可以不写');
+  writeMemory(home, root, { level: '用户', name: '纠正', text: '别叫我大佬', type: 'feedback' });
+  ok(listMemories(home, root).find(m => m.name === '纠正').type === 'feedback' && memoryIndex(home, root).includes('纠正（feedback）：'), '类型写进 frontmatter、显示在索引里');
+  ok(indexStatus(home, root, 4).near === true && indexStatus(home, root, 4).over === false && indexStatus(home, root, 3).over === true && indexStatus(home, root, 100).near === false, 'indexStatus：≥80% 算快满，超过算满');
+  const capped = memoryIndex(home, root, 2).split('\n');
+  ok(capped.length === 3 && /另有 2 条没列出来/.test(capped[2]), '超过上限：只列 2 条 + 一行说明 ' + capped.join('|'));
+  const pre = applyPlan(root, [V({ do: 'remember', name: '又一条', text: '凑数', level: '用户' })], {}, { home });
+  ok(Array.isArray(pre.warnings) && pre.warnings.length === 0, '没到 80% 不提醒');
 
   // 宽松版：第一轮附索引 → 模型回 read → 附全文再问一轮
   const seen = [];

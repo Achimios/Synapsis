@@ -252,7 +252,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   const [ctx, setCtx] = useState(null), [usage, setUsage] = useState(null);
   const loadCtx = () => api('/ai/context?scope=' + encodeURIComponent(scope || '') + '&selected=' + encodeURIComponent((selected || []).join('\n'))).then(setCtx).catch(() => {});
   useEffect(() => { loadCtx(); }, [turns.length]);
-  useEffect(() => { api('/ai/chat').then(d => setTurns(d.turns)).catch(() => {}); }, []);
+  useEffect(() => { api('/ai/chat').then(d => setTurns(d.turns.map(t => ({ ...t, done: t.executed || [] })))).catch(() => {}); }, []); // done = 人确认执行了的（服务端的 done 只是提议）
   useEffect(() => { if (tab === 'log') api('/ai/log').then(d => setLog(d.entries)).catch(e => setLog([{ kind: '❌', raw: e.message }])); }, [tab, turns.length]);
   useEffect(() => { list.current && (list.current.scrollTop = list.current.scrollHeight); }, [turns, plan, busy]);
   useEffect(() => { if (!busy) inp.current?.focus(); }, [busy, plan, tab]);
@@ -262,7 +262,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
     api('/ai/agent', { method: 'POST', body: JSON.stringify({ scope, selected, text: t, boxes: boxes?.() || {} }) })
       .then(d => {
         setText(''); setBusy(''); setUsage(d.usage?.total_tokens ? d.usage : null);
-        setTurns(ts => [...ts, { user: t, say: d.say, done: [], know: d.knowledge, memRead: d.memRead }]);
+        setTurns(ts => [...ts, { user: t, say: d.say, done: [], know: d.knowledge, memRead: d.memRead, looked: d.looked }]);
         const good = d.actions.filter(a => a.ok);
         if (d.actions.length) { setPlan(d); onPreview([...new Set(good.flatMap(a => a.ids || [a.id, a.from, a.to].filter(Boolean)))]); }
       })
@@ -302,7 +302,9 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
             {t.say && <div className="a">{t.say.includes('\n') ? <><span>🤖</span><MdLite text={t.say} /></> : '🤖 ' + t.say}</div>}
             {t.know?.length > 0 && !t.done?.length && <div className="know" title={t.know.join('\n')}>📖 参考了：{[...new Set(t.know.map(k => k.split('·')[0]))].join('、')}（{t.know.length} 段）</div>}
             {t.memRead?.length > 0 && <div className="know">🧠 读了记忆：{t.memRead.join('、')}</div>}
+            {t.looked?.length > 0 && <div className="know">🔎 查看了：{t.looked.join('、')}</div>}
             {t.done?.length > 0 && <ul className="done">{t.done.map((d, j) => <li key={j}>✓ {d}</li>)}</ul>}
+            {t.warnings?.length > 0 && <div className="know">⚠ 执行后检查：{t.warnings.join('；')}</div>}
           </div>)}
           {plan && plan.actions.length > 0 && <div className="plan">
             <ul>{plan.actions.map((a, i) => <li key={i} className={a.ok ? 'ok' : 'no'}>{a.ok ? '✓ ' + a.desc : `✗ ${a.do || '?'}：${a.why}`}</li>)}</ul>

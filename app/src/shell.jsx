@@ -888,7 +888,7 @@ export function Shell({ name, Canvas }) {
           lastSaved.current = d.report.outline; setText(d.report.outline); setWsData(d); recordSave(d.report.outline, d.report);
           if (Object.keys(d.moves).length) move(d.moves);
           if (d.select.length) cardActions.select?.(d.select);
-          setSaveState('AI 指令已执行 ' + good.length + ' 步（Ctrl+Z 撤销）');
+          setSaveState('AI 指令已执行 ' + good.length + ' 步（Ctrl+Z 撤销）' + (d.warnings?.length ? ' ⚠ ' + d.warnings.join('；') + '（AI 下一轮会知道）' : ''));
         }} />}
       {aiOpen && <AiPanel api={api} status={aiStatus} onStatus={setAiStatus} onClose={() => setAiOpen(false)} />}
       {finder && <SearchModal title={finder.mode === 'link' ? '连线：「' + graph.nodes.get(finder.from)?.label + '」→ 哪个节点？' : '跳到节点（Ctrl+F）'} items={searchItems} exclude={finder.from}
