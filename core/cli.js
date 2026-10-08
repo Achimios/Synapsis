@@ -27,6 +27,7 @@ export const USAGE = `用法：node core/cli.js <命令> [参数] [--ws <被规�
                                {"label":…,"kind":…,"after":…,"ifMissing":true}；遇错停下，报告第几条
   apply <大纲文件>             用大纲文本整体写回（大改结构时用）
 其它：
+  launcher [目录]              重建项目根的快捷方式（换了 _图标/ 里的图标后用）
   manual                       打印 AI 接入手册
   init <项目目录>              给项目挂上 Synapsis`;
 import { WORDS_FILE, DEFAULT_WORDS } from './colors.js';
@@ -36,6 +37,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadWorkspace, workspaceOutline, checkWorkspace, groupStatus, saveOutline, ensureWorkspaceReadme, setNodeMeta, setNodeBody, setEdgeLabel, findNodes, moveNodes, MANUAL_MARK, DIR } from './workspace.js';
 import { spaceInfo, closestPairs } from './space.js';
+import { ensureLauncher, PROJECT_LNK } from './launcher.js';
 import { exportForLLM, withNode, withLabel, withStatus, withEdge, withoutEdge, withoutNode, ROOT } from './outline.js';
 
 const HOME = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -103,13 +105,10 @@ export function init(root) {
   put(DIR + '/' + WORDS_FILE, DEFAULT_WORDS);
   put(DIR + '/' + PATTERN_FILE, DEFAULT_PATTERN_WORDS);
   put('.synapsis/.gitignore', '# 本机状态（视图、缓存），不进 git\n*\n');
-  // 启动器是生成物：内容和最新模板不同就刷新（Synapsis 搬家/改目录后重跑 init 即可修好旧项目）
-  const vbs = join(root, 'Synapsis.vbs');
-  const fresh = readFileSync(join(HOME, 'core', 'templates', 'Synapsis.vbs'), 'utf8').split('{{SYNAPSIS_HOME}}').join(HOME);
-  if (!existsSync(vbs)) { writeFileSync(vbs, fresh); made.push('Synapsis.vbs'); }
-  else if (readFileSync(vbs, 'utf8') !== fresh) { writeFileSync(vbs, fresh); made.push('Synapsis.vbs（按新模板刷新）'); }
+  // 启动器是生成物：根目录一个带图标的快捷方式 + 藏在 .synapsis/ 的兜底 vbs（core/launcher.js；Synapsis 搬家后重跑 init 即可修好）
+  made.push(...ensureLauncher(root, { force: true }));
   console.log(made.length ? '已创建：\n  ' + made.join('\n  ') : '都已存在，没动');
-  console.log('双击 ' + join(root, 'Synapsis.vbs') + ' 打开');
+  console.log('双击 ' + join(root, PROJECT_LNK) + ' 打开');
 }
 
 // >v<🤖LLM接口-写命令-add/rename/status/link/unlink/body/set/rm：都走「改大纲文本 → saveOutline」同一条路，和界面一致
@@ -200,6 +199,7 @@ function main(argv) {
   const [cmd, arg] = pos;
   if (!cmd) { console.log(USAGE); return; }
   if (cmd === 'init') return init(resolve(arg || '.'));
+  if (cmd === 'launcher') { const m = ensureLauncher(resolve(arg || '.'), { force: true }); console.log(m.length ? '已刷新：\n  ' + m.join('\n  ') : '没动'); return; }
   if (cmd === 'manual' && argv.includes('--write')) { writeFileSync(ROOT_MANUAL, rootManualText()); console.log('已写 ' + ROOT_MANUAL); return; }
   if (cmd === 'manual') { let r = null; try { r = workspaceRoot(argv); } catch { /* 没工作区就给通用版 */ } console.log(manualText(r)); return; }
   const root = workspaceRoot(argv);

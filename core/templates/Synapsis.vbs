@@ -2,7 +2,7 @@
 ' Double-click: open this folder as a workspace in the Synapsis desktop app (fallback: dev server + browser).
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
-ws = fso.GetParentFolderName(WScript.ScriptFullName)
+ws = fso.GetParentFolderName(fso.GetParentFolderName(WScript.ScriptFullName)) ' this file lives in <project>\.synapsis\ (the project root has the shortcut)
 syn = "{{SYNAPSIS_HOME}}"
 port = "5410"
 

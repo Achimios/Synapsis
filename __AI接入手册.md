@@ -65,6 +65,7 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
                                {"label":…,"kind":…,"after":…,"ifMissing":true}；遇错停下，报告第几条
   apply <大纲文件>             用大纲文本整体写回（大改结构时用）
 其它：
+  launcher [目录]              重建项目根的快捷方式（换了 _图标/ 里的图标后用）
   manual                       打印 AI 接入手册
   init <项目目录>              给项目挂上 Synapsis
 ```
@@ -90,4 +91,4 @@ to:
 - 人是 Leo：游戏开发者 / motion designer。回复用中文。他累的时候别让他做琐碎决定，有惯例就按惯例办。
 - **讨论这个项目本身**（设计想法、分歧、要人拍板的事）：追加到本项目的 `<被规划项目根目录>/__synapsis/_Blackboard.md`，格式 `## YYYY-MM-DD · 谁 · 话题`。人和其他 AI 都在这里回。定下来的结论搬进对应节点的正文 / 属性，讨论条目剪进 `__synapsis/_过期的/_Blackboard.md`。
 - **Synapsis 这个工具本身**的问题：你在用 Synapsis 时觉得别扭，或者缺了什么功能：**追加一条到 `C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/_Blackboard.md`**，写日期、你在干什么、卡在哪。维护 Synapsis 的那个 Claude 会看，看完处理掉。别直接改 Synapsis 的代码。
-- 打开图形界面：双击项目根目录的 `Synapsis.vbs`。改动会和 CLI 的写入同步，两边写的都是同一批 md 文件。
+- 打开图形界面：双击项目根目录的「在Synapsis打开本项目」快捷方式（兜底脚本在 `.synapsis/Synapsis.vbs`）。改动会和 CLI 的写入同步，两边写的都是同一批 md 文件。

@@ -51,7 +51,7 @@ try {
   ok(await win.evaluate(() => typeof window.synapsisDesktop?.recent === 'function'), '启动台拿到桌面接口（preload）');
   ok((await win.$$eval('.recent li', ls => ls.map(l => l.innerText))).some(t => t.includes('工作区 一')), '启动台列出最近打开');
   await win.evaluate(d => window.synapsisDesktop.open(d), fresh); await sleep(2500);
-  ok(existsSync(join(fresh, '__synapsis')) && existsSync(join(fresh, 'Synapsis.vbs')), '打开未初始化的文件夹 → 自动 init');
+  ok(existsSync(join(fresh, '__synapsis')) && existsSync(join(fresh, '.synapsis', 'Synapsis.vbs')) && existsSync(join(fresh, '在Synapsis打开本项目.lnk')) && !existsSync(join(fresh, 'Synapsis.vbs')), '打开未初始化的文件夹 → 自动 init（根目录是快捷方式，vbs 在 .synapsis/）');
   ok(await eapp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some(w => w.getTitle() === 'Synapsis — 还没挂上')), '并打开它的窗口');
   await eapp.close();
 } finally {

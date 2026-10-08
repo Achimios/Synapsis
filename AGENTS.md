@@ -22,7 +22,7 @@
 | `bootstrap/` | ⭐**项目构建引导**：用户所有新项目的规矩 + 骨架模板 + 生成脚本（全局 skill `project-bootstrap` 指向这里） |
 | `app/` | 界面：React Flow（已定，见 `_设计/Decision_Canvas.md`）+ 外壳 + dev 服务里的工作区 API |
 | `Synapsis_desktop.vbs` | ⭐**托盘程序**（Electron，像 Obsidian）：启动台（最近打开 / 打开文件夹，没挂上的会问要不要初始化），每个工作区一个窗口 |
-| `Synapsis.vbs` / `Synapsis_desktop.vbs` / `Synapsis_stop.bat` | 打开 Synapsis 自己的工作区 / 打开客户端（托盘 + 启动台；启动台「打开文件夹」遇到没挂上的会自动 init）/ 停服务兜底（按端口 5410 杀进程，托盘卡死或浏览器兜底模式时用） |
+| `在Synapsis打开本项目.lnk` / `Synapsis 客户端.lnk` / `Synapsis_stop.bat` | 打开 Synapsis 自己的工作区 / 打开客户端（托盘 + 启动台；「打开文件夹」遇到没挂上的会自动 init）/ 停服务兜底。两个快捷方式是本机生成物（不进 git，`core/launcher.js`，客户端启动时没有就补）；兜底脚本在 `.synapsis/Synapsis.vbs`、`app/Synapsis_desktop.vbs`；图标在 `_图标/`（`core/tools/make_icon.py` 换图） |
 
 ## 规矩
 - ⭐**详细规则在 `_工程规矩.md`**（过期怎么做、进度写什么、改了要同步哪）

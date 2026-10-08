@@ -73,10 +73,11 @@ async function openWorkspace(dir) {
   dir = resolve(dir);
   if (!existsSync(dir)) { dialog.showErrorBox('Synapsis', '文件夹不存在：\n' + dir); return; }
   if (!existsSync(join(dir, '__synapsis'))) {
-    const r = HIDDEN ? { response: 0 } : await dialog.showMessageBox({ type: 'question', buttons: ['挂上 Synapsis 并打开', '取消'], defaultId: 0, cancelId: 1, title: 'Synapsis', message: `「${basename(dir)}」还没挂上 Synapsis`, detail: '会在里面建 __synapsis/（图数据）、.synapsis/（本机状态）和 Synapsis.vbs 启动器。已有文件不会动。' });
+    const r = HIDDEN ? { response: 0 } : await dialog.showMessageBox({ type: 'question', buttons: ['挂上 Synapsis 并打开', '取消'], defaultId: 0, cancelId: 1, title: 'Synapsis', message: `「${basename(dir)}」还没挂上 Synapsis`, detail: '会在里面建 __synapsis/（图数据）、.synapsis/（本机状态）和「在Synapsis打开本项目」快捷方式。已有文件不会动。' });
     if (r.response !== 0) return;
     await initDir(dir);
   }
+  launcherFor(dir);
   touchRecent(dir); refreshTray();
   const old = wins.get(dir);
   if (old && !old.isDestroyed()) { old.show(); old.focus(); return old; }
@@ -100,6 +101,11 @@ async function openWorkspace(dir) {
 async function initDir(dir) {
   const { init } = await import(pathToFileURL(join(HOME, 'core', 'cli.js')).href);
   init(dir);
+}
+
+// 老项目根目录的 Synapsis.vbs → 换成快捷方式（后台做，失败不影响打开）
+async function launcherFor(dir) {
+  try { const { ensureLauncher } = await import(pathToFileURL(join(HOME, 'core', 'launcher.js')).href); ensureLauncher(dir); } catch (e) { console.log('[synapsis] 快捷方式：', e.message); }
 }
 
 async function pickFolder() {
@@ -130,11 +136,11 @@ function refreshTray() {
   ]));
 }
 
-// 托盘图标：优先用 app/electron/icon.png（core/tools/make_icon.py 从任意图片生成）；没有就代码画一个 32×32 的圆
+// 托盘图标：优先用 <Synapsis>/_图标/客户端.png（core/tools/make_icon.py 从任意图片生成）；没有就代码画一个 32×32 的圆
 let _icon = null;
 function trayIcon() {
   if (_icon) return _icon;
-  const file = join(APP, 'electron', 'icon.png');
+  const file = join(HOME, '_图标', '客户端.png');
   if (existsSync(file)) { const im = nativeImage.createFromPath(file); if (!im.isEmpty()) return (_icon = im); }
   const S = 32, raw = Buffer.alloc((S * 4 + 1) * S);
   for (let y = 0; y < S; y++) {
@@ -156,6 +162,7 @@ function trayIcon() {
 
 app.whenReady().then(async () => {
   await startServer();
+  launcherFor(HOME); // Synapsis 根目录的两个快捷方式，没有就补
   tray = new Tray(trayIcon());
   tray.setToolTip('Synapsis');
   tray.on('click', showLauncher);
