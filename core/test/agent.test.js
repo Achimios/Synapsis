@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadSkills, pageContext, parseReply, applyPlan, runAgent, loadChat, clearChat, systemPrompt, isQuestion, isFollowup, estimateContext, estTokens } from '../agent.js';
+import { loadSkills, pageContext, parseReply, applyPlan, runAgent, loadChat, clearChat, systemPrompt, loosePrompt, isLoose, isQuestion, isFollowup, estimateContext, estTokens } from '../agent.js';
 import { validateAction, planMoves, VALIDATORS } from '../plan.js';
 import { saveOutline, loadWorkspace, workspaceOutline, DIR } from '../workspace.js';
 import { parseOutline } from '../outline.js';
@@ -59,6 +59,13 @@ ok(m.a.y === m.b.y && m.c.y > m.a.y && m.c.x === m.a.x, '网格：2 列');
 m = planMoves([{ do: 'tighten', ids: ['a', 'b', 'c'], s: 0.5, gap: 40 }], boxes);
 ok(m.a.y < m.b.y && m.b.y < m.c.y && m.c.y - m.a.y < 200, '收紧：上下顺序不变，距离变近 ' + JSON.stringify(m));
 ok(V({ do: 'tighten', ids: ['n1', 'n2'] }).ok && !V({ do: 'tighten', ids: ['n1', 'n2'], s: 2 }).ok, '收紧：s 只能 0~1');
+// 原语：挪位置（绝对 / 相对二选一）
+ok(V({ do: 'place', id: 'n1', x: 10, y: 20 }).ok && V({ do: 'place', id: 'n1', dy: -30 }).ok && !V({ do: 'place', id: 'n1', x: 1, dx: 1 }).ok && !V({ do: 'place', id: 'n1' }).ok, '挪位置：x,y 或 dx,dy 二选一');
+m = planMoves([{ do: 'place', id: 'a', dx: 5, dy: -10 }, { do: 'place', id: 'b', x: 300, y: 7 }], boxes);
+ok(m.a.x === 15 && m.a.y === -10 && m.b.x === 300 && m.b.y === 7, '挪位置：相对 / 绝对算对 ' + JSON.stringify(m));
+const lp = loosePrompt();
+ok(lp.includes('place') && lp.includes('【软件知识】') && lp.includes('Shift+F') && !lp.includes('手册里没写'), '宽松版：带原语、整份知识，不再逼它说「手册里没写」');
+ok(isLoose({ chat: 'q', agentSrc: 'online' }) && !isLoose({ chat: 'q', agentSrc: 'local' }) && !isLoose({ chat: 'q', agentSrc: 'online', offline: true }), '在线 = 宽松版；offline 一律严格版');
 ok(isFollowup('啊？你为什么什么都没做？') && !isQuestion('啊？你为什么什么都没做？') && isQuestion('怎么把这几个左对齐') && !isFollowup('怎么让它不显示'), '追问上一轮 → 不走问答（问答没历史）');
 
 // 解析模型输出

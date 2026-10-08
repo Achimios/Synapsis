@@ -44,6 +44,16 @@ export const VALIDATORS = {
     if (!(gap >= 10 && gap <= 300)) throw new Error('gap 要在 10~300 之间');
     return { ids, as: a.as, gap, desc: `${SHAPE_ZH[a.as]}（按这个顺序，间距 ${gap}）：` + ids.map(label).join(' → ') };
   },
+  // >v<🤖AI指令-原语-挪位置（👤「不能完全依靠 skill 指导 LLM，不然 LLM 的意义是啥」）：只改一张卡的坐标，绝对 x,y 或相对 dx,dy。
+  //   靠近 / 让开 / 摆成扇形……都由模型自己算，不再一个意图一份说明书
+  place: (a, { one, label }) => {
+    const id = one(a.id), num = v => v == null ? null : Number(v);
+    const x = num(a.x), y = num(a.y), dx = num(a.dx), dy = num(a.dy);
+    const abs = x != null || y != null, rel = dx != null || dy != null;
+    if (abs === rel) throw new Error('要么给 x、y（挪到哪），要么给 dx、dy（挪多少），二选一');
+    if ([x, y, dx, dy].some(v => v != null && !(Math.abs(v) < 1e5))) throw new Error('坐标要是正常的数字');
+    return abs ? { id, x, y, desc: `挪位置：${label(id)} → (${x ?? '不变'}, ${y ?? '不变'})` } : { id, dx: dx || 0, dy: dy || 0, desc: `挪位置：${label(id)} 往${dx ? (dx > 0 ? '右 ' : '左 ') + Math.abs(dx) : ''}${dx && dy ? '、' : ''}${dy ? (dy > 0 ? '下 ' : '上 ') + Math.abs(dy) : ''}` };
+  },
   tighten: (a, { many, label }) => {
     const ids = many(a.ids, 2);
     const gap = a.gap == null ? 40 : Number(a.gap);
@@ -112,6 +122,14 @@ export function planMoves(actions, boxes) {
   const cur = Object.fromEntries(Object.entries(boxes).map(([id, b]) => [id, { ...b }]));
   const out = {};
   for (const a of actions) {
+    if (a.do === 'place') {
+      const b = cur[a.id];
+      if (!b && (a.x == null || a.y == null)) continue; // 量不到这张卡又只给了相对量 → 没法算
+      const nx = a.x != null ? a.x : a.dx != null ? b.x + a.dx : b.x, ny = a.y != null ? a.y : a.dy != null ? b.y + a.dy : b.y;
+      cur[a.id] = { ...(b || { w: 0, h: 0 }), x: Math.round(nx), y: Math.round(ny) };
+      out[a.id] = { x: cur[a.id].x, y: cur[a.id].y };
+      continue;
+    }
     if (a.do === 'tighten') {
       const bs = a.ids.map(id => cur[id] && { id, ...cur[id] }).filter(Boolean);
       if (bs.length < 2) continue;

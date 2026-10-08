@@ -878,7 +878,7 @@ export function Shell({ name, Canvas }) {
         <img src={lightbox.urls[lightbox.i]} onClick={e => e.stopPropagation()} />
         {lightbox.urls.length > 1 && <div className="lbcount">{lightbox.i + 1} / {lightbox.urls.length}（← →）</div>}
       </div>}
-      {agentOpen && mode === 'ws' && <AgentBox api={api} scope={realScope} selected={cardActions.multi?.length ? cardActions.multi : sel ? [sel] : []}
+      {agentOpen && mode === 'ws' && <AgentBox api={api} scope={realScope} boxes={() => cardActions.boxes?.() || {}} selected={cardActions.multi?.length ? cardActions.multi : sel ? [sel] : []}
         onPreview={ids => ids.length && cardActions.select?.(ids)} onClose={() => setAgentOpen(false)}
         onApplied={async good => {
           const d = await api('/ai/apply', { method: 'POST', body: JSON.stringify({ actions: good, boxes: cardActions.boxes?.() || {} }) });

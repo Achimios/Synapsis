@@ -8,7 +8,7 @@ import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText } from '../core/cli.js';
 import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, readAiLog } from '../core/ai.js';
 import { lmsEstimate, lmsReload } from '../core/lmstudio.js';
-import { runAgent, applyPlan, loadChat, clearChat, estimateContext } from '../core/agent.js';
+import { runAgent, applyPlan, loadChat, clearChat, estimateContext, isLoose } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
 const SYN_HOME = resolve(fileURLToPath(new URL('.', import.meta.url)), '..'); // AI 设置是本机的：<Synapsis>/.synapsis/ai.json
 
@@ -98,7 +98,7 @@ function workspaceApi() {
             if (url.pathname === '/ai/chat' && req.method === 'DELETE') { clearChat(root); return send(200, { turns: [] }); }
             // 上下文：这次大概要占多少（估）+ 对话模型加载时设的上下文长度（LM Studio /api/v0/models 的 loaded_context_length）
             if (url.pathname === '/ai/context') {
-              const est = existsSync(join(root, DIR)) ? estimateContext(root, { scope: url.searchParams.get('scope') || '', selected: (url.searchParams.get('selected') || '').split('\n').filter(Boolean) }) : null;
+              const est = existsSync(join(root, DIR)) ? estimateContext(root, { scope: url.searchParams.get('scope') || '', selected: (url.searchParams.get('selected') || '').split('\n').filter(Boolean), loose: isLoose(cfg) }) : null;
               const st = await aiStatus(cfg), model = chatModel(cfg), m = chatInfo(st, model);
               return send(200, { estimate: est, model, ctx: m?.ctx || null, maxCtx: m?.maxCtx || null, loaded: !!m?.loaded });
             }

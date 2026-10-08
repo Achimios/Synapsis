@@ -181,7 +181,7 @@ export function RelatedDock({ api, id, label, onJump, onOpenFile, onLink }) {
 
 // >v<🤖AI指令-界面-AI 指令框（Shift+F）：说一句 → 8B 给动作草案（✓ 能做 / ✗ 不做 + 原因）→ 预览（涉及的节点先选中高亮）→ Enter 执行 / Esc 不要。
 //   「日志」页 = 每次调对话模型的原始记录（core/ai.js aiLog）。短记忆存在工作区（「清空记忆」= 新话题）
-export function AgentBox({ api, scope, selected, onApplied, onPreview, onClose }) {
+export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, onClose }) {
   const [tab, setTab] = useState('chat');
   const [turns, setTurns] = useState([]);
   const [text, setText] = useState('');
@@ -201,7 +201,7 @@ export function AgentBox({ api, scope, selected, onApplied, onPreview, onClose }
   const send = () => {
     const t = text.trim(); if (!t || busy) return;
     setBusy('🧠 思考中…（第一次要等模型加载）'); setPlan(null);
-    api('/ai/agent', { method: 'POST', body: JSON.stringify({ scope, selected, text: t }) })
+    api('/ai/agent', { method: 'POST', body: JSON.stringify({ scope, selected, text: t, boxes: boxes?.() || {} }) })
       .then(d => {
         setText(''); setBusy(''); setUsage(d.usage?.total_tokens ? d.usage : null);
         setTurns(ts => [...ts, { user: t, say: d.say, done: [], know: d.knowledge }]);
