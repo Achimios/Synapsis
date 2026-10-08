@@ -10,6 +10,7 @@ import { parseOutline, withStatus, withEdge, withoutEdge, withNode, withLabel, w
 import { validateAction, planMoves, VALIDATORS } from './plan.js';
 import { chat, chatModel } from './ai.js';
 import { pickKnowledge, knowledgeText, knowledgeChunks } from './knowledge.js';
+import { memoryIndex, readMemories, writeMemory } from './memory.js';
 
 const SKILL_DIR = join(dirname(fileURLToPath(import.meta.url)), 'skills');
 export function loadSkills(dir = SKILL_DIR) {
@@ -53,6 +54,7 @@ export function loosePrompt(skills = loadSkills(), knowledge = knowledgeChunks()
 - 不改页面时 actions 是空数组。改页面时 say 说清楚打算怎么做（人确认后才执行，别说成已经做完）。
 - 动作是 {"do": 动作名, …参数}，动作名只能是：${skills.map(s => s.do).join('、')}。
 - 节点只能用本页列出的编号（n1、n2…）。「这几个 / 选中的」= 标了 ★选中 的。
+- 长期记忆：有时消息里会附【记忆索引】（每份一行：名字 + 一句描述）。觉得哪份和这次有关、想看全文，就只输出 {"read": ["名字", …]}（这一次不要 say 和 actions），全文会发给你，你再正常回答。用不上就别读。值得以后记住的，用 remember 提议。
 - 坐标：@(x,y) 是卡片左上角，x 向右、y 向下，后面是宽×高。用 place 挪位置时自己算好，别和别的卡重叠（留 20 以上的空隙）。
 
 动作（说明书）：
@@ -88,7 +90,7 @@ export function parseReply(raw, max = 1200) {
   if (a < 0 || b <= a) throw new Error('输出里没有 JSON 对象');
   const j = JSON.parse(s.slice(a, b + 1));
   if (typeof j !== 'object' || Array.isArray(j)) throw new Error('不是 JSON 对象');
-  return { say: typeof j.say === 'string' ? j.say.slice(0, max) : '', actions: Array.isArray(j.actions) ? j.actions.slice(0, 30) : [] };
+  return { say: typeof j.say === 'string' ? j.say.slice(0, max) : '', actions: Array.isArray(j.actions) ? j.actions.slice(0, 30) : [], read: Array.isArray(j.read) ? j.read.slice(0, 6).map(String) : [] };
 }
 
 // —— 短记忆 ——
@@ -122,11 +124,14 @@ export function estimateContext(root, { scope = ROOT, selected = [], loose = fal
 }
 
 // >v<🤖AI指令-问模型-返回 {say, actions: [{ok, why?, desc, …}], raw}；不执行。输出不合格式 → 把错误告诉它重来一次
-export async function runAgent(root, { scope = ROOT, selected = [], text, boxes = {} }, cfg) {
+// opts.home = Synapsis 目录（用户级记忆在那儿）；给了才有长期记忆（只给宽松版 / 在线模型用）
+export async function runAgent(root, { scope = ROOT, selected = [], text, boxes = {} }, cfg, opts = {}) {
   if (!text || !String(text).trim()) throw new Error('说点什么');
   const ws = loadWorkspace(root), ctx = pageContext(ws, scope, selected, boxes), loose = isLoose(cfg);
   // 历史里的回答按规定格式原样放回（以前存成 {say, done}，8B 会照着学、把 actions 丢掉 —— 2026-10-08 实测）；编号是当时那一页的，可能已变
-  const history = loadChat(root).slice(-8).flatMap(t => [{ role: 'user', content: t.user }, { role: 'assistant', content: JSON.stringify({ say: t.say, actions: t.actions || [] }) }]);
+  const recent = loadChat(root).slice(-8);
+  // 记忆索引附在那一轮的人话后面、跟着历史走：8 轮之内模型都看得见；滚出去了（或新对话 / 清空后）再附一次
+  const history = recent.flatMap(t => [{ role: 'user', content: t.user + (t.memNote ? '\n\n' + t.memNote : '') }, { role: 'assistant', content: JSON.stringify({ say: t.say, actions: t.actions || [] }) }]);
   // 问用法（怎么 / 如何 / 哪 / 快捷键 / 问号…）→ 走问答：单独的提示词 + 挑出来的软件知识，纯文本回答、不出动作。
   //   和做事混在一个 JSON 提示词里时，8B 会给「将切换到白色主题」+ 乱编动作、或者知识就在眼前还说「手册里没写」（2026-10-08 实测）
   const know = pickKnowledge(text), usage = {}; // usage = LM Studio 报的 token 用量（prompt / completion / total），界面显示「已用 / 容量」
@@ -137,12 +142,24 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
     pushChat(root, { t: new Date().toISOString(), scope: ctx.scope, user: q, say, actions: [], done: [] });
     return { say, actions: [], raw, knowledge: know.map(c => c.src), mode: 'answer', usage };
   }
-  const sys = loose ? loosePrompt() : systemPrompt(), user = `${ctx.text}\n\n人说：${String(text).trim()}`;
+  const idx = loose && opts.home ? memoryIndex(opts.home, root) : '';
+  const memNote = idx && !recent.some(t => t.memNote) ? `【记忆索引】（想看全文就只回 {"read": ["名字"]}）\n${idx}` : '';
+  const sys = loose ? loosePrompt() : systemPrompt();
+  let user = `${ctx.text}\n\n人说：${String(text).trim()}${memNote ? '\n\n' + memNote : ''}`;
   const out = loose ? 3000 : 1200, temp = loose ? 0.6 : 0.1; // 宽松版：话可以长、温度高些（有个性）
   let raw = await chat(cfg, sys, user, out, { kind: 'AI 指令', history, usage, temperature: temp }), reply;
   try { reply = parseReply(raw, out); } catch (e) {
     raw = await chat(cfg, sys, user + `\n\n（你上一次的输出不合格：${e.message}。只输出一个 JSON 对象。）`, out, { kind: 'AI 指令（重试）', history, usage, temperature: 0.1 });
-    try { reply = parseReply(raw, out); } catch (e2) { reply = { say: '（模型的回答不是规定格式，没法执行：' + e2.message + '）', actions: [] }; }
+    try { reply = parseReply(raw, out); } catch (e2) { reply = { say: '（模型的回答不是规定格式，没法执行：' + e2.message + '）', actions: [], read: [] }; }
+  }
+  // 它要看记忆全文 → 附上再问一轮（只一轮）
+  let memRead = [];
+  if (loose && opts.home && reply.read.length) {
+    const m = readMemories(opts.home, root, reply.read);
+    memRead = m.names;
+    user += `\n\n【记忆全文】\n${m.text || '（没有叫这些名字的记忆）'}\n\n（记忆已附上，现在正常回答：输出 {"say": …, "actions": […]}）`;
+    raw = await chat(cfg, sys, user, out, { kind: 'AI 指令（读记忆后）', history, usage, temperature: temp });
+    try { reply = parseReply(raw, out); } catch (e) { reply = { say: '（读完记忆后的回答不是规定格式：' + e.message + '）', actions: [], read: [] }; }
   }
   const g = parseOutline(workspaceOutline(ws));
   for (const [id, n] of ws.graph.nodes) if (g.nodes.has(id)) g.nodes.get(id).status = n.status; // 状态以工作区为准
@@ -150,14 +167,14 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   const actions = reply.actions.map(a => validateAction(a, { refs: ctx.refs, graph: g, scope: ctx.scope }));
   // 嘴上说做了、手上没给动作（8B 实测会这样）→ 明说，别让人以为做了
   if (!actions.some(a => a.ok) && (loose ? /^已(经)?(将|把|为|创建|新建|标记|改|连|设|排|对齐|选|挪|收紧)/ : /^(已|将|会|我会|我将)|已(经)?(将|把|为|创建|新建|标记|删除|改|连|设|完成|排|对齐|选)/).test(reply.say)) reply.say += /删/.test(text) ? '（⚠ 删除节点不归 AI 做：请右键节点 → 删除）' : '（⚠ 模型没有给出能执行的动作，实际什么都没做）';
-  pushChat(root, { t: new Date().toISOString(), scope: ctx.scope, user: String(text).trim(), say: reply.say, actions: reply.actions, done: actions.filter(a => a.ok).map(a => a.desc) });
-  return { say: reply.say, actions, raw, knowledge: loose ? [] : know.map(c => c.src), usage, mode: loose ? 'loose' : 'strict' };
+  pushChat(root, { t: new Date().toISOString(), scope: ctx.scope, user: String(text).trim(), say: reply.say, actions: reply.actions, done: actions.filter(a => a.ok).map(a => a.desc), ...(memNote ? { memNote } : {}), ...(memRead.length ? { memRead } : {}) });
+  return { say: reply.say, actions, raw, knowledge: loose ? [] : know.map(c => c.src), usage, mode: loose ? 'loose' : 'strict', memRead, memIndex: !!memNote };
 }
 
 // >v<🤖AI指令-执行-👤 确认后：大纲类（新建 / 改名 / 状态 / 连线 / 删线 / 大纲排序）一次存盘 = 一步撤销；
 //   连线类型 / 标签、颜色写 frontmatter；对齐 / 排列算好坐标交回前端（前端 move → 进撤销栈并存 _layout.json）。选中也交回前端。
 //   boxes = 前端量到的卡片 {id: {x, y, w, h}}（存的坐标系）
-export function applyPlan(root, actions, boxes = {}) {
+export function applyPlan(root, actions, boxes = {}, opts = {}) {
   actions = actions.filter(a => a && a.ok);
   let g = (() => { const ws = loadWorkspace(root), h = parseOutline(workspaceOutline(ws)); return h; })();
   const ren = new Map(); // 旧 id → 新 id（改名会改子孙的 id）
@@ -195,6 +212,8 @@ export function applyPlan(root, actions, boxes = {}) {
   const fixedBoxes = Object.fromEntries(Object.entries(boxes).map(([id, b]) => [fix(id), b]));
   const moves = planMoves(actions.filter(a => ['align', 'arrange', 'tighten', 'place'].includes(a.do)).map(a => a.do === 'place' ? { ...a, id: fix(a.id) } : { ...a, ids: a.ids.map(fix) }), fixedBoxes);
   const select = [...new Set(actions.filter(a => a.do === 'select').flatMap(a => a.ids.map(fix)))];
-  return { report: { ...report, outline: workspaceOutline(loadWorkspace(root)) }, moves, select };
+  // 记忆：人确认后才写（项目级进 __synapsis/_AI记忆/，用户级进 <Synapsis>/.synapsis/记忆/）
+  const remembered = actions.filter(a => a.do === 'remember').map(a => writeMemory(opts.home || root, root, { ...a, desc: a.summary }));
+  return { report: { ...report, outline: workspaceOutline(loadWorkspace(root)) }, moves, select, remembered };
 }
 export { VALIDATORS };

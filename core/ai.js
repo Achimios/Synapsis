@@ -23,7 +23,8 @@ const cfgFile = home => join(home, '.synapsis', 'ai.json');
 //   cfg.offline === true → 不查在线模型、全部走本地（自检用，免得跑测试时联网花钱）
 export const ONLINE = { deepseek: { url: 'https://api.deepseek.com', env: 'DEEPSEEK_API_KEY' } };
 export const keyFile = home => join(home, '.synapsis', 'keys.json');
-const onlineOf = id => { const m = /^(\w+):(.+)$/.exec(id || ''); return m && ONLINE[m[1]] ? { provider: m[1], model: m[2], ...ONLINE[m[1]] } : null; };
+// SYNAPSIS_ONLINE_URL = 自检用：把在线请求指到本机假服务
+const onlineOf = id => { const m = /^(\w+):(.+)$/.exec(id || ''); return m && ONLINE[m[1]] ? { provider: m[1], model: m[2], ...ONLINE[m[1]], ...(process.env.SYNAPSIS_ONLINE_URL ? { url: process.env.SYNAPSIS_ONLINE_URL } : {}) } : null; };
 // 这次调用实际用哪个对话模型（在线的带「deepseek:」前缀）
 export const chatModel = (cfg, bulk = false) => !cfg.offline && (bulk ? cfg.bulkSrc : cfg.agentSrc) === 'online' ? 'deepseek:' + (cfg.onlineModel || 'deepseek-flash') : cfg.chat;
 function onlineKey(cfg, provider) {

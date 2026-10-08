@@ -3,6 +3,7 @@
 // 每种动作对应一份说明书 core/skills/*.md（喂给模型）；VALIDATORS 和说明书一一对应（自检核对）。
 import { PALETTE } from './colors.js';
 import { withMoved, ROOT } from './outline.js';
+import { badMemName } from './memory.js';
 import { tighten } from './arrange.js';
 
 export const KINDS = { '': '', 普通: '', 调节: '调节', 离散: '离散' };
@@ -53,6 +54,17 @@ export const VALIDATORS = {
     if (abs === rel) throw new Error('要么给 x、y（挪到哪），要么给 dx、dy（挪多少），二选一');
     if ([x, y, dx, dy].some(v => v != null && !(Math.abs(v) < 1e5))) throw new Error('坐标要是正常的数字');
     return abs ? { id, x, y, desc: `挪位置：${label(id)} → (${x ?? '不变'}, ${y ?? '不变'})` } : { id, dx: dx || 0, dy: dy || 0, desc: `挪位置：${label(id)} 往${dx ? (dx > 0 ? '右 ' : '左 ') + Math.abs(dx) : ''}${dx && dy ? '、' : ''}${dy ? (dy > 0 ? '下 ' : '上 ') + Math.abs(dy) : ''}` };
+  },
+  // 记一笔长期记忆（core/memory.js）：人确认才写；不碰大纲
+  remember: a => {
+    const level = a.level || '项目';
+    if (!['项目', '用户'].includes(level)) throw new Error('level 只能是 项目 / 用户');
+    if (badMemName(a.name)) throw new Error('name 要是 40 字以内、能当文件名的短名字');
+    if (typeof a.text !== 'string' || !a.text.trim() || a.text.length > 2000) throw new Error('text 要是 2000 字以内的正文');
+    const mode = a.mode === 'replace' ? 'replace' : 'append';
+    const name = a.name.trim(), text = a.text.trim();
+    // summary = 索引里那一句（模型给的 desc）；desc = 给人看的预览（validateAction 统一用 desc 字段）
+    return { level, name, text, mode, summary: typeof a.desc === 'string' ? a.desc : '', desc: `记住（${level}${mode === 'replace' ? '，整份换掉' : ''}）「${name}」：${text.slice(0, 40)}${text.length > 40 ? '…' : ''}` };
   },
   tighten: (a, { many, label }) => {
     const ids = many(a.ids, 2);

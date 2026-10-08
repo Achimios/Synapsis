@@ -204,7 +204,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
     api('/ai/agent', { method: 'POST', body: JSON.stringify({ scope, selected, text: t, boxes: boxes?.() || {} }) })
       .then(d => {
         setText(''); setBusy(''); setUsage(d.usage?.total_tokens ? d.usage : null);
-        setTurns(ts => [...ts, { user: t, say: d.say, done: [], know: d.knowledge }]);
+        setTurns(ts => [...ts, { user: t, say: d.say, done: [], know: d.knowledge, memRead: d.memRead }]);
         const good = d.actions.filter(a => a.ok);
         if (d.actions.length) { setPlan(d); onPreview([...new Set(good.flatMap(a => a.ids || [a.id, a.from, a.to].filter(Boolean)))]); }
       })
@@ -242,6 +242,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
             <div className="u">🙂 {t.user}</div>
             {t.say && <div className="a">{t.say.includes('\n') ? <><span>🤖</span><MdLite text={t.say} /></> : '🤖 ' + t.say}</div>}
             {t.know?.length > 0 && !t.done?.length && <div className="know" title={t.know.join('\n')}>📖 参考了：{[...new Set(t.know.map(k => k.split('·')[0]))].join('、')}（{t.know.length} 段）</div>}
+            {t.memRead?.length > 0 && <div className="know">🧠 读了记忆：{t.memRead.join('、')}</div>}
             {t.done?.length > 0 && <ul className="done">{t.done.map((d, j) => <li key={j}>✓ {d}</li>)}</ul>}
           </div>)}
           {plan && plan.actions.length > 0 && <div className="plan">

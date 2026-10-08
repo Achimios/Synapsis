@@ -103,7 +103,7 @@ function workspaceApi() {
               return send(200, { estimate: est, model, ctx: m?.ctx || null, maxCtx: m?.maxCtx || null, loaded: !!m?.loaded });
             }
             // AI 指令框：问模型（只回动作草案）/ 👤 确认后执行
-            if (url.pathname === '/ai/apply' && req.method === 'POST') { const b = await body(req); const r = applyPlan(root, b.actions || [], b.boxes || {}); return send(200, { ...r, ...payload(root) }); }
+            if (url.pathname === '/ai/apply' && req.method === 'POST') { const b = await body(req); const r = applyPlan(root, b.actions || [], b.boxes || {}, { home: SYN_HOME }); return send(200, { ...r, ...payload(root) }); }
             // 在线 key：只写进 <Synapsis>/.synapsis/keys.json，回的状态里只有「有没有」
             if (url.pathname === '/ai/key' && req.method === 'PUT') { const b = await body(req); saveKey(SYN_HOME, b.provider || 'deepseek', b.key || ''); return send(200, await aiStatus(aiConfig(SYN_HOME))); }
             // 本地模型的上下文长度：先估显存，再「卸载 → 按新长度加载」（core/lmstudio.js，走 LM Studio 的 lms 命令行）
@@ -111,7 +111,7 @@ function workspaceApi() {
             if (url.pathname === '/ai/lms/load' && req.method === 'POST') { const b = await body(req); try { const r = await lmsReload(b.model || cfg.chat, b.ctx); if (aiConfig(SYN_HOME).chat !== r.key && (b.model || cfg.chat).replace(/:\d+$/, '') === r.key) saveAiConfig(SYN_HOME, { chat: r.key }); return send(200, { ...r, status: await aiStatus(aiConfig(SYN_HOME)) }); } catch (e) { return send(500, { error: e.message }); } }
             if (url.pathname === '/ai/config' && req.method === 'PUT') return send(200, await aiStatus(saveAiConfig(SYN_HOME, await body(req))));
             try {
-              if (url.pathname === '/ai/agent' && req.method === 'POST') { const b = await body(req); return send(200, await runAgent(root, b, cfg)); }
+              if (url.pathname === '/ai/agent' && req.method === 'POST') { const b = await body(req); return send(200, await runAgent(root, b, cfg, { home: SYN_HOME })); }
               if (url.pathname === '/ai/related') return send(200, { items: await related(root, url.searchParams.get('id') || '', cfg) });
               if (url.pathname === '/ai/rerank' && req.method === 'POST') { const b = await body(req); return send(200, { items: await rerank(root, b.id, b.items, cfg) }); }
               if (url.pathname === '/ai/explain' && req.method === 'POST') { const b = await body(req); return send(200, { text: await explainRelation(root, b.id, b.other, cfg) }); }
