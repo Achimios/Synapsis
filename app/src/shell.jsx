@@ -187,9 +187,9 @@ export function Shell({ name, Canvas }) {
       // .junk/ = 删除的临时去处，正常关窗口会清空；还有东西 = 上次没正常关闭（或 CLI / AI 删过东西）→ 问要不要清
       if (d.graveyard) setTimeout(() => {
         const mb = (d.graveyard.size / 1048576).toFixed(1);
-        if (confirm(`__synapsis/.junk/ 里还有 ${d.graveyard.count} 项（${mb} MB）：可能上次没正常关闭，或者 CLI / AI 删过东西。
+        if (confirm(`__synapsis/.junk/ 里还有 ${d.graveyard.count} 项（${mb} MB）：可能上次托盘没正常退出，或者 CLI / AI 删过东西。撤销栈已经丢了，这些没法再 Ctrl+Z，只能手动去 .junk/ 里翻。
 
-送进系统回收站清空吗？（取消 = 先留着，下次打开再问）`))
+送进系统回收站清空吗？（取消 = 先留着，下次打开再问；以后在回收站里也找得到）`))
           api('/graveyard/clear', { method: 'POST' }).then(r => setSaveState(`已把 ${r.count} 项（${(r.size / 1048576).toFixed(1)} MB）送进系统回收站` + (r.left ? `，还剩 ${r.left} 项没成功` : ''))).catch(e => setSaveState('❌ ' + e.message));
       }, 400);
     }).catch(e => { setMode('offline'); setText(load('syn.text', SAMPLE)); setPositions(load('syn.pos.' + name, {})); setSaveState('⚠️ 没连上工作区（' + e.message + '），本地离线模式'); });
