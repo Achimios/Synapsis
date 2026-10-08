@@ -2,7 +2,7 @@
 // 布局约定（文件夹 = 层级）：
 //   叶子节点      名字.md
 //   有子节点的    名字/_node.md   （它自己的属性与正文）
-//   以 _ 或 . 开头的文件/目录不是节点（_layout.json、_assets/、_过期的/、_synapsis.md）
+//   以 _ 或 . 开头的文件/目录不是节点（_layout.json、_assets/、_过期的/、.junk/、_synapsis.md）
 //   节点的图片    _pics_名字/   （紧挨节点的 .md：叶子在同目录，分组在自己文件夹里；文件夹本身就是真源，往里丢图就显示）
 //   散图          _pics/        （某一页上不属于任何节点的图：根页在 __synapsis/_pics/，分组页在 分组/_pics/；坐标在 _layout.json 的 @pic:路径）
 // 节点文件 = frontmatter + 正文：
@@ -173,7 +173,7 @@ function matchNodes(cur, next, hint = null) {
 const sameText = (a, b) => a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n');
 const stamp = () => new Date().toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '_');
 
-// >v<💾工作区-写回-大纲 → 文件：保留正文/其余属性/边标签；改名=搬文件；删除=移进 _过期的/（不真删）
+// >v<💾工作区-写回-大纲 → 文件：保留正文/其余属性/边标签；改名=搬文件；删除=移进 .junk/（不真删，关窗口时才清）
 export function saveOutline(root, text, hint = null) {
   const next = parseOutline(text);
   if (next.errors.length) return { ok: false, errors: next.errors };
@@ -208,8 +208,8 @@ export function saveOutline(root, text, hint = null) {
     writes.set(file, { content: serializeNode(meta, old ? old.body : ''), old, label: n.label });
   }
 
-  // 1) 删掉的节点 → _过期的/
-  const graveyard = join(base, '_过期的');
+  // 1) 删掉的节点 → .junk/
+  const graveyard = join(base, TRASH);
   // 整棵子树都被删的分组 = 整个文件夹作为一项进去（保持层级，不拆成一堆平铺的文件）；有子孙被挪走（used）的分组照旧逐个文件处理
   const gone = new Map();
   const wholeGone = id => {
@@ -222,7 +222,7 @@ export function saveOutline(root, text, hint = null) {
     if (n.parent !== ROOT && wholeGone(n.parent)) continue; // 外层整组都删了 → 由外层那一项带走
     const dir = dirname(n.file);
     if (!existsSync(dir)) continue;
-    mkdirSync(graveyard, { recursive: true });
+    junkDir(graveyard);
     const dst = join(graveyard, `${stamp()}_${id.replace(/\//g, '～')}`);
     renameSync(dir, dst);
     report.removed.push(relative(base, dst));
@@ -232,7 +232,7 @@ export function saveOutline(root, text, hint = null) {
   }
   for (const [id, n] of cur.nodes) {
     if (id === ROOT || used.has(id) || inWholeGone.has(id) || !n.file || !existsSync(n.file)) continue;
-    mkdirSync(graveyard, { recursive: true });
+    junkDir(graveyard);
     const dst = join(graveyard, `${stamp()}_${id.replace(/\//g, '～')}.md`);
     renameSync(n.file, dst);
     report.removed.push(relative(base, dst));
@@ -303,10 +303,10 @@ export function saveOutline(root, text, hint = null) {
   return report;
 }
 
-// >v<💾工作区-撤销删除-把 saveOutline 移进 _过期的/ 的文件搬回原处（之后再写回删除前的大纲，正文和属性就都在）
-// 只搬 _过期的/ 里的东西、只搬回 __synapsis/ 里面、目标已存在就跳过
+// >v<💾工作区-撤销删除-把 saveOutline 移进 .junk/ 的文件搬回原处（之后再写回删除前的大纲，正文和属性就都在）
+// 只搬 .junk/ 里的东西、只搬回 __synapsis/ 里面、目标已存在就跳过
 export function restoreRemoved(root, pairs) {
-  const base = join(root, DIR), grave = join(base, '_过期的');
+  const base = join(root, DIR), grave = join(base, TRASH);
   const inside = (p, dir) => { const r = relative(dir, p); return r && !r.startsWith('..') && !isAbsolute(r); };
   const done = [];
   for (const [from, to] of pairs || []) {
@@ -320,15 +320,23 @@ export function restoreRemoved(root, pairs) {
   return done;
 }
 
-// >v<💾工作区-整理过期的-__synapsis/_过期的/（程序生成的，给 Ctrl+Z 用）太大就把最旧的送系统回收站（👤 2026-10-08）：
-//   自动只看体积（总量 > 上限 → 最旧的先走，> 单项阈值的大文件夹 / 大图优先），**不看日期**（几个月后打开也不会因为「旧」就被清）；
-//   日期只在手动「🧹 清理」时当筛选（天数 ≥ days 的也一起送）。不到 1 天的永远不动（撤销栈还要用）。
-//   只送回收站、不永久删除；不是 Windows / 回收站失败 → 原样留着，不降级成真删。只管这一个文件夹，不碰人手放的分布式 _过期的/
-export const GRAVE_CAP = 200 * 1024 * 1024, GRAVE_BIG = 20 * 1024 * 1024, GRAVE_KEEP_MS = 24 * 3600 * 1000, GRAVE_DAYS = 14;
+// >v<💾工作区-删除回收-__synapsis/.junk/ = 程序删东西时的临时去处，只给「这一次打开期间」的 Ctrl+Z 用（👤 2026-10-08：别这么谨慎，思维快，不被过往束缚）：
+//   · 关窗口 / 退出托盘时清空本次产生的（整个送系统回收站，只占回收站一项）；意外关闭没清 → 下次打开时问要不要清
+//   · 不分大小，一视同仁（大图也是关了就清）
+//   · 只送回收站、不永久删；不是 Windows / 回收站失败 → 原样留着，不降级成真删
+//   · 不进 git（__synapsis/.gitignore，ensureGitignore）；图片文件夹也不进 git
+//   · 和 _过期的/ 分开：_过期的/ 是人手动放旧东西的地方（分布式、不自动清）；程序删的一律进 .junk/
+export const TRASH = '.junk';
+// 建 .junk/，并在 Windows 上设成「隐藏」（👤 2026-10-08：默认隐藏，人不用看；界面文件树本来就跳过它）
+function junkDir(g) {
+  const fresh = !existsSync(g);
+  mkdirSync(g, { recursive: true });
+  if (fresh && process.platform === 'win32') try { spawnSync('attrib', ['+h', g], { windowsHide: true, timeout: 10000 }); } catch { /* 设不上就算了，只是资源管理器里看得见 */ }
+}
 const entrySize = p => { const st = statSync(p); return st.isDirectory() ? readdirSync(p).reduce((s, e) => s + entrySize(join(p, e)), 0) : st.size; };
 const stampTime = name => { const m = /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})_/.exec(name); return m ? Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : null; }; // stamp() 用的是 UTC
 export function graveyardInfo(root) {
-  const g = join(root, DIR, '_过期的');
+  const g = join(root, DIR, TRASH);
   if (!existsSync(g)) return { entries: [], total: 0 };
   const entries = readdirSync(g).map(name => {
     const p = join(g, name);
@@ -336,29 +344,32 @@ export function graveyardInfo(root) {
   }).filter(Boolean);
   return { entries, total: entries.reduce((s, e) => s + e.size, 0) };
 }
-// 该送走哪些：{ cap, big, days（不给 = 不按日期）, now }
-export function planGraveyard(info, { cap = GRAVE_CAP, big = GRAVE_BIG, days = null, now = Date.now() } = {}) {
-  const old = info.entries.filter(e => now - e.time >= GRAVE_KEEP_MS).sort((a, b) => a.time - b.time);
-  const picked = new Set();
-  let left = info.total;
-  if (left > cap) for (const e of [...old.filter(e => e.size > big), ...old.filter(e => e.size <= big)]) { if (left <= cap) break; picked.add(e); left -= e.size; }
-  if (days != null) for (const e of old) if (now - e.time >= days * 24 * 3600 * 1000) picked.add(e);
-  const list = [...picked];
-  return { list, size: list.reduce((s, e) => s + e.size, 0), over: info.total > cap };
-}
 function trashToRecycleBin(paths) {
   if (process.platform !== 'win32' || !paths.length) return;
   const ps = 'Add-Type -AssemblyName Microsoft.VisualBasic; foreach ($p in ($env:SYN_TRASH -split [char]10)) { if (-not $p) { continue }; try { if (Test-Path -LiteralPath $p -PathType Container) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, "OnlyErrorDialogs", "SendToRecycleBin") } else { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, "OnlyErrorDialogs", "SendToRecycleBin") } } catch {} }';
   spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(ps, 'utf16le').toString('base64')], { env: { ...process.env, SYN_TRASH: paths.join('\n') }, windowsHide: true, timeout: 120000 });
 }
-// apply = false 只预览。返回 { total, count, plan: {count, size}, cleaned: [名字], freed, failed: [名字] }；成没成以「文件还在不在」为准
-export function cleanGraveyard(root, { apply = false, days = null, cap, big, now, trash = trashToRecycleBin } = {}) {
-  const info = graveyardInfo(root), plan = planGraveyard(info, { cap, big, days, now });
-  const out = { total: info.total, count: info.entries.length, plan: { count: plan.list.length, size: plan.size, over: plan.over }, cleaned: [], freed: 0, failed: [] };
-  if (!apply || !plan.list.length) return out;
-  trash(plan.list.map(e => e.path));
-  for (const e of plan.list) { if (existsSync(e.path)) out.failed.push(e.name); else { out.cleaned.push(e.name); out.freed += e.size; } }
-  return out;
+let trashImpl = trashToRecycleBin;
+export const setTrash = f => { trashImpl = f || trashToRecycleBin; }; // 测试用：换成假的回收站
+// 送系统回收站；返回真正没了的路径（成没成以「文件还在不在」为准）
+const trashPaths = paths => { trashImpl(paths); return paths.filter(p => !existsSync(p)); };
+// 清空 .junk/：since（毫秒时间戳）= 只清这之后产生的（关窗口时用，不动上次留下的）；不给 = 全清。
+// 全清 / 全是新的 → 整个文件夹作为一项进回收站；否则逐项。返回 { count, size, left }
+export function clearGraveyard(root, { since = null } = {}) {
+  const info = graveyardInfo(root), g = join(root, DIR, TRASH);
+  const pick = since == null ? info.entries : info.entries.filter(e => e.time >= since);
+  if (!pick.length) return { count: 0, size: 0, left: info.entries.length };
+  const all = pick.length === info.entries.length;
+  const gone = trashPaths(all ? [g] : pick.map(e => e.path));
+  const ok = all ? (gone.length ? pick : []) : pick.filter(e => gone.includes(e.path));
+  return { count: ok.length, size: ok.reduce((s, e) => s + e.size, 0), left: info.entries.length - ok.length };
+}
+// 图片和 .junk/ 不进 git（👤 2026-10-08）。没有才写；人改过就不动。想让图片进 git，删掉对应行
+export function ensureGitignore(root) {
+  const f = join(root, DIR, '.gitignore');
+  if (existsSync(f) || !existsSync(join(root, DIR))) return false;
+  writeFileSync(f, '# Synapsis 生成：图片和 .junk/（删除的临时去处）不进 git（想让图片进 git，删掉对应行；这份文件人改过就不会再动）\n.junk/\n_pics/\n_pics_*/\n');
+  return true;
 }
 
 function writeLayout(base, layout) {
@@ -456,12 +467,12 @@ export function saveLooseImage(root, scope, dataUrl) {
   if (!d) return { path: writeImage(picsDir(n.file, n.label), ws.base, dataUrl), node: scope };
   return { path: writeImage(join(d, '_pics'), ws.base, dataUrl) };
 }
-// 删散图 = 移进 __synapsis/_过期的/（不真删），坐标一并去掉
+// 删散图 = 移进 __synapsis/.junk/（不真删），坐标一并去掉
 export function removeLooseImage(root, relPath) {
   const base = join(root, DIR), f = join(base, relPath);
   if (relPath.includes('..') || !/(^|\/)_pics\/[^/]+$/.test(relPath) || !existsSync(f)) throw new Error('不是散图：' + relPath);
-  const g = join(base, '_过期的');
-  mkdirSync(g, { recursive: true });
+  const g = join(base, TRASH);
+  junkDir(g);
   renameSync(f, join(g, `${stamp()}_散图_${relPath.replace(/\//g, '～')}`));
   const lay = { ...loadWorkspace(root).layout };
   delete lay['@pic:' + relPath];
@@ -682,7 +693,7 @@ export function setNodeBody(root, id, body) {
 }
 
 // >v<🗂️外部区-文件树-项目根目录的只读文件树（含 __synapsis：节点 md 也能直接看）
-const SKIP = new Set(['.git', 'node_modules', '__pycache__', '.venv', 'venv', 'dist', 'build', '.synapsis', '.obsidian', 'Intermediate', 'Saved', 'DerivedDataCache', 'Binaries']);
+const SKIP = new Set(['.git', 'node_modules', '__pycache__', '.venv', 'venv', 'dist', 'build', '.synapsis', '.junk', '.obsidian', 'Intermediate', 'Saved', 'DerivedDataCache', 'Binaries']);
 export function listTree(root, maxEntries = 3000) {
   let count = 0;
   const walk = (dir, rel) => {

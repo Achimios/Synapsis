@@ -9,7 +9,7 @@ export const USAGE = `用法：node core/cli.js <命令> [参数] [--ws <被规�
   get <节点id>                 单个节点：属性 + 入边/出边 + 正文
   find <关键词>                在名字 / 属性 / 正文里找
   check                        悬空边、无状态、code 指向不存在的文件 / 符号
-写（每条都是原子的一小步；删除一律进 _过期的/，不真删）：
+写（每条都是原子的一小步；删除一律进 .junk/（关窗口时才清，期间能撤销），不真删）：
   add <父id|.> <名字> [--after <兄弟id>] [--if-missing]
                                新建节点，打印新 id；同级已有同名 → 报错（--if-missing 则直接返回已有 id）
                                根用 . （Git Bash 会把单独的 / 改写成 Git 安装目录）
@@ -35,7 +35,7 @@ import { PATTERN_FILE, DEFAULT_PATTERN_WORDS } from './patterns.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadWorkspace, workspaceOutline, checkWorkspace, groupStatus, saveOutline, ensureWorkspaceReadme, setNodeMeta, setNodeBody, setEdgeLabel, findNodes, moveNodes, MANUAL_MARK, DIR } from './workspace.js';
+import { loadWorkspace, workspaceOutline, checkWorkspace, groupStatus, saveOutline, ensureWorkspaceReadme, setNodeMeta, setNodeBody, setEdgeLabel, findNodes, moveNodes, ensureGitignore, MANUAL_MARK, DIR } from './workspace.js';
 import { spaceInfo, closestPairs } from './space.js';
 import { ensureLauncher, PROJECT_LNK } from './launcher.js';
 import { exportForLLM, withNode, withLabel, withStatus, withEdge, withoutEdge, withoutNode, ROOT } from './outline.js';
@@ -104,6 +104,7 @@ export function init(root) {
   if (blackboardName(root) === '_Blackboard.md') put(DIR + '/_Blackboard.md', BLACKBOARD);
   put(DIR + '/' + WORDS_FILE, DEFAULT_WORDS);
   put(DIR + '/' + PATTERN_FILE, DEFAULT_PATTERN_WORDS);
+  ensureGitignore(root);
   put('.synapsis/.gitignore', '# 本机状态（视图、缓存），不进 git\n*\n');
   // 启动器是生成物：根目录一个带图标的快捷方式 + 藏在 .synapsis/ 的兜底 vbs（core/launcher.js；Synapsis 搬家后重跑 init 即可修好）
   made.push(...ensureLauncher(root, { force: true }));
@@ -152,7 +153,7 @@ export function runWrite(root, cmd, args, argv = []) {
   }
   if (cmd === 'move') { need(a); return moveNodes(root, [a], isRoot(b) ? ROOT : need(b)).roots[0]; }
   if (cmd === 'unlink') { need(a); need(b); commit(withoutEdge(g, a, b)); return `已断开 ${a} -> ${b}`; }
-  if (cmd === 'rm') { need(a); const r = commit(withoutNode(g, a)); return '已移进 _过期的/：' + r.removed.join('、'); }
+  if (cmd === 'rm') { need(a); const r = commit(withoutNode(g, a)); return '已移进 .junk/：' + r.removed.join('、'); }
   if (cmd === 'body') { const text = argv.literalBody ? b ?? '' : !b || b === '-' ? readFileSync(0, 'utf8') : readFileSync(b, 'utf8'); setNodeBody(root, a, text); return a + ' 正文已替换（' + text.length + ' 字）'; }
   if (cmd === 'set') {
     need(a);

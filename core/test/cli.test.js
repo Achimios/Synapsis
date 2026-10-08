@@ -65,7 +65,7 @@ try {
   r = run('unlink', '感知/视觉', '决策');
   ok(!loadWorkspace(root).graph.edges.length, 'unlink');
   r = run('rm', '感知/听觉（声源）');
-  ok(!node('感知/听觉（声源）') && readdirSync(join(root, DIR, '_过期的')).length === 1, 'rm 进 _过期的/');
+  ok(!node('感知/听觉（声源）') && readdirSync(join(root, DIR, '.junk')).length === 1, 'rm 进 .junk/');
   r = run('status', '不存在的', 'done');
   ok(r.code === 1 && r.err.includes('没有这个节点'), '错 id → 退出码 1 + 说清楚');
   r = run('add', '/', 'A -> B');

@@ -296,7 +296,7 @@ for (const kind of ['reactflow']) {
   await page.mouse.click(1000, 780); await sleep(1200);
   ok(nodeFile('游戏AI/行动/_node.md').includes('从战术目标展开成动作序列'), '属性面板改正文 → 写进文件');
   await rclick('新节点'); await page.click('.ctx .mi.danger'); await sleep(1500);
-  ok(!existsSync(join(ws, '__synapsis', '游戏AI', '新节点.md')) && readdirSync(join(ws, '__synapsis', '_过期的')).some(n => n.includes('新节点')), '右键删除 → 移进 _过期的/');
+  ok(!existsSync(join(ws, '__synapsis', '游戏AI', '新节点.md')) && readdirSync(join(ws, '__synapsis', '.junk')).some(n => n.includes('新节点')), '右键删除 → 移进 .junk/');
   b = await box('兜底'); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await page.keyboard.press('Delete'); await sleep(1500);
   ok(!existsSync(join(ws, '__synapsis', '游戏AI', '兜底')), 'Del 键删除分组（确认框已接受）');
   await page.mouse.click(1000, 500, { button: 'right' }); await sleep(300);

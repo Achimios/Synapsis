@@ -182,7 +182,15 @@ export function Shell({ name, Canvas }) {
       const sv = (() => { try { return JSON.parse(sessionStorage.getItem(HIST_KEY)); } catch { return null; } })();
       if (sv?.committed?.text === d.outline) { hist2.current.undo = sv.undo || []; hist2.current.redo = sv.redo || []; }
       setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); if (v.cardProps === false) setCardPropsOn(false); if (v.histOpen) setHistOpen(true); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
-      setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载' + (d.graveyard?.cleaned ? `（_过期的/ 超过 200MB，最旧的 ${d.graveyard.cleaned} 项已送进系统回收站）` : d.graveyard?.failed ? '（_过期的/ 超过 200MB，但送回收站没成功）' : ''));
+      setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
+      // .junk/ = 删除的临时去处，正常关窗口会清空；还有东西 = 上次没正常关闭（或 CLI / AI 删过东西）→ 问要不要清
+      if (d.graveyard) setTimeout(() => {
+        const mb = (d.graveyard.size / 1048576).toFixed(1);
+        if (confirm(`__synapsis/.junk/ 里还有 ${d.graveyard.count} 项（${mb} MB）：可能上次没正常关闭，或者 CLI / AI 删过东西。
+
+送进系统回收站清空吗？（取消 = 先留着，下次打开再问）`))
+          api('/graveyard/clear', { method: 'POST' }).then(r => setSaveState(`已把 ${r.count} 项（${(r.size / 1048576).toFixed(1)} MB）送进系统回收站` + (r.left ? `，还剩 ${r.left} 项没成功` : ''))).catch(e => setSaveState('❌ ' + e.message));
+      }, 400);
     }).catch(e => { setMode('offline'); setText(load('syn.text', SAMPLE)); setPositions(load('syn.pos.' + name, {})); setSaveState('⚠️ 没连上工作区（' + e.message + '），本地离线模式'); });
   }, []);
   // 自动保存：大纲停手 0.7s 且无错误 → 写回文件
@@ -193,7 +201,7 @@ export function Shell({ name, Canvas }) {
       setSaveState('保存中…');
       const hint = saveHint.current; saveHint.current = null;
       api('/outline', { method: 'PUT', body: JSON.stringify({ outline: text, ...(hint ? { hint } : {}) }) })
-        .then(d => { lastSaved.current = text; setWsData(d); recordSave(text, d.report); setPositions(p => ({ ...p, ...Object.fromEntries(Object.entries(d.layout || {}).filter(([k]) => k.startsWith('@pic:'))) })); /* 分组改名后散图坐标键会变 */ const r = d.report; setSaveState('已保存 ' + new Date().toLocaleTimeString() + (r.removed.length ? '（' + r.removed.length + ' 项移进 _过期的/）' : '')); })
+        .then(d => { lastSaved.current = text; setWsData(d); recordSave(text, d.report); setPositions(p => ({ ...p, ...Object.fromEntries(Object.entries(d.layout || {}).filter(([k]) => k.startsWith('@pic:'))) })); /* 分组改名后散图坐标键会变 */ const r = d.report; setSaveState('已保存 ' + new Date().toLocaleTimeString() + (r.removed.length ? '（' + r.removed.length + ' 项移进 .junk/）' : '')); })
         .catch(e => setSaveState('❌ 保存失败：' + e.message));
     }, 700);
     return () => clearTimeout(t);
@@ -294,7 +302,7 @@ export function Shell({ name, Canvas }) {
   }, [mode, plane, space, graph]);
 
   // >v<🧭导航-撤销重做-Ctrl+Z / Ctrl+Shift+Z（Ctrl+Y）：一步 = 一次大纲保存（增删改名、状态、连线）或一次拖动 / 框选缩放。
-  // 撤销删除 = 先把 _过期的/ 里的文件搬回原处，再写回删除前的大纲（正文、属性、图片都在）。
+  // 撤销删除 = 先把 .junk/ 里的文件搬回原处，再写回删除前的大纲（正文、属性、图片都在）。
   // 属性 / 正文编辑（含颜色、图案）也在撤销栈里（op 条目，见 saveMeta / saveBody）；不在撤销范围：空间页拖动改 vec。只在工作区模式。
   const hist2 = useRef({ undo: [], redo: [], committed: null, applying: false });
   const [histTick, setHistTick] = useState(0); // 历史栏跟着刷新
@@ -341,7 +349,7 @@ export function Shell({ name, Canvas }) {
     const e = h.undo.pop(); if (!e) return setSaveState('没有可撤销的');
     if (e.op) { h.redo.push(e); persistHist(); return applyOp(e, 'undo').then(() => setSaveState('已撤销' + (e.op === 'meta' ? '属性修改' : '正文修改') + ' · 还能撤 ' + h.undo.length + ' 步')); }
     h.redo.push({ text: h.committed.text, positions: h.committed.positions, hint: flip(e.hint), desc: e.desc, t: e.t });
-    return applyHist(e).then(() => setSaveState(h.lost > 0 ? `⚠ 已撤销，但有 ${h.lost} 项没能从 _过期的/ 搬回来（已被清理，或原位置有同名文件）：那部分的正文 / 图片找不回，去系统回收站看看 · 还能撤 ${h.undo.length} 步` : '已撤销' + (e.restore ? '（删掉的节点从 _过期的/ 搬回来了）' : '') + ' · 还能撤 ' + h.undo.length + ' 步'));
+    return applyHist(e).then(() => setSaveState(h.lost > 0 ? `⚠ 已撤销，但有 ${h.lost} 项没能从 .junk/ 搬回来（已被清理，或原位置有同名文件）：那部分的正文 / 图片找不回，去系统回收站看看 · 还能撤 ${h.undo.length} 步` : '已撤销' + (e.restore ? '（删掉的节点从 .junk/ 搬回来了）' : '') + ' · 还能撤 ' + h.undo.length + ' 步'));
   };
   const redo = () => {
     const h = hist2.current;
@@ -393,7 +401,7 @@ export function Shell({ name, Canvas }) {
     ta.scrollTop = Math.max(0, line * parseFloat(getComputedStyle(ta).lineHeight) - ta.clientHeight / 2);
   };
 
-  // >v<🎨画布-右键菜单-动作：删除（工作区里 = 移进 _过期的/）、改状态、改名、属性
+  // >v<🎨画布-右键菜单-动作：删除（工作区里 = 移进 .junk/）、改状态、改名、属性
   const [menu, setMenu] = useState(null);       // {x, y, id|null}
   // >v<🎨画布-属性面板-默认开着（👤：点了节点总要看概览）；「概览 / 原文」两页，看原文不再顶掉属性
   const [propsTab, setPropsTab] = useState('info'); // info | raw
@@ -450,19 +458,19 @@ export function Shell({ name, Canvas }) {
   const [tree, setTree] = useState(null);
   const [fileView, setFileView] = useState(null); // {path, text|null, note, error}
   const remove = id => {
-    if (id?.startsWith('@pic:')) { // 散图：进 _过期的/
+    if (id?.startsWith('@pic:')) { // 散图：进 .junk/
       if (local) setLocalLoose(m => ({ ...m, [realScope]: (m[realScope] || []).filter(p => p.id !== id) }));
       else api('/loose-remove', { method: 'POST', body: JSON.stringify({ path: id.slice(5) }) }).then(() => api('/ws')).then(setWsData).catch(e => setSaveState('❌ ' + e.message));
-      setSelected(null); setSaveState('已删除散图' + (local ? '' : '（移进 _过期的/）'));
+      setSelected(null); setSaveState('已删除散图' + (local ? '' : '（移进 .junk/）'));
       return;
     }
     const n = graph.nodes.get(id);
     if (!n || id.startsWith('@portal:')) return;
     let k = 0; const cnt = x => { for (const c of graph.nodes.get(x).children) { k++; cnt(c); } }; cnt(id);
-    if (k && !confirm(`删除「${n.label}」和它下面 ${k} 个子孙？${mode === 'ws' ? '\n（文件会移进 __synapsis/_过期的/，不会真删）' : ''}`)) return;
+    if (k && !confirm(`删除「${n.label}」和它下面 ${k} 个子孙？${mode === 'ws' ? '\n（文件先移进 __synapsis/.junk/（关窗口才清），期间 Ctrl+Z 能撤）' : ''}`)) return;
     setText(withoutNode(graph, id));
     if (sel === id) setSelected(null);
-    setSaveState(`已删除「${n.label}」` + (mode === 'ws' ? '（移进 _过期的/）' : ''));
+    setSaveState(`已删除「${n.label}」` + (mode === 'ws' ? '（移进 .junk/）' : ''));
   };
   const setStatus = (id, s) => setText(withStatus(graph, id, s));
   const menuActions = {
@@ -856,16 +864,6 @@ export function Shell({ name, Canvas }) {
           {mode === 'ws' && <button title="AI 指令框（Shift+F）：用一句话让本地模型在当前页对齐 / 排列 / 连线 / 改状态…，先预览再执行" onClick={() => setAgentOpen(o => !o)}>💬 指令</button>}
           {mode === 'ws' && <button className={'aibtn ' + (aiStatus?.ok ? 'on' : 'off')} title={aiStatus?.ok ? 'LM Studio 已连上：语义配色 / 潜在关联 / 生成词表' : 'AI 辅助（LM Studio）：' + (aiStatus?.error || '检查中')} onClick={() => { setAiOpen(true); aiCheck(); }}>🤖 AI</button>}
           {mode === 'ws' && <button title="给这个项目补开发进度 / 待办 / 规矩那套文档（先检测，已有的不覆盖）" onClick={() => api('/scaffold').then(d => setScaffold(d.items)).catch(e => setSaveState('❌ ' + e.message))}>📄 项目文档…</button>}
-          {mode === 'ws' && <button title="整理 __synapsis/_过期的/（删除的节点 / 图片先放在那里给 Ctrl+Z 用）：超过 14 天或体积超上限的送进系统回收站，先问你。自动整理只看体积（超过 200MB 才动最旧的），不看日期" onClick={async () => {
-            try {
-              const g = await api('/graveyard'), mb = n => (n / 1048576).toFixed(1) + ' MB';
-              if (!g.count) return setSaveState('_过期的/ 是空的');
-              if (!g.plan.count) return setSaveState(`_过期的/ 共 ${g.count} 项 ${mb(g.total)}：没有超过 ${g.days} 天的，体积也没超上限（不到 1 天的不动）`);
-              if (!confirm(`_过期的/ 共 ${g.count} 项 ${mb(g.total)}。\n\n其中 ${g.plan.count} 项（${mb(g.plan.size)}）超过 ${g.days} 天${g.plan.over ? '或体积超上限' : ''}，送进系统回收站？\n（能从回收站找回；但撤销栈里对应的删除就搬不回来了）`)) return;
-              const r = await api('/graveyard', { method: 'POST' });
-              setSaveState(`已把 ${r.cleaned.length} 项（${mb(r.freed)}）送进系统回收站` + (r.failed.length ? `，${r.failed.length} 项没成功` : ''));
-            } catch (e) { setSaveState('❌ ' + e.message); }
-          }}>🧹 清理过期</button>}
           {local && <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>}
           <button className="themebtn" title={theme === 'light' ? '换深色主题' : '换白色主题'} onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}>{theme === 'light' ? '🌙' : '☀'}</button>
           <button className="keysbtn" title="快捷键一览（? 或 F1）" onClick={() => setHelpOpen(true)}>⌨ 快捷键</button>

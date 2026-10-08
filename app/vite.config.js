@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import { resolve, join, normalize, relative } from 'node:path';
 import { spawn } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
-import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, restoreRemoved, cleanGraveyard, GRAVE_DAYS, pasteNodes, ensureColorWords, ensurePatternWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, movePic, grepProject, DIR } from '../core/workspace.js';
+import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, restoreRemoved, graveyardInfo, clearGraveyard, ensureGitignore, pasteNodes, ensureColorWords, ensurePatternWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, movePic, grepProject, DIR } from '../core/workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText } from '../core/cli.js';
 import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, readAiLog, readUsage } from '../core/ai.js';
@@ -11,7 +11,6 @@ import { lmsEstimate, lmsReload } from '../core/lmstudio.js';
 import { runAgent, applyPlan, loadChat, clearChat, estimateContext, isLoose } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
 const STASH = new Map(); // 工作区 → 界面暂存（见 /ui/stash）
-const GRAVE_CHECKED = new Set(); // 这次服务进程里已经检查过 _过期的/ 体积的工作区
 const SYN_HOME = resolve(fileURLToPath(new URL('.', import.meta.url)), '..'); // AI 设置是本机的：<Synapsis>/.synapsis/ai.json
 
 // >v<🚀启停-心跳-3 分钟没人 ping 就退出（SYN_IDLE_MS 可调）
@@ -56,16 +55,13 @@ function workspaceApi() {
         try {
           if (url.pathname === '/ws' && req.method === 'GET') {
             ensureWorkspaceReadme(root, manualText(root));
-            // 每个工作区每次服务进程只检查一次：_过期的/ 超过体积上限 → 最旧的送回收站（只看体积，不看日期）
-            let graveyard = null;
-            if (!GRAVE_CHECKED.has(root)) { GRAVE_CHECKED.add(root); try { const r = cleanGraveyard(root, { apply: true }); if (r.cleaned.length || r.failed.length) graveyard = { cleaned: r.cleaned.length, freed: r.freed, failed: r.failed.length }; } catch {} }
-            return send(200, { ...payload(root), view: loadView(root), graveyard });
+            ensureGitignore(root);
+            // .junk/ 里有东西 = 上次没正常关闭（正常关窗口会清空），或 CLI / AI 删过东西：交给界面问一句要不要清
+            const gi = graveyardInfo(root);
+            return send(200, { ...payload(root), view: loadView(root), graveyard: gi.entries.length ? { count: gi.entries.length, size: gi.total } : null });
           }
-          // 手动「🧹 清理」：GET = 预览（总量 / 能送走多少，按天数 + 体积），POST = 确认后送系统回收站
-          if (url.pathname === '/graveyard') {
-            if (req.method === 'POST') { const r = cleanGraveyard(root, { apply: true, days: GRAVE_DAYS }); return send(200, { ...r, days: GRAVE_DAYS }); }
-            return send(200, { ...cleanGraveyard(root, { days: GRAVE_DAYS }), days: GRAVE_DAYS });
-          }
+          // 清空 .junk/（整个送系统回收站）；界面在打开时问过用户才调
+          if (url.pathname === '/graveyard/clear' && req.method === 'POST') return send(200, clearGraveyard(root));
           // 只往已挂上 Synapsis 的目录写（别因为一个拼错的 ?ws= 在磁盘上凭空建目录）
           if (url.pathname === '/view' && req.method === 'PUT') { if (!existsSync(join(root, DIR))) return send(404, { error: '不是 Synapsis 工作区' }); saveView(root, await body(req)); return send(200, { ok: true }); }
           // 在资源管理器里显示 / 用默认程序打开（服务只在本机跑，等于本机操作；路径限定在项目内）
@@ -97,7 +93,7 @@ function workspaceApi() {
           if (url.pathname === '/edge' && req.method === 'PATCH') { const b = await body(req); setEdgeLabel(root, b.from, b.to, b.label || '', b.kind || ''); return send(200, payload(root)); }
           // 粘贴节点：复制子孙 / 属性 / 正文 / 图片 / 内部边到 parent 下
           if (url.pathname === '/paste' && req.method === 'POST') { const b = await body(req); const r = pasteNodes(root, b.ids, b.parent); return send(200, { report: r, ...payload(root) }); }
-          // 撤销删除：把 _过期的/ 里的文件搬回去（随后前端写回删除前的大纲）
+          // 撤销删除：把 .junk/ 里的文件搬回去（随后前端写回删除前的大纲）
           if (url.pathname === '/restore' && req.method === 'POST') return send(200, { restored: restoreRemoved(root, (await body(req)).pairs) });
           // 项目骨架（_开发进度.md 那套）：GET = 检测清单，POST = 只写勾上且不存在的
           if (url.pathname === '/scaffold' && req.method === 'GET') return send(200, { items: scaffoldPlan(root).map(({ rel, exists, alike }) => ({ rel, exists, alike })) });
@@ -156,7 +152,7 @@ function workspaceApi() {
           if (url.pathname === '/grep' && req.method === 'GET') return send(200, grepProject(root, url.searchParams.get('q') || ''));
           if (url.pathname === '/raw' && req.method === 'GET') return send(200, readProjectFile(root, url.searchParams.get('p') || ''));
           if (url.pathname === '/layout' && req.method === 'PUT') { saveLayout(root, (await body(req)).positions); return send(200, { ok: true }); }
-          // 图片：/asset 进某个节点；/loose 当散图放进某一页；/loose-remove 删散图（进 _过期的/）
+          // 图片：/asset 进某个节点；/loose 当散图放进某一页；/loose-remove 删散图（进 .junk/）
           if ((url.pathname === '/asset' || url.pathname === '/loose') && req.method === 'POST') {
             const b = await body(req);
             // 从浏览器拖来的网页图：页面跨域拿不到，由本机服务代下（只收图片、30MB 封顶）

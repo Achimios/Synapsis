@@ -325,7 +325,7 @@ export function lineOf(g, id) {
   return hit;
 }
 
-// >v<🌳大纲模型-删除/改状态/改名-右键菜单用；都返回新大纲文本（删除在工作区里 = 文件移进 _过期的/）
+// >v<🌳大纲模型-删除/改状态/改名-右键菜单用；都返回新大纲文本（删除在工作区里 = 文件移进 .junk/）
 export function withoutNode(g, id) {
   const h = cloneGraph(g);
   const gone = new Set();

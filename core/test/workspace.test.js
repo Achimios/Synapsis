@@ -1,9 +1,10 @@
-// >v<✅自检-工作区-临时目录里跑：大纲→文件→大纲往返、保留正文/边标签、改名搬文件、删除进 _过期的
+// >v<✅自检-工作区-临时目录里跑：大纲→文件→大纲往返、保留正文/边标签、改名搬文件、删除进 .junk
 // node core/test/workspace.test.js
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, scanAnchors, anchorMatches, graveyardInfo, planGraveyard, cleanGraveyard, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, linkNodes, moveNodes, movePic, grepProject, DIR } from '../workspace.js';
+import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, scanAnchors, anchorMatches, graveyardInfo, clearGraveyard, setTrash, ensureGitignore, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, linkNodes, moveNodes, movePic, grepProject, DIR } from '../workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../scaffold.js';
 import { SAMPLE } from '../../app/src/sample.js';
 
@@ -64,10 +65,10 @@ try {
   saveOutline(root, workspaceOutline(loadWorkspace(root)).replace(/^(    ✅ 决策空间.*)$/m, '$1\n      ○ 效用表'));
   ok(existsSync(B('游戏AI/决策/决策空间/_node.md')) && existsSync(B('游戏AI/决策/决策空间/效用表.md')) && !existsSync(B('游戏AI/决策/决策空间.md')), '叶子加子节点 → 变文件夹');
 
-  // 删除 → _过期的/，不真删
+  // 删除 → .junk/，不真删
   saveOutline(root, workspaceOutline(loadWorkspace(root)).replace(/^\s+○ 地图分区\n?/m, ''));
   ok(!existsSync(B('游戏设计规划/地图分区.md')), '删除的节点不在原处');
-  ok(readdirSync(B('_过期的')).some(n => n.includes('地图分区')), '删除的节点进了 _过期的/');
+  ok(readdirSync(B('.junk')).some(n => n.includes('地图分区')), '删除的节点进了 .junk/');
 
   // CRLF（git checkout 后）不算改动，不重写
   const crlfFile = B('游戏AI/决策/_node.md');
@@ -101,10 +102,10 @@ try {
     ok(existsSync(P('A/新名/_pics_新名')) && loadWorkspace(r2).graph.nodes.get('A/新名').pics.length === 1, '叶子变分组 → 图片文件夹搬进自己的文件夹');
     saveAsset(r2, 'B', PNG);
     saveOutline(r2, 'A\n  新名\n    孙');
-    ok(!existsSync(P('_pics_B')) && readdirSync(P('_过期的')).some(n => n.endsWith('_pics')), '删除节点 → 图片文件夹一起进 _过期的/');
+    ok(!existsSync(P('_pics_B')) && readdirSync(P('.junk')).some(n => n.endsWith('_pics')), '删除节点 → 图片文件夹一起进 .junk/');
     saveOutline(r2, 'C\n  新名\n    孙');
     ok(existsSync(P('C/新名/_pics_新名')) && !existsSync(P('A')), '父节点改名 → 子节点的图片跟着走、旧目录清掉');
-    // 散图：页的 _pics/；分组改名跟着走、坐标键跟着改；叶子页归给叶子自己；删 = 进 _过期的/
+    // 散图：页的 _pics/；分组改名跟着走、坐标键跟着改；叶子页归给叶子自己；删 = 进 .junk/
     const l0 = saveLooseImage(r2, '', PNG);
     ok(l0.path.startsWith('_pics/') && !l0.node && loadWorkspace(r2).loose[''][0] === l0.path, '根页散图 → __synapsis/_pics/ ' + l0.path);
     const l1 = saveLooseImage(r2, 'C', PNG);
@@ -117,7 +118,7 @@ try {
     const l2 = saveLooseImage(r2, 'D/新名/孙', PNG);
     ok(l2.node === 'D/新名/孙' && l2.path.includes('_pics_孙/'), '叶子页没有文件夹 → 归给叶子自己');
     removeLooseImage(r2, l0.path);
-    ok(!existsSync(P(l0.path)) && readdirSync(P('_过期的')).some(n => n.includes('散图')), '删散图 → 进 _过期的/');
+    ok(!existsSync(P(l0.path)) && readdirSync(P('.junk')).some(n => n.includes('散图')), '删散图 → 进 .junk/');
     let threw = false; try { removeLooseImage(r2, 'D/新名/_node.md'); } catch { threw = true; }
     ok(threw, '删散图接口拒绝非散图路径');
     // 视图记忆
@@ -144,10 +145,10 @@ try {
     writeFileSync(join(r3, DIR, '组', '甲.md'), readFileSync(join(r3, DIR, '组', '甲.md'), 'utf8') + '\n人写的正文\n');
     saveAsset(r3, '组/甲', 'data:image/png;base64,' + Buffer.from('89504e470d0a1a0a', 'hex').toString('base64'));
     const rep = saveOutline(r3, '别处');
-    ok(!loadWorkspace(r3).graph.nodes.has('组') && rep.restore.length === 1 && rep.removed.length === 1, '删整个分组 = 文件夹作为一项进 _过期的/（不拆平）' + JSON.stringify(rep.removed));
-    const gdir = join(r3, DIR, '_过期的', rep.removed[0].split(/[\\/]/).pop());
-    ok(existsSync(join(gdir, '_node.md')) && existsSync(join(gdir, '甲.md')) && existsSync(join(gdir, '乙.md')) && readdirSync(gdir).some(n => n.startsWith('_pics')), '过期的里保持原来的层级（_node.md、甲、乙、图片文件夹都在里面）');
-    ok(restoreRemoved(r3, [['../../外面.md', '组/甲.md']]).length === 0, 'restoreRemoved 只搬 _过期的/ 里的东西');
+    ok(!loadWorkspace(r3).graph.nodes.has('组') && rep.restore.length === 1 && rep.removed.length === 1, '删整个分组 = 文件夹作为一项进 .junk/（不拆平）' + JSON.stringify(rep.removed));
+    const gdir = join(r3, DIR, '.junk', rep.removed[0].split(/[\\/]/).pop());
+    ok(existsSync(join(gdir, '_node.md')) && existsSync(join(gdir, '甲.md')) && existsSync(join(gdir, '乙.md')) && readdirSync(gdir).some(n => n.startsWith('_pics')), 'junk 里保持原来的层级（_node.md、甲、乙、图片文件夹都在里面）');
+    ok(restoreRemoved(r3, [['../../外面.md', '组/甲.md']]).length === 0, 'restoreRemoved 只搬 .junk/ 里的东西');
     const back = restoreRemoved(r3, rep.restore);
     saveOutline(r3, before);
     const g3 = loadWorkspace(r3).graph;
@@ -164,46 +165,46 @@ try {
     const rp = saveOutline(r3b, '留');
     ok(rp.removed.length === 1 && rp.restore.length === 1, '嵌套分组整棵删 → 只进一项（' + rp.removed.length + '）');
     restoreRemoved(r3b, rp.restore); saveOutline(r3b, nest);
-    ok(['外', '外/中', '外/中/内1', '外/中/内2', '外/旁'].every(i => loadWorkspace(r3b).graph.nodes.has(i)) && readdirSync(join(r3b, DIR, '_过期的')).length === 0, '整棵撤销回来，层级完整，_过期的/ 里不留残渣');
+    ok(['外', '外/中', '外/中/内1', '外/中/内2', '外/旁'].every(i => loadWorkspace(r3b).graph.nodes.has(i)) && readdirSync(join(r3b, DIR, '.junk')).length === 0, '整棵撤销回来，层级完整，.junk/ 里不留残渣');
     const rm = saveOutline(r3b, '留\n内1\n外\n  旁');
     const g3b = loadWorkspace(r3b).graph;
     ok(g3b.nodes.has('内1') && !g3b.nodes.has('外/中') && rm.removed.length >= 1 && !rm.removed.some(x => x.includes('内1')), '有子孙被挪走时不整夹带走，被挪走的节点还在 ' + JSON.stringify(rm.removed));
   } finally { rmSync(r3b, { recursive: true, force: true }); }
 
-  // _过期的/ 整理：自动只看体积（不看日期）；日期只在手动时当筛选；不到 1 天的不动；不降级成永久删除
-  const rg = mkdtempSync(join(tmpdir(), 'syn-grave-'));
+  // .junk/（程序删东西的临时去处，只给 Ctrl+Z 用）：关窗口时整个送回收站；只清本次产生的；失败不降级成真删；隐藏；不进 git
+  const rg = mkdtempSync(join(tmpdir(), 'syn-junk-'));
   try {
-    const gd = join(rg, DIR, '_过期的'); mkdirSync(gd, { recursive: true });
-    const NOW = Date.UTC(2027, 0, 20, 12, 0, 0), day = 24 * 3600 * 1000;
-    const stampOf = ms => new Date(ms).toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '_');
-    const mk = (agoDays, name, kb, asDir = false) => {
-      const nm = stampOf(NOW - agoDays * day) + '_' + name;
-      if (asDir) { mkdirSync(join(gd, nm, '子'), { recursive: true }); writeFileSync(join(gd, nm, '子', 'a.bin'), Buffer.alloc(kb * 1024)); }
-      else writeFileSync(join(gd, nm), Buffer.alloc(kb * 1024));
-      return nm;
-    };
-    const small90 = mk(90, '九十天前的小文件.md', 1), big30 = mk(30, '大图文件夹', 600, true), mid20 = mk(20, '中等.png', 300), fresh = mk(0.1, '刚删的大图.png', 900);
-    const del = [], fake = ps => { for (const p of ps) { del.push(p); rmSync(p, { recursive: true, force: true }); } };
-    const info = graveyardInfo(rg);
-    ok(info.entries.length === 4 && info.total === (1 + 600 + 300 + 900) * 1024, '统计每一项的体积（文件夹按里面总和）');
-    ok(info.entries.find(e => e.name === small90).time === NOW - 90 * day, '时间取自文件名里的时间戳（UTC）');
-    ok(cleanGraveyard(rg, { now: NOW, apply: true, trash: fake }).cleaned.length === 0 && del.length === 0, '默认上限 200MB，没超 → 什么都不动（旧的小文件、90 天前的也在）');
-    const p1 = planGraveyard(info, { cap: 1500 * 1024, big: 500 * 1024, now: NOW });
-    ok(p1.over && p1.list.map(e => e.name).join() === big30, '超上限 → 大的优先；清到回到上限就停，更旧的小文件不动 ' + p1.list.map(e => e.name));
-    const p2 = planGraveyard(info, { cap: 100, big: 10 * 1024 * 1024, now: NOW });
-    ok(!p2.list.some(e => e.name === fresh) && p2.list[0].name === small90, '不到 1 天的永远不动；同样大小档里最旧的先走');
-    const p3 = planGraveyard(info, { days: 14, now: NOW });
-    ok(!p3.over && p3.list.length === 3 && !p3.list.some(e => e.name === fresh), '手动给天数 → 超过天数的都算（不到 1 天的仍不算）');
-    const r1 = cleanGraveyard(rg, { now: NOW, days: 14, apply: false, trash: fake });
-    ok(r1.plan.count === 3 && r1.cleaned.length === 0 && del.length === 0 && existsSync(join(gd, big30)), '只预览不动文件');
-    const r2 = cleanGraveyard(rg, { now: NOW, days: 14, apply: true, trash: fake });
-    ok(r2.cleaned.length === 3 && r2.freed === (1 + 600 + 300) * 1024 && existsSync(join(gd, fresh)) && !existsSync(join(gd, big30)), '确认后送走（文件夹整项），新的留着');
-    const r3 = cleanGraveyard(rg, { now: NOW + 2 * day, days: 1, apply: true, trash: () => {} }); // 回收站失败：文件还在
-    ok(r3.cleaned.length === 0 && r3.failed.length === 1 && existsSync(join(gd, fresh)), '回收站没成功 → 文件原样留着，报失败，不降级成永久删除');
-    ok(cleanGraveyard(join(rg, '不存在'), { apply: true }).count === 0, '没有 _过期的/ → 空');
-  } finally { rmSync(rg, { recursive: true, force: true }); }
+    const sent = [];
+    setTrash(ps => { for (const p of ps) { sent.push(p); rmSync(p, { recursive: true, force: true }); } });
+    saveOutline(rg, '甲\n乙\n丙');
+    const gd = join(rg, DIR, '.junk');
+    ok(!existsSync(gd) && graveyardInfo(rg).entries.length === 0, '没删过东西 → 没有 .junk/');
+    const t0 = Date.now() - 2000;
+    saveOutline(rg, '甲');
+    ok(graveyardInfo(rg).entries.length === 2 && !existsSync(join(rg, DIR, '_过期的')), '删除进 .junk/，不碰 _过期的/（那是人手放旧东西的地方）');
+    if (process.platform === 'win32') ok(/\bH\b/.test(spawnSync('attrib', [gd], { encoding: 'utf8' }).stdout.split(gd)[0]), '.junk/ 在 Windows 上设成了隐藏');
+    ok(!listTree(rg).tree.flatMap(function f(x) { return [x.name, ...(x.children || []).flatMap(f)]; }).includes('.junk'), '文件树里看不到 .junk/');
+    writeFileSync(join(gd, '20200101_000000_上次意外关闭留下的.md'), 'x');
+    const part = clearGraveyard(rg, { since: t0 });
+    ok(part.count === 2 && part.left === 1 && sent.length === 2 && existsSync(gd), '关窗口：只清本次产生的两项，上次留下的不动（交给下次打开时问）');
+    const all = clearGraveyard(rg);
+    ok(all.count === 1 && sent.length === 3 && sent[2] === gd && !existsSync(gd), '全清 → 整个文件夹作为一项进回收站');
+    saveOutline(rg, '甲\n乙'); saveOutline(rg, '甲');
+    setTrash(() => {}); // 回收站没成功（比如不是 Windows）：东西原样留着
+    const bad = clearGraveyard(rg);
+    ok(bad.count === 0 && existsSync(join(gd, readdirSync(gd)[0])), '回收站没成功 → 文件原样留着，不降级成永久删除');
+    setTrash(null);
+    ok(clearGraveyard(join(rg, '不存在')).count === 0, '没有 .junk/ → 空');
+    // .gitignore：图片和 .junk/ 不进 git；人改过就不再动
+    const gi = join(rg, DIR, '.gitignore');
+    ok(ensureGitignore(rg) === true && /^\.junk\/$/m.test(readFileSync(gi, 'utf8')) && /^_pics_\*\/$/m.test(readFileSync(gi, 'utf8')) && /^_pics\/$/m.test(readFileSync(gi, 'utf8')), '生成 __synapsis/.gitignore：.junk/ 和图片文件夹');
+    ok(ensureGitignore(rg) === false, '已有就不再写');
+    writeFileSync(gi, '我自己的规则\n');
+    ok(ensureGitignore(rg) === false && readFileSync(gi, 'utf8') === '我自己的规则\n', '人改过的不动（想让图片进 git 就删掉对应行）');
+    ok(ensureGitignore(join(rg, '不存在')) === false, '没挂 Synapsis 的目录不写');
+  } finally { setTrash(null); rmSync(rg, { recursive: true, force: true }); }
 
-  // 跨父移动：大纲里把 队长（带正文、属性、子节点）挪进 小队 → 不丢东西、不进 _过期的/
+  // 跨父移动：大纲里把 队长（带正文、属性、子节点）挪进 小队 → 不丢东西、不进 .junk/
   const r5 = mkdtempSync(join(tmpdir(), 'syn-move-'));
   try {
     saveOutline(r5, '小队\n  步枪兵\n队长 -> 步枪兵\n  口令\n精英');
@@ -212,7 +213,7 @@ try {
     const rep5 = saveOutline(r5, '小队\n  步枪兵\n  队长 -> 步枪兵\n    口令\n精英');
     const g5 = loadWorkspace(r5).graph, cap = g5.nodes.get('小队/队长');
     ok(cap && cap.meta.rate === '1 Hz' && cap.body.includes('队长的正文') && g5.nodes.has('小队/队长/口令'), '跨父移动：正文、属性、子节点跟着走');
-    ok(!rep5.removed.length && !g5.nodes.has('队长'), '跨父移动：没有东西进 _过期的/ ' + rep5.removed);
+    ok(!rep5.removed.length && !g5.nodes.has('队长'), '跨父移动：没有东西进 .junk/ ' + rep5.removed);
     ok(g5.edges.some(e => e.from === '小队/队长' && e.to === '小队/步枪兵'), '跨父移动：边还在');
   } finally { rmSync(r5, { recursive: true, force: true }); }
 
@@ -346,7 +347,7 @@ try {
     ok(/自己里面/.test(threw), '挪进自己的子孙 → 拒绝');
     const mv = moveNodes(r6, ['甲/备注'], '丙');
     const w6 = loadWorkspace(r6), n6 = w6.graph.nodes.get('丙/备注');
-    ok(n6 && n6.body.includes('甲的备注正文') && n6.meta.rate === '3 Hz' && !mv.removed.length, '别处有同名「备注」也认对：正文、属性跟着走，没东西进 _过期的/ ' + JSON.stringify(mv.removed));
+    ok(n6 && n6.body.includes('甲的备注正文') && n6.meta.rate === '3 Hz' && !mv.removed.length, '别处有同名「备注」也认对：正文、属性跟着走，没东西进 .junk/ ' + JSON.stringify(mv.removed));
     ok(w6.graph.nodes.get('乙/备注') && !w6.graph.nodes.has('甲/备注'), '另一个同名的 乙/备注 不受影响');
     ok(w6.graph.edges.some(e => e.from === '丙/备注' && e.to === '乙'), '连线跟着走');
     ok(w6.layout['丙/备注']?.x === 11 && mv.roots.join() === '丙/备注', '坐标跟着走，返回新 id');
