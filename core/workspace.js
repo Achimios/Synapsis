@@ -17,6 +17,7 @@
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, unlinkSync, rmdirSync, cpSync } from 'node:fs';
 import { join, dirname, relative, isAbsolute } from 'node:path';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { PATTERN_FILE, DEFAULT_PATTERN_WORDS, parsePatternWords } from './patterns.js';
 import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, withCopies, withEdge, withoutEdge, withMoved, ROOT } from './outline.js';
 import { checkSpaces } from './space.js';
@@ -317,6 +318,47 @@ export function restoreRemoved(root, pairs) {
     done.push(to);
   }
   return done;
+}
+
+// >v<💾工作区-整理过期的-__synapsis/_过期的/（程序生成的，给 Ctrl+Z 用）太大就把最旧的送系统回收站（👤 2026-10-08）：
+//   自动只看体积（总量 > 上限 → 最旧的先走，> 单项阈值的大文件夹 / 大图优先），**不看日期**（几个月后打开也不会因为「旧」就被清）；
+//   日期只在手动「🧹 清理」时当筛选（天数 ≥ days 的也一起送）。不到 1 天的永远不动（撤销栈还要用）。
+//   只送回收站、不永久删除；不是 Windows / 回收站失败 → 原样留着，不降级成真删。只管这一个文件夹，不碰人手放的分布式 _过期的/
+export const GRAVE_CAP = 200 * 1024 * 1024, GRAVE_BIG = 20 * 1024 * 1024, GRAVE_KEEP_MS = 24 * 3600 * 1000, GRAVE_DAYS = 14;
+const entrySize = p => { const st = statSync(p); return st.isDirectory() ? readdirSync(p).reduce((s, e) => s + entrySize(join(p, e)), 0) : st.size; };
+const stampTime = name => { const m = /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})_/.exec(name); return m ? Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : null; }; // stamp() 用的是 UTC
+export function graveyardInfo(root) {
+  const g = join(root, DIR, '_过期的');
+  if (!existsSync(g)) return { entries: [], total: 0 };
+  const entries = readdirSync(g).map(name => {
+    const p = join(g, name);
+    try { return { name, path: p, size: entrySize(p), time: stampTime(name) ?? statSync(p).mtimeMs }; } catch { return null; }
+  }).filter(Boolean);
+  return { entries, total: entries.reduce((s, e) => s + e.size, 0) };
+}
+// 该送走哪些：{ cap, big, days（不给 = 不按日期）, now }
+export function planGraveyard(info, { cap = GRAVE_CAP, big = GRAVE_BIG, days = null, now = Date.now() } = {}) {
+  const old = info.entries.filter(e => now - e.time >= GRAVE_KEEP_MS).sort((a, b) => a.time - b.time);
+  const picked = new Set();
+  let left = info.total;
+  if (left > cap) for (const e of [...old.filter(e => e.size > big), ...old.filter(e => e.size <= big)]) { if (left <= cap) break; picked.add(e); left -= e.size; }
+  if (days != null) for (const e of old) if (now - e.time >= days * 24 * 3600 * 1000) picked.add(e);
+  const list = [...picked];
+  return { list, size: list.reduce((s, e) => s + e.size, 0), over: info.total > cap };
+}
+function trashToRecycleBin(paths) {
+  if (process.platform !== 'win32' || !paths.length) return;
+  const ps = 'Add-Type -AssemblyName Microsoft.VisualBasic; foreach ($p in ($env:SYN_TRASH -split [char]10)) { if (-not $p) { continue }; try { if (Test-Path -LiteralPath $p -PathType Container) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, "OnlyErrorDialogs", "SendToRecycleBin") } else { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, "OnlyErrorDialogs", "SendToRecycleBin") } } catch {} }';
+  spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(ps, 'utf16le').toString('base64')], { env: { ...process.env, SYN_TRASH: paths.join('\n') }, windowsHide: true, timeout: 120000 });
+}
+// apply = false 只预览。返回 { total, count, plan: {count, size}, cleaned: [名字], freed, failed: [名字] }；成没成以「文件还在不在」为准
+export function cleanGraveyard(root, { apply = false, days = null, cap, big, now, trash = trashToRecycleBin } = {}) {
+  const info = graveyardInfo(root), plan = planGraveyard(info, { cap, big, days, now });
+  const out = { total: info.total, count: info.entries.length, plan: { count: plan.list.length, size: plan.size, over: plan.over }, cleaned: [], freed: 0, failed: [] };
+  if (!apply || !plan.list.length) return out;
+  trash(plan.list.map(e => e.path));
+  for (const e of plan.list) { if (existsSync(e.path)) out.failed.push(e.name); else { out.cleaned.push(e.name); out.freed += e.size; } }
+  return out;
 }
 
 function writeLayout(base, layout) {

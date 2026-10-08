@@ -182,7 +182,7 @@ export function Shell({ name, Canvas }) {
       const sv = (() => { try { return JSON.parse(sessionStorage.getItem(HIST_KEY)); } catch { return null; } })();
       if (sv?.committed?.text === d.outline) { hist2.current.undo = sv.undo || []; hist2.current.redo = sv.redo || []; }
       setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); if (v.cardProps === false) setCardPropsOn(false); if (v.histOpen) setHistOpen(true); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
-      setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
+      setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载' + (d.graveyard?.cleaned ? `（_过期的/ 超过 200MB，最旧的 ${d.graveyard.cleaned} 项已送进系统回收站）` : d.graveyard?.failed ? '（_过期的/ 超过 200MB，但送回收站没成功）' : ''));
     }).catch(e => { setMode('offline'); setText(load('syn.text', SAMPLE)); setPositions(load('syn.pos.' + name, {})); setSaveState('⚠️ 没连上工作区（' + e.message + '），本地离线模式'); });
   }, []);
   // 自动保存：大纲停手 0.7s 且无错误 → 写回文件
@@ -323,7 +323,8 @@ export function Shell({ name, Canvas }) {
   const applyHist = async e => {
     const h = hist2.current, c = h.committed;
     saveHint.current = e.hint || null;
-    if (e.restore?.length) await api('/restore', { method: 'POST', body: JSON.stringify({ pairs: e.restore }) }).catch(err => setSaveState('❌ 撤销删除失败：' + err.message));
+    h.lost = 0;
+    if (e.restore?.length) await api('/restore', { method: 'POST', body: JSON.stringify({ pairs: e.restore }) }).then(r => { h.lost = e.restore.length - (r.restored?.length || 0); }).catch(err => setSaveState('❌ 撤销删除失败：' + err.message));
     h.applying = e.text !== lastSaved.current;
     setText(e.text);
     const diff = Object.fromEntries(Object.entries(e.positions).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(c.positions[k])));
@@ -340,7 +341,7 @@ export function Shell({ name, Canvas }) {
     const e = h.undo.pop(); if (!e) return setSaveState('没有可撤销的');
     if (e.op) { h.redo.push(e); persistHist(); return applyOp(e, 'undo').then(() => setSaveState('已撤销' + (e.op === 'meta' ? '属性修改' : '正文修改') + ' · 还能撤 ' + h.undo.length + ' 步')); }
     h.redo.push({ text: h.committed.text, positions: h.committed.positions, hint: flip(e.hint), desc: e.desc, t: e.t });
-    return applyHist(e).then(() => setSaveState('已撤销' + (e.restore ? '（删掉的节点从 _过期的/ 搬回来了）' : '') + ' · 还能撤 ' + h.undo.length + ' 步'));
+    return applyHist(e).then(() => setSaveState(h.lost > 0 ? `⚠ 已撤销，但有 ${h.lost} 项没能从 _过期的/ 搬回来（已被清理，或原位置有同名文件）：那部分的正文 / 图片找不回，去系统回收站看看 · 还能撤 ${h.undo.length} 步` : '已撤销' + (e.restore ? '（删掉的节点从 _过期的/ 搬回来了）' : '') + ' · 还能撤 ' + h.undo.length + ' 步'));
   };
   const redo = () => {
     const h = hist2.current;
@@ -855,6 +856,16 @@ export function Shell({ name, Canvas }) {
           {mode === 'ws' && <button title="AI 指令框（Shift+F）：用一句话让本地模型在当前页对齐 / 排列 / 连线 / 改状态…，先预览再执行" onClick={() => setAgentOpen(o => !o)}>💬 指令</button>}
           {mode === 'ws' && <button className={'aibtn ' + (aiStatus?.ok ? 'on' : 'off')} title={aiStatus?.ok ? 'LM Studio 已连上：语义配色 / 潜在关联 / 生成词表' : 'AI 辅助（LM Studio）：' + (aiStatus?.error || '检查中')} onClick={() => { setAiOpen(true); aiCheck(); }}>🤖 AI</button>}
           {mode === 'ws' && <button title="给这个项目补开发进度 / 待办 / 规矩那套文档（先检测，已有的不覆盖）" onClick={() => api('/scaffold').then(d => setScaffold(d.items)).catch(e => setSaveState('❌ ' + e.message))}>📄 项目文档…</button>}
+          {mode === 'ws' && <button title="整理 __synapsis/_过期的/（删除的节点 / 图片先放在那里给 Ctrl+Z 用）：超过 14 天或体积超上限的送进系统回收站，先问你。自动整理只看体积（超过 200MB 才动最旧的），不看日期" onClick={async () => {
+            try {
+              const g = await api('/graveyard'), mb = n => (n / 1048576).toFixed(1) + ' MB';
+              if (!g.count) return setSaveState('_过期的/ 是空的');
+              if (!g.plan.count) return setSaveState(`_过期的/ 共 ${g.count} 项 ${mb(g.total)}：没有超过 ${g.days} 天的，体积也没超上限（不到 1 天的不动）`);
+              if (!confirm(`_过期的/ 共 ${g.count} 项 ${mb(g.total)}。\n\n其中 ${g.plan.count} 项（${mb(g.plan.size)}）超过 ${g.days} 天${g.plan.over ? '或体积超上限' : ''}，送进系统回收站？\n（能从回收站找回；但撤销栈里对应的删除就搬不回来了）`)) return;
+              const r = await api('/graveyard', { method: 'POST' });
+              setSaveState(`已把 ${r.cleaned.length} 项（${mb(r.freed)}）送进系统回收站` + (r.failed.length ? `，${r.failed.length} 项没成功` : ''));
+            } catch (e) { setSaveState('❌ ' + e.message); }
+          }}>🧹 清理过期</button>}
           {local && <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>}
           <button className="themebtn" title={theme === 'light' ? '换深色主题' : '换白色主题'} onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}>{theme === 'light' ? '🌙' : '☀'}</button>
           <button className="keysbtn" title="快捷键一览（? 或 F1）" onClick={() => setHelpOpen(true)}>⌨ 快捷键</button>

@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, scanAnchors, anchorMatches, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, linkNodes, moveNodes, movePic, grepProject, DIR } from '../workspace.js';
+import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, scanAnchors, anchorMatches, graveyardInfo, planGraveyard, cleanGraveyard, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, linkNodes, moveNodes, movePic, grepProject, DIR } from '../workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../scaffold.js';
 import { SAMPLE } from '../../app/src/sample.js';
 
@@ -169,6 +169,39 @@ try {
     const g3b = loadWorkspace(r3b).graph;
     ok(g3b.nodes.has('内1') && !g3b.nodes.has('外/中') && rm.removed.length >= 1 && !rm.removed.some(x => x.includes('内1')), '有子孙被挪走时不整夹带走，被挪走的节点还在 ' + JSON.stringify(rm.removed));
   } finally { rmSync(r3b, { recursive: true, force: true }); }
+
+  // _过期的/ 整理：自动只看体积（不看日期）；日期只在手动时当筛选；不到 1 天的不动；不降级成永久删除
+  const rg = mkdtempSync(join(tmpdir(), 'syn-grave-'));
+  try {
+    const gd = join(rg, DIR, '_过期的'); mkdirSync(gd, { recursive: true });
+    const NOW = Date.UTC(2027, 0, 20, 12, 0, 0), day = 24 * 3600 * 1000;
+    const stampOf = ms => new Date(ms).toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '_');
+    const mk = (agoDays, name, kb, asDir = false) => {
+      const nm = stampOf(NOW - agoDays * day) + '_' + name;
+      if (asDir) { mkdirSync(join(gd, nm, '子'), { recursive: true }); writeFileSync(join(gd, nm, '子', 'a.bin'), Buffer.alloc(kb * 1024)); }
+      else writeFileSync(join(gd, nm), Buffer.alloc(kb * 1024));
+      return nm;
+    };
+    const small90 = mk(90, '九十天前的小文件.md', 1), big30 = mk(30, '大图文件夹', 600, true), mid20 = mk(20, '中等.png', 300), fresh = mk(0.1, '刚删的大图.png', 900);
+    const del = [], fake = ps => { for (const p of ps) { del.push(p); rmSync(p, { recursive: true, force: true }); } };
+    const info = graveyardInfo(rg);
+    ok(info.entries.length === 4 && info.total === (1 + 600 + 300 + 900) * 1024, '统计每一项的体积（文件夹按里面总和）');
+    ok(info.entries.find(e => e.name === small90).time === NOW - 90 * day, '时间取自文件名里的时间戳（UTC）');
+    ok(cleanGraveyard(rg, { now: NOW, apply: true, trash: fake }).cleaned.length === 0 && del.length === 0, '默认上限 200MB，没超 → 什么都不动（旧的小文件、90 天前的也在）');
+    const p1 = planGraveyard(info, { cap: 1500 * 1024, big: 500 * 1024, now: NOW });
+    ok(p1.over && p1.list.map(e => e.name).join() === big30, '超上限 → 大的优先；清到回到上限就停，更旧的小文件不动 ' + p1.list.map(e => e.name));
+    const p2 = planGraveyard(info, { cap: 100, big: 10 * 1024 * 1024, now: NOW });
+    ok(!p2.list.some(e => e.name === fresh) && p2.list[0].name === small90, '不到 1 天的永远不动；同样大小档里最旧的先走');
+    const p3 = planGraveyard(info, { days: 14, now: NOW });
+    ok(!p3.over && p3.list.length === 3 && !p3.list.some(e => e.name === fresh), '手动给天数 → 超过天数的都算（不到 1 天的仍不算）');
+    const r1 = cleanGraveyard(rg, { now: NOW, days: 14, apply: false, trash: fake });
+    ok(r1.plan.count === 3 && r1.cleaned.length === 0 && del.length === 0 && existsSync(join(gd, big30)), '只预览不动文件');
+    const r2 = cleanGraveyard(rg, { now: NOW, days: 14, apply: true, trash: fake });
+    ok(r2.cleaned.length === 3 && r2.freed === (1 + 600 + 300) * 1024 && existsSync(join(gd, fresh)) && !existsSync(join(gd, big30)), '确认后送走（文件夹整项），新的留着');
+    const r3 = cleanGraveyard(rg, { now: NOW + 2 * day, days: 1, apply: true, trash: () => {} }); // 回收站失败：文件还在
+    ok(r3.cleaned.length === 0 && r3.failed.length === 1 && existsSync(join(gd, fresh)), '回收站没成功 → 文件原样留着，报失败，不降级成永久删除');
+    ok(cleanGraveyard(join(rg, '不存在'), { apply: true }).count === 0, '没有 _过期的/ → 空');
+  } finally { rmSync(rg, { recursive: true, force: true }); }
 
   // 跨父移动：大纲里把 队长（带正文、属性、子节点）挪进 小队 → 不丢东西、不进 _过期的/
   const r5 = mkdtempSync(join(tmpdir(), 'syn-move-'));
