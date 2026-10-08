@@ -24,7 +24,7 @@ def unblack(im):
 def square(path):
     im = Image.open(path).convert('RGBA')
     if im.getextrema()[3][0] == 255: im = unblack(im)  # 没有透明像素 = 黑底图
-    bb = im.getbbox()  # 裁掉全透明边
+    bb = im.getchannel('A').point(lambda v: 255 if v > 40 else 0).getbbox()  # 裁掉透明边（alpha≤40 的杂点不算，GPT 透明图边上常有）
     if bb: im = im.crop(bb)
     s = max(im.size)
     out = Image.new('RGBA', (s, s), (0, 0, 0, 0))
