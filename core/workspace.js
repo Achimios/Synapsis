@@ -209,8 +209,28 @@ export function saveOutline(root, text, hint = null) {
 
   // 1) 删掉的节点 → _过期的/
   const graveyard = join(base, '_过期的');
+  // 整棵子树都被删的分组 = 整个文件夹作为一项进去（保持层级，不拆成一堆平铺的文件）；有子孙被挪走（used）的分组照旧逐个文件处理
+  const gone = new Map();
+  const wholeGone = id => {
+    if (!gone.has(id)) { const n = cur.nodes.get(id); gone.set(id, !used.has(id) && n.children.every(wholeGone)); }
+    return gone.get(id);
+  };
+  const inWholeGone = new Set();
   for (const [id, n] of cur.nodes) {
-    if (id === ROOT || used.has(id) || !n.file || !existsSync(n.file)) continue;
+    if (id === ROOT || !n.isGroup || !n.file || !wholeGone(id)) continue;
+    if (n.parent !== ROOT && wholeGone(n.parent)) continue; // 外层整组都删了 → 由外层那一项带走
+    const dir = dirname(n.file);
+    if (!existsSync(dir)) continue;
+    mkdirSync(graveyard, { recursive: true });
+    const dst = join(graveyard, `${stamp()}_${id.replace(/\//g, '～')}`);
+    renameSync(dir, dst);
+    report.removed.push(relative(base, dst));
+    report.restore.push([relative(base, dst), relative(base, dir)]);
+    const mark = x => { inWholeGone.add(x); for (const c of cur.nodes.get(x).children) mark(c); };
+    mark(id);
+  }
+  for (const [id, n] of cur.nodes) {
+    if (id === ROOT || used.has(id) || inWholeGone.has(id) || !n.file || !existsSync(n.file)) continue;
     mkdirSync(graveyard, { recursive: true });
     const dst = join(graveyard, `${stamp()}_${id.replace(/\//g, '～')}.md`);
     renameSync(n.file, dst);

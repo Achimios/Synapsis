@@ -144,7 +144,9 @@ try {
     writeFileSync(join(r3, DIR, '组', '甲.md'), readFileSync(join(r3, DIR, '组', '甲.md'), 'utf8') + '\n人写的正文\n');
     saveAsset(r3, '组/甲', 'data:image/png;base64,' + Buffer.from('89504e470d0a1a0a', 'hex').toString('base64'));
     const rep = saveOutline(r3, '别处');
-    ok(!loadWorkspace(r3).graph.nodes.has('组') && rep.restore.length >= 4, '删除报告带上 restore 对照 ' + rep.restore.length);
+    ok(!loadWorkspace(r3).graph.nodes.has('组') && rep.restore.length === 1 && rep.removed.length === 1, '删整个分组 = 文件夹作为一项进 _过期的/（不拆平）' + JSON.stringify(rep.removed));
+    const gdir = join(r3, DIR, '_过期的', rep.removed[0].split(/[\\/]/).pop());
+    ok(existsSync(join(gdir, '_node.md')) && existsSync(join(gdir, '甲.md')) && existsSync(join(gdir, '乙.md')) && readdirSync(gdir).some(n => n.startsWith('_pics')), '过期的里保持原来的层级（_node.md、甲、乙、图片文件夹都在里面）');
     ok(restoreRemoved(r3, [['../../外面.md', '组/甲.md']]).length === 0, 'restoreRemoved 只搬 _过期的/ 里的东西');
     const back = restoreRemoved(r3, rep.restore);
     saveOutline(r3, before);
@@ -153,6 +155,20 @@ try {
     ok(g3.nodes.get('组/甲')?.body.includes('人写的正文') && g3.nodes.get('组/甲').pics.length === 1, '撤销删除：正文和图片回来了');
     ok(g3.edges.some(e => e.from === '组' && e.to === '别处'), '撤销删除：边回来了');
   } finally { rmSync(r3, { recursive: true, force: true }); }
+
+  // 嵌套分组整棵删：只进一项；子孙有人被挪走时，被挪走的不跟着进去，其余照旧逐个文件
+  const r3b = mkdtempSync(join(tmpdir(), 'syn-undo2-'));
+  try {
+    const nest = '外\n  中\n    内1\n    内2\n  旁\n留';
+    saveOutline(r3b, nest);
+    const rp = saveOutline(r3b, '留');
+    ok(rp.removed.length === 1 && rp.restore.length === 1, '嵌套分组整棵删 → 只进一项（' + rp.removed.length + '）');
+    restoreRemoved(r3b, rp.restore); saveOutline(r3b, nest);
+    ok(['外', '外/中', '外/中/内1', '外/中/内2', '外/旁'].every(i => loadWorkspace(r3b).graph.nodes.has(i)) && readdirSync(join(r3b, DIR, '_过期的')).length === 0, '整棵撤销回来，层级完整，_过期的/ 里不留残渣');
+    const rm = saveOutline(r3b, '留\n内1\n外\n  旁');
+    const g3b = loadWorkspace(r3b).graph;
+    ok(g3b.nodes.has('内1') && !g3b.nodes.has('外/中') && rm.removed.length >= 1 && !rm.removed.some(x => x.includes('内1')), '有子孙被挪走时不整夹带走，被挪走的节点还在 ' + JSON.stringify(rm.removed));
+  } finally { rmSync(r3b, { recursive: true, force: true }); }
 
   // 跨父移动：大纲里把 队长（带正文、属性、子节点）挪进 小队 → 不丢东西、不进 _过期的/
   const r5 = mkdtempSync(join(tmpdir(), 'syn-move-'));
