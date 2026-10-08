@@ -760,6 +760,15 @@ export function Shell({ name, Canvas }) {
   const onTaKey = e => {
     const ta = e.target, { selectionStart: s, selectionEnd: en, value: v } = ta;
     const lineStart = v.lastIndexOf('\n', s - 1) + 1;
+    // Ctrl+Z / Ctrl+Y 交给应用的撤销栈（文本框自带的撤销被 React 的 setText 打断，按了没反应 —— 👤 2026-10-08 文本查找误改时撤不回来）
+    //   还没存盘的打字 → 先退回上次存盘的文本；已经存了 → 和画布上一样一步步撤
+    if (e.ctrlKey && !e.altKey && /^[zZyY]$/.test(e.key)) {
+      e.preventDefault(); e.stopPropagation();
+      const isRedo = e.key.toLowerCase() === 'y' || e.shiftKey;
+      if (!isRedo && mode === 'ws' && v !== lastSaved.current) { setText(lastSaved.current); setSaveState('已撤销还没保存的打字'); }
+      else (isRedo ? redo : undo)();
+      return;
+    }
     if (e.key === 'Tab') {
       e.preventDefault();
       if (e.shiftKey) {
@@ -792,8 +801,9 @@ export function Shell({ name, Canvas }) {
           <a className={leftTab === 'files' ? 'on' : ''} onClick={() => setLeftTab('files')} title="项目根目录的文件（只读预览；点 __synapsis 里的节点 md → 画布跳过去）">文件</a>
           <span className="hint" title={leftTab === 'text' ? '缩进 = 子级\n-> 名称 = 连线\n✅ ◐ ○ = 状态，❌ = 弃用' : ''}>{leftTab === 'text' ? '?' : leftTab === 'files' && mode !== 'ws' ? '样例模式没有项目文件' : ''}</span>
         </div>
-        {leftTab === 'text' && <TextFind taRef={taRef} text={text} inputRef={findRef} />}
-        <textarea ref={taRef} value={text} spellCheck={false} onChange={e => setText(e.target.value)} onKeyDown={onTaKey} style={{ display: leftTab === 'text' ? '' : 'none' }} />
+        <TextFind active={leftTab === 'text'} taRef={taRef} text={text} inputRef={findRef}>
+          <textarea ref={taRef} value={text} spellCheck={false} onChange={e => setText(e.target.value)} onKeyDown={onTaKey} />
+        </TextFind>
         {leftTab === 'outline' && <OutlineTree graph={graph} selected={selected} scope={realScope} renaming={renaming} status={STATUS_ICON} colors={colors} onMove={mode === 'ws' ? (id, parent) => moveInto([id], parent) : null}
           onPick={pick} onDrill={id => { go(id); setSelected(null); }} onRename={id => setRenaming(id)} onCommit={commitRename} onCancel={() => setRenaming(null)} />}
         {leftTab === 'files' && mode === 'ws' && <FileTree tree={tree} onOpen={onTreeOpen} current={fileView?.path} api={api} />}

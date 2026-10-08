@@ -170,6 +170,8 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
 export function FileTree({ tree, onOpen, current, api }) {
   const [open, setOpen] = useState({});
   const [q, setQ] = useState(''), [inBody, setInBody] = useState(false), [grep, setGrep] = useState(null);
+  const [fopen, setFopen] = useState({}); // 过滤时的展开状态（另记一份，换词就清空；不沿用平时手点开的）
+  useEffect(() => setFopen({}), [q]);
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   useEffect(() => { // 搜内容：停手 300ms 再问
     if (!inBody || !words.length || !api) { setGrep(null); return; }
@@ -178,27 +180,32 @@ export function FileTree({ tree, onOpen, current, api }) {
     return () => clearTimeout(t);
   }, [q, inBody]);
   // 名字过滤：留下路径含全部词的文件 + 它们的上级目录（目录本身命中 → 下面的路径也都含这些词，一起留下）
-  const keep = useMemo(() => {
+  // 只看「自己的名字」（不看路径：否则「游戏NPC状态空间组」下面的所有文件都算命中 —— 👤 2026-10-08「只搜标题貌似没过滤」）。
+  //   hit = 名字命中的；keep = 命中的 + 它们的上级目录。名字命中、下面没有命中的目录 → 收着，点开看全部
+  const flt = useMemo(() => {
     if (!tree || !words.length || inBody) return null;
-    const k = new Set(), m = p => words.every(w => p.toLowerCase().includes(w));
-    const walk = items => { let any = false; for (const it of items) if ((it.dir && walk(it.children)) || m(it.path)) { k.add(it.path); any = true; } return any; };
+    const hit = new Set(), keep = new Set(), m = it => words.every(w => it.name.toLowerCase().includes(w));
+    const walk = items => { let any = false; for (const it of items) { const sub = it.dir && walk(it.children); if (m(it)) hit.add(it.path); if (sub || m(it)) { keep.add(it.path); any = true; } } return any; };
     walk(tree.tree);
-    return k;
+    return { hit, keep };
   }, [tree, q, inBody]);
   if (!tree) return <div className="hint" style={{ padding: 12 }}>加载中…</div>;
-  const walk = (items, depth) => items.filter(it => !keep || keep.has(it.path)).map(it => (
+  const hasKeptChild = it => it.children.some(c => flt.keep.has(c.path));
+  const isOpen = it => flt ? fopen[it.path] ?? (hasKeptChild(it) && it.name !== '_过期的') : open[it.path]; // 过滤时 _过期的 默认收着
+  const walk = (items, depth, all = false) => items.filter(it => all || !flt || flt.keep.has(it.path)).map(it => (
     <div key={it.path}>
-      <div className={'fi' + (it.path === current ? ' cur' : '')} style={{ paddingLeft: 10 + depth * 14 }}
-        onClick={() => it.dir ? setOpen(o => ({ ...o, [it.path]: !(keep ? o[it.path] ?? true : o[it.path]) })) : onOpen(it.path)}>
-        {it.dir ? ((keep ? open[it.path] ?? true : open[it.path]) ? '▾ 📁 ' : '▸ 📁 ') : '　 📄 '}{it.name}
+      <div className={'fi' + (it.path === current ? ' cur' : '') + (flt?.hit.has(it.path) ? ' hit' : '')} style={{ paddingLeft: 10 + depth * 14 }}
+        onClick={() => it.dir ? (flt ? setFopen : setOpen)(o => ({ ...o, [it.path]: !isOpen(it) })) : onOpen(it.path)}>
+        {it.dir ? (isOpen(it) ? '▾ 📁 ' : '▸ 📁 ') : '　 📄 '}{it.name}
       </div>
-      {it.dir && (keep ? open[it.path] ?? true : open[it.path]) && walk(it.children, depth + 1)}
+      {it.dir && isOpen(it) && walk(it.children, depth + 1, all || (flt && !hasKeptChild(it)))}
     </div>
   ));
+  const keep = flt?.keep;
   return <div className="files">
     <div className="otools ftools">
       <input className="ofilter" value={q} placeholder={inBody ? '搜文件内容…（空格分开多个词）' : '过滤…（文件名）'} onChange={e => setQ(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') setQ(''); }} />
-      <label className="hint" title="也搜文件内容（项目里的文本文件，跳过 node_modules / .git / 大于 1MB 的）"><input type="checkbox" checked={inBody} onChange={e => setInBody(e.target.checked)} />内容</label>
+      <label className="hint" title="也搜文件内容（项目里的文本文件，跳过 _过期的 / node_modules / .git / 大于 1MB 的）"><input type="checkbox" checked={inBody} onChange={e => setInBody(e.target.checked)} />内容</label>
     </div>
     {inBody && words.length ? (
       !grep || grep.loading ? <div className="hint pad">搜索中…</div>
@@ -213,46 +220,85 @@ export function FileTree({ tree, onOpen, current, api }) {
   </div>;
 }
 
-// >v<🌳左栏-文本查找-「文本」页顶上的查找条（👤 2026-10-08）：Enter 下一个 / Shift+Enter 上一个 = 文本框里选中那段并滚到那行；
-//   下面列出命中的行，点一下跳过去。焦点在文本框里时 Ctrl+F 回到查找条，F3 / Shift+F3 接着找
-export function TextFind({ taRef, text, inputRef }) {
+// >v<🌳左栏-文本查找-「文本」页顶上的查找条（👤 2026-10-08）：Enter 下一个 / Shift+Enter 上一个；焦点一直留在查找框里，
+//   命中处在文本后面画高亮（当前那个更亮）并滚过去 —— 不动文本框的选区。
+//   ⚠️ 第一版是「选中文本框里那段 + 把焦点给文本框」：再按一次 Enter = 用换行替换掉选中的词，把 Life Games 的一行大纲改坏了（👤 2026-10-08）。
+//   想在命中处改字：点一下文本框（或按 Esc 回到文本框，光标停在当前命中处）。下面列出命中的行，点一下跳过去。
+//   children = 文本框本身（包一层，好在它后面画高亮）
+export function TextFind({ active, taRef, text, inputRef, children }) {
   const [q, setQ] = useState(''), [cur, setCur] = useState(-1);
+  const mir = useRef(null);
   const hits = useMemo(() => {
     const out = [], t = text.toLowerCase(), w = q.toLowerCase();
     if (w) for (let i = t.indexOf(w); i >= 0 && out.length < 1000; i = t.indexOf(w, i + w.length)) out.push(i);
     return out;
   }, [text, q]);
+  const lineOf = i => text.slice(0, i).split('\n').length;
   const lines = useMemo(() => { // 命中的行（同一行只列一次）
     const out = [], seen = new Set();
     for (let k = 0; k < hits.length && out.length < 60; k++) {
-      const a = text.lastIndexOf('\n', hits[k] - 1) + 1, b = text.indexOf('\n', hits[k]), ln = text.slice(0, a).split('\n').length;
+      const a = text.lastIndexOf('\n', hits[k] - 1) + 1, b = text.indexOf('\n', hits[k]), ln = lineOf(hits[k]);
       if (seen.has(ln)) continue; seen.add(ln);
       out.push({ k, ln, s: text.slice(a, b < 0 ? undefined : b).trim() });
     }
     return out;
   }, [hits, text]);
   useEffect(() => setCur(-1), [q]);
+  // 高亮层和文本框对齐：字体 / 行高 / 内边距 / 可见宽高照抄，滚动跟着走
+  const sync = () => {
+    const ta = taRef.current, m = mir.current; if (!ta || !m) return;
+    const cs = getComputedStyle(ta);
+    for (const p of ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'tabSize', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft']) m.style[p] = cs[p];
+    m.style.top = ta.offsetTop + ta.clientTop + 'px'; m.style.left = ta.offsetLeft + ta.clientLeft + 'px';
+    m.style.width = ta.clientWidth + 'px'; m.style.height = ta.clientHeight + 'px';
+    m.scrollTop = ta.scrollTop;
+  };
+  useLayoutEffect(sync);
+  useEffect(() => {
+    const ta = taRef.current; if (!ta) return;
+    const ro = new ResizeObserver(sync); ro.observe(ta); ta.addEventListener('scroll', sync);
+    return () => { ro.disconnect(); ta.removeEventListener('scroll', sync); };
+  }, [taRef.current]);
   const jump = k => {
     const ta = taRef.current; if (!hits.length || !ta) return;
-    const j = ((k % hits.length) + hits.length) % hits.length, a = hits[j];
-    setCur(j); ta.focus(); ta.setSelectionRange(a, a + q.length);
+    const j = ((k % hits.length) + hits.length) % hits.length;
+    setCur(j);
     const lh = parseFloat(getComputedStyle(ta).lineHeight) || 18;
-    ta.scrollTop = Math.max(0, (text.slice(0, a).split('\n').length - 1) * lh - ta.clientHeight / 3);
+    ta.scrollTop = Math.max(0, (lineOf(hits[j]) - 1) * lh - ta.clientHeight / 3);
+  };
+  const toText = () => { // 回到文本框，光标停在当前命中处（不选中，打字不会吞掉它）
+    const ta = taRef.current; if (!ta) return;
+    const at = cur >= 0 ? hits[cur] : ta.selectionStart;
+    ta.focus(); ta.setSelectionRange(at, at);
   };
   const ref = useRef({}); ref.current = { jump, cur, q };
-  useEffect(() => { // 文本框里 F3 / Shift+F3 接着找
+  useEffect(() => { // 文本框里 F3 / Shift+F3 也能接着找（焦点还在文本框）
     const ta = taRef.current; if (!ta) return;
     const onKey = e => { if (e.key === 'F3' && ref.current.q) { e.preventDefault(); e.stopPropagation(); ref.current.jump(ref.current.cur + (e.shiftKey ? -1 : 1)); } };
     ta.addEventListener('keydown', onKey); return () => ta.removeEventListener('keydown', onKey);
   }, [taRef.current]);
-  return <div className="textfind">
-    <div className="otools">
-      <input ref={inputRef} className="ofilter" value={q} placeholder="查找…（Enter 下一个，Shift+Enter 上一个）" onChange={e => setQ(e.target.value)}
-        onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') setQ(''); else if (e.key === 'Enter') { e.preventDefault(); jump(cur + (e.shiftKey ? -1 : 1)); } }} />
-      {q && <span className="hint tcount">{hits.length ? `${cur < 0 ? '–' : cur + 1} / ${hits.length}` : '0'}</span>}
+  let marks = null;
+  if (q && hits.length) {
+    marks = []; let p = 0;
+    hits.forEach((h, i) => { marks.push(text.slice(p, h), <mark key={i} className={i === cur ? 'cur' : ''}>{text.slice(h, h + q.length)}</mark>); p = h + q.length; });
+    marks.push(text.slice(p) + '\n ');
+  }
+  const curLn = cur >= 0 && hits[cur] !== undefined ? lineOf(hits[cur]) : -1;
+  return <>
+    {active && <div className="textfind">
+      <div className="otools">
+        <input ref={inputRef} className="ofilter" value={q} placeholder="查找…（Enter 下一个，Shift+Enter 上一个，Esc 回文本）" onChange={e => setQ(e.target.value)}
+          onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); toText(); } else if (e.key === 'Enter') { e.preventDefault(); jump(cur + (e.shiftKey ? -1 : 1)); } }} />
+        {q && <span className="hint tcount">{hits.length ? `${cur < 0 ? '–' : cur + 1} / ${hits.length}` : '0'}</span>}
+        {q && <button className="ghost" title="清空" onClick={() => setQ('')}>✕</button>}
+      </div>
+      {q && lines.length > 0 && <div className="tlines">{lines.map(l => <div key={l.ln} className={'tl' + (l.ln === curLn ? ' cur' : '')} onClick={() => jump(l.k)}><span>{l.ln}</span>{l.s}</div>)}</div>}
+    </div>}
+    <div className="tawrap" style={{ display: active ? '' : 'none' }}>
+      {marks && <div className="tamirror" ref={mir} aria-hidden="true">{marks}</div>}
+      {children}
     </div>
-    {q && lines.length > 0 && <div className="tlines">{lines.map(l => <div key={l.ln} className={'tl' + (cur >= 0 && hits[cur] !== undefined && text.slice(0, hits[cur]).split('\n').length === l.ln ? ' cur' : '')} onClick={() => jump(l.k)}><span>{l.ln}</span>{l.s}</div>)}</div>}
-  </div>;
+  </>;
 }
 
 export function FilePanel({ file, onClose }) {

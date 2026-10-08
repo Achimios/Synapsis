@@ -570,7 +570,7 @@ export function grepProject(root, q, { maxFiles = 3000, perFile = 5, max = 200 }
   const walk = items => {
     for (const it of items) {
       if (hits.length >= max) return;
-      if (it.dir) { walk(it.children); continue; }
+      if (it.dir) { if (it.name !== '_过期的') walk(it.children); continue; } // 归档的旧版本不搜（同一段话会重复出现很多次）
       let buf;
       try { const f = join(root, it.path); if (statSync(f).size > 1e6) continue; buf = readFileSync(f); } catch { continue; }
       if (buf.subarray(0, 8000).includes(0)) continue;

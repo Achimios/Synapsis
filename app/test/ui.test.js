@@ -319,6 +319,9 @@ for (const kind of ['reactflow']) {
   await page.fill('.ftools .ofilter', 'readme'); await sleep(300);
   const fl = await page.$$eval('.fi', fs => fs.map(f => f.innerText.trim()));
   ok(fl.some(t => t.includes('README_测试.md')) && !fl.some(t => t.includes('__synapsis')), '文件页过滤：只剩文件名含 readme 的 ' + fl);
+  await page.fill('.ftools .ofilter', '游戏AI'); await sleep(300);
+  const fl2 = await page.$$eval('.fi', fs => fs.map(f => f.innerText.trim()));
+  ok(fl2.some(t => t.includes('游戏AI')) && !fl2.some(t => t.includes('_node.md')), '文件名过滤只看自己的名字：目录名命中不会把下面所有文件都列出来 ' + fl2);
   await page.check('.ftools input[type=checkbox]'); await page.fill('.ftools .ofilter', '外部区的文件'); await sleep(1200);
   const gh = await page.$$eval('.grep .gh', hs => hs.map(h => h.innerText));
   ok(gh.some(t => t.includes('README_测试.md') && t.includes('外部区的文件')), '勾「内容」→ 搜到正文里的字，列 路径:行 + 片段 ' + gh);
@@ -327,13 +330,21 @@ for (const kind of ['reactflow']) {
   await page.uncheck('.ftools input[type=checkbox]'); await page.fill('.ftools .ofilter', '');
   // 文本页查找：Enter 跳到命中处（文本框里选中那段）
   await page.click('.bar.tabs a:has-text("文本")'); await sleep(300);
-  await page.fill('.textfind .ofilter', '决策'); await page.press('.textfind .ofilter', 'Enter'); await sleep(200);
-  const sel1 = await page.evaluate(() => { const t = document.querySelector('.outline textarea'); return [document.activeElement === t, t.value.slice(t.selectionStart, t.selectionEnd)]; });
+  await page.fill('.textfind .ofilter', '决策');
+  const before = await page.$eval('.outline textarea', t => t.value);
+  for (let i = 0; i < 3; i++) { await page.press('.textfind .ofilter', 'Enter'); await sleep(150); }
+  const st = await page.evaluate(() => { const t = document.querySelector('.outline textarea'); return [document.activeElement?.className, t.value]; });
   const cnt = await page.$eval('.textfind .tcount', e => e.textContent);
-  ok(sel1[0] && sel1[1] === '决策' && /^1 \/ \d+$/.test(cnt), '文本查找：Enter → 文本框里选中第 1 个「决策」 ' + sel1 + ' ' + cnt);
-  await page.keyboard.press('F3'); await sleep(100);
-  ok(/^2 \/ /.test(await page.$eval('.textfind .tcount', e => e.textContent)) || cnt === '1 / 1', '文本框里 F3 → 下一个');
+  ok(st[0].includes('ofilter') && st[1] === before && /^\d+ \/ \d+$/.test(cnt) && !cnt.startsWith('–'), '文本查找：连按 Enter 焦点留在查找框、文本一个字都不变（第一版会把词换成换行） ' + cnt);
+  ok(!!(await page.$('.tamirror mark.cur')) && (await page.$$('.tamirror mark')).length === Number(cnt.split('/ ')[1]), '命中处在文本后面高亮，当前那个更亮');
   ok((await page.$$('.textfind .tl')).length >= 1, '下面列出命中的行');
+  await page.press('.textfind .ofilter', 'Escape'); await sleep(100);
+  const st2 = await page.evaluate(() => { const t = document.querySelector('.outline textarea'); return [document.activeElement === t, t.selectionStart === t.selectionEnd]; });
+  ok(st2[0] && st2[1], 'Esc → 回到文本框，光标停在命中处、不选中（打字不会吞掉它）');
+  // 文本框里 Ctrl+Z：交给应用撤销栈（还没存盘 → 退回上次存的文本）
+  await page.keyboard.type('乱打'); await sleep(100);
+  await page.keyboard.press('Control+z'); await sleep(200);
+  ok(await page.$eval('.outline textarea', t => t.value) === before, '文本框里 Ctrl+Z → 撤掉刚打的字');
   await page.fill('.textfind .ofilter', '');
   await page.click('.bar.tabs a:has-text("大纲")');
   await page.click('.side.wide .bar button'); await sleep(300); // 关掉预览：它会压住画布右半边

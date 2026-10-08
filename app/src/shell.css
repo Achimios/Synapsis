@@ -427,3 +427,10 @@ button.patsw { width: 26px; height: 18px; background-color: color-mix(in srgb, v
 .files .grep .gp span { color: var(--dim); }
 .files .grep .gt { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hint.pad { padding: 8px 10px; }
+/* 文本查找高亮层：画在文本框后面（文本框背景透明），焦点不离开查找框 */
+.tawrap { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; background: var(--panel); }
+.tawrap > textarea { position: relative; z-index: 1; background: transparent !important; }
+.tamirror { position: absolute; z-index: 0; box-sizing: border-box; overflow: hidden; pointer-events: none; white-space: pre-wrap; overflow-wrap: break-word; color: transparent; }
+.tamirror mark { color: transparent; background: rgba(255, 196, 0, .33); border-radius: 2px; }
+.tamirror mark.cur { background: rgba(255, 140, 0, .85); box-shadow: 0 0 0 1px rgba(255, 140, 0, .9); }
+.files .fi.hit { color: var(--strong); font-weight: 600; }
