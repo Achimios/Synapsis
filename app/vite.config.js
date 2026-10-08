@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import { resolve, join, normalize, relative } from 'node:path';
 import { spawn } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
-import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, restoreRemoved, pasteNodes, ensureColorWords, ensurePatternWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, movePic, DIR } from '../core/workspace.js';
+import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, restoreRemoved, pasteNodes, ensureColorWords, ensurePatternWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, movePic, grepProject, DIR } from '../core/workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText } from '../core/cli.js';
 import { aiConfig, saveAiConfig, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, readAiLog } from '../core/ai.js';
@@ -116,6 +116,7 @@ function workspaceApi() {
             } catch (e) { return send(503, { error: e.cause?.code === 'ECONNREFUSED' ? 'LM Studio 没开本机服务（' + cfg.url + '）' : e.message }); }
           }
           if (url.pathname === '/tree' && req.method === 'GET') return send(200, listTree(root));
+          if (url.pathname === '/grep' && req.method === 'GET') return send(200, grepProject(root, url.searchParams.get('q') || ''));
           if (url.pathname === '/raw' && req.method === 'GET') return send(200, readProjectFile(root, url.searchParams.get('p') || ''));
           if (url.pathname === '/layout' && req.method === 'PUT') { saveLayout(root, (await body(req)).positions); return send(200, { ok: true }); }
           // 图片：/asset 进某个节点；/loose 当散图放进某一页；/loose-remove 删散图（进 _过期的/）

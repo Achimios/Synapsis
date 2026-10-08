@@ -166,19 +166,93 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
 }
 
 // >v<🗂️外部区-文件树-左栏「文件」页：项目根目录（__synapsis 之外），点文件右侧预览
-export function FileTree({ tree, onOpen, current }) {
+//   顶上过滤框（👤 2026-10-08）：默认按文件名 / 路径过滤（命中的和它的上级目录全展开）；勾「内容」= 服务端逐行搜文本文件，列「路径:行 片段」
+export function FileTree({ tree, onOpen, current, api }) {
   const [open, setOpen] = useState({});
+  const [q, setQ] = useState(''), [inBody, setInBody] = useState(false), [grep, setGrep] = useState(null);
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  useEffect(() => { // 搜内容：停手 300ms 再问
+    if (!inBody || !words.length || !api) { setGrep(null); return; }
+    setGrep({ loading: true });
+    const t = setTimeout(() => api('/grep?q=' + encodeURIComponent(q)).then(setGrep).catch(e => setGrep({ error: e.message })), 300);
+    return () => clearTimeout(t);
+  }, [q, inBody]);
+  // 名字过滤：留下路径含全部词的文件 + 它们的上级目录（目录本身命中 → 下面的路径也都含这些词，一起留下）
+  const keep = useMemo(() => {
+    if (!tree || !words.length || inBody) return null;
+    const k = new Set(), m = p => words.every(w => p.toLowerCase().includes(w));
+    const walk = items => { let any = false; for (const it of items) if ((it.dir && walk(it.children)) || m(it.path)) { k.add(it.path); any = true; } return any; };
+    walk(tree.tree);
+    return k;
+  }, [tree, q, inBody]);
   if (!tree) return <div className="hint" style={{ padding: 12 }}>加载中…</div>;
-  const walk = (items, depth) => items.map(it => (
+  const walk = (items, depth) => items.filter(it => !keep || keep.has(it.path)).map(it => (
     <div key={it.path}>
       <div className={'fi' + (it.path === current ? ' cur' : '')} style={{ paddingLeft: 10 + depth * 14 }}
-        onClick={() => it.dir ? setOpen(o => ({ ...o, [it.path]: !o[it.path] })) : onOpen(it.path)}>
-        {it.dir ? (open[it.path] ? '▾ 📁 ' : '▸ 📁 ') : '　 📄 '}{it.name}
+        onClick={() => it.dir ? setOpen(o => ({ ...o, [it.path]: !(keep ? o[it.path] ?? true : o[it.path]) })) : onOpen(it.path)}>
+        {it.dir ? ((keep ? open[it.path] ?? true : open[it.path]) ? '▾ 📁 ' : '▸ 📁 ') : '　 📄 '}{it.name}
       </div>
-      {it.dir && open[it.path] && walk(it.children, depth + 1)}
+      {it.dir && (keep ? open[it.path] ?? true : open[it.path]) && walk(it.children, depth + 1)}
     </div>
   ));
-  return <div className="files">{walk(tree.tree, 0)}{tree.truncated && <div className="hint">（文件太多，只列了前 3000 个）</div>}</div>;
+  return <div className="files">
+    <div className="otools ftools">
+      <input className="ofilter" value={q} placeholder={inBody ? '搜文件内容…（空格分开多个词）' : '过滤…（文件名）'} onChange={e => setQ(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') setQ(''); }} />
+      <label className="hint" title="也搜文件内容（项目里的文本文件，跳过 node_modules / .git / 大于 1MB 的）"><input type="checkbox" checked={inBody} onChange={e => setInBody(e.target.checked)} />内容</label>
+    </div>
+    {inBody && words.length ? (
+      !grep || grep.loading ? <div className="hint pad">搜索中…</div>
+        : grep.error ? <div className="errs">{grep.error}</div>
+        : <div className="grep">
+            {grep.hits.map((h, i) => <div key={i} className={'gh' + (h.path === current ? ' cur' : '')} onClick={() => onOpen(h.path)} title={h.path + ':' + h.line}>
+              <div className="gp">📄 {h.path}<span>:{h.line}</span></div><div className="gt">{h.text}</div></div>)}
+            <div className="hint pad">{grep.hits.length ? `${grep.files} 个文件 · ${grep.hits.length} 行${grep.truncated ? '（太多，只列前 200 行）' : ''}` : '没找到'}</div>
+          </div>
+    ) : <>{walk(tree.tree, 0)}{keep && !keep.size && <div className="hint pad">没有文件名含这些字的（勾「内容」搜正文）</div>}</>}
+    {tree.truncated && <div className="hint">（文件太多，只列了前 3000 个）</div>}
+  </div>;
+}
+
+// >v<🌳左栏-文本查找-「文本」页顶上的查找条（👤 2026-10-08）：Enter 下一个 / Shift+Enter 上一个 = 文本框里选中那段并滚到那行；
+//   下面列出命中的行，点一下跳过去。焦点在文本框里时 Ctrl+F 回到查找条，F3 / Shift+F3 接着找
+export function TextFind({ taRef, text, inputRef }) {
+  const [q, setQ] = useState(''), [cur, setCur] = useState(-1);
+  const hits = useMemo(() => {
+    const out = [], t = text.toLowerCase(), w = q.toLowerCase();
+    if (w) for (let i = t.indexOf(w); i >= 0 && out.length < 1000; i = t.indexOf(w, i + w.length)) out.push(i);
+    return out;
+  }, [text, q]);
+  const lines = useMemo(() => { // 命中的行（同一行只列一次）
+    const out = [], seen = new Set();
+    for (let k = 0; k < hits.length && out.length < 60; k++) {
+      const a = text.lastIndexOf('\n', hits[k] - 1) + 1, b = text.indexOf('\n', hits[k]), ln = text.slice(0, a).split('\n').length;
+      if (seen.has(ln)) continue; seen.add(ln);
+      out.push({ k, ln, s: text.slice(a, b < 0 ? undefined : b).trim() });
+    }
+    return out;
+  }, [hits, text]);
+  useEffect(() => setCur(-1), [q]);
+  const jump = k => {
+    const ta = taRef.current; if (!hits.length || !ta) return;
+    const j = ((k % hits.length) + hits.length) % hits.length, a = hits[j];
+    setCur(j); ta.focus(); ta.setSelectionRange(a, a + q.length);
+    const lh = parseFloat(getComputedStyle(ta).lineHeight) || 18;
+    ta.scrollTop = Math.max(0, (text.slice(0, a).split('\n').length - 1) * lh - ta.clientHeight / 3);
+  };
+  const ref = useRef({}); ref.current = { jump, cur, q };
+  useEffect(() => { // 文本框里 F3 / Shift+F3 接着找
+    const ta = taRef.current; if (!ta) return;
+    const onKey = e => { if (e.key === 'F3' && ref.current.q) { e.preventDefault(); e.stopPropagation(); ref.current.jump(ref.current.cur + (e.shiftKey ? -1 : 1)); } };
+    ta.addEventListener('keydown', onKey); return () => ta.removeEventListener('keydown', onKey);
+  }, [taRef.current]);
+  return <div className="textfind">
+    <div className="otools">
+      <input ref={inputRef} className="ofilter" value={q} placeholder="查找…（Enter 下一个，Shift+Enter 上一个）" onChange={e => setQ(e.target.value)}
+        onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') setQ(''); else if (e.key === 'Enter') { e.preventDefault(); jump(cur + (e.shiftKey ? -1 : 1)); } }} />
+      {q && <span className="hint tcount">{hits.length ? `${cur < 0 ? '–' : cur + 1} / ${hits.length}` : '0'}</span>}
+    </div>
+    {q && lines.length > 0 && <div className="tlines">{lines.map(l => <div key={l.ln} className={'tl' + (cur >= 0 && hits[cur] !== undefined && text.slice(0, hits[cur]).split('\n').length === l.ln ? ' cur' : '')} onClick={() => jump(l.k)}><span>{l.ln}</span>{l.s}</div>)}</div>}
+  </div>;
 }
 
 export function FilePanel({ file, onClose }) {

@@ -561,6 +561,34 @@ export function listTree(root, maxEntries = 3000) {
   };
   return { tree: walk(root, ''), truncated: count >= maxEntries };
 }
+// >v<🗂️外部区-搜内容-左栏「文件」页勾「也搜内容」：项目里的文本文件逐行找（不分大小写，空格分开的词都要在同一行），
+//   跳过 listTree 跳过的目录、> 1MB 的、二进制的；每个文件最多 5 行，总共最多 200 行（👤 2026-10-08）
+export function grepProject(root, q, { maxFiles = 3000, perFile = 5, max = 200 } = {}) {
+  const words = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return { hits: [], files: 0, truncated: false };
+  const hits = [], files = new Set();
+  const walk = items => {
+    for (const it of items) {
+      if (hits.length >= max) return;
+      if (it.dir) { walk(it.children); continue; }
+      let buf;
+      try { const f = join(root, it.path); if (statSync(f).size > 1e6) continue; buf = readFileSync(f); } catch { continue; }
+      if (buf.subarray(0, 8000).includes(0)) continue;
+      let n = 0;
+      buf.toString('utf8').split(/\r?\n/).some((line, i) => {
+        const low = line.toLowerCase();
+        if (!words.every(w => low.includes(w))) return false;
+        const at = low.indexOf(words[0]), a = Math.max(0, at - 30);
+        hits.push({ path: it.path, line: i + 1, text: (a ? '…' : '') + line.slice(a, a + 120).trim() });
+        files.add(it.path);
+        return ++n >= perFile || hits.length >= max;
+      });
+    }
+  };
+  walk(listTree(root, maxFiles).tree);
+  return { hits, files: files.size, truncated: hits.length >= max };
+}
+
 export function readProjectFile(root, rel, maxBytes = 300000) {
   const f = join(root, rel);
   if (!f.startsWith(join(root)) || rel.includes('..')) throw new Error('路径越界');

@@ -5,7 +5,7 @@ import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode
 import { colorMap } from './colors.js';
 import { patternMap, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
-import { ContextMenu, PropsPanel, FileTree, FilePanel, OutlineTree, HelpModal, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
+import { ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, OutlineTree, HelpModal, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
 const DRAG_PIC = 'application/x-synapsis-pic';
 import { AiPanel, RelatedDock, AgentBox } from './ai.jsx';
 import { MdLite } from './mdlite.jsx';
@@ -52,7 +52,7 @@ export function Shell({ name, Canvas }) {
   // >v<🧭导航-历史-Alt+←/→ 后退前进，Alt+↑ 上一层
   // 导航历史：像浏览器一样 Alt+← / Alt+→
   const hist = useRef({ back: [], fwd: [] });
-  const taRef = useRef(null);
+  const taRef = useRef(null), findRef = useRef(null);
   // >v<🔭视图投影-原地展开-不钻进去也能看子级：卡片里列出子节点（▸N 点一下 / 空格），双击子项跳进去并选中
   const [expanded, setExpanded] = useState(() => DEMO ? load('syn.exp', {}) : {});
   // >v<🎨画布-分组展开成框-分组变半透明底框，子节点画在框里、线直连（👤 2026-10-08「这个好！值得做！」）；框里的坐标 = 钻进分组那一页的坐标
@@ -540,7 +540,7 @@ export function Shell({ name, Canvas }) {
   useEffect(() => {
     const onKey = e => {
       if (e.ctrlKey && !e.altKey && (e.key === 'j' || e.key === 'J')) { e.preventDefault(); e.stopPropagation(); if (mode === 'ws') setAgentOpen(o => !o); return; } // AI 指令框旧键（输入框里也能用）
-      if (e.ctrlKey && !e.altKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); e.stopPropagation(); setFinder({ mode: 'go' }); return; } // 在输入框里也能用
+      if (e.ctrlKey && !e.altKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); e.stopPropagation(); if (e.target === taRef.current || e.target === findRef.current) { findRef.current?.focus(); findRef.current?.select(); return; } setFinder({ mode: 'go' }); return; } // 在输入框里也能用；在「文本」页 = 文本查找
       const inText = e.target.closest && e.target.closest('textarea, input, [contenteditable="true"]');
       if (inText) return;
       if (helpOpen && e.key === 'Escape') { setHelpOpen(false); return; }
@@ -792,10 +792,11 @@ export function Shell({ name, Canvas }) {
           <a className={leftTab === 'files' ? 'on' : ''} onClick={() => setLeftTab('files')} title="项目根目录的文件（只读预览；点 __synapsis 里的节点 md → 画布跳过去）">文件</a>
           <span className="hint" title={leftTab === 'text' ? '缩进 = 子级\n-> 名称 = 连线\n✅ ◐ ○ = 状态，❌ = 弃用' : ''}>{leftTab === 'text' ? '?' : leftTab === 'files' && mode !== 'ws' ? '样例模式没有项目文件' : ''}</span>
         </div>
+        {leftTab === 'text' && <TextFind taRef={taRef} text={text} inputRef={findRef} />}
         <textarea ref={taRef} value={text} spellCheck={false} onChange={e => setText(e.target.value)} onKeyDown={onTaKey} style={{ display: leftTab === 'text' ? '' : 'none' }} />
         {leftTab === 'outline' && <OutlineTree graph={graph} selected={selected} scope={realScope} renaming={renaming} status={STATUS_ICON} colors={colors} onMove={mode === 'ws' ? (id, parent) => moveInto([id], parent) : null}
           onPick={pick} onDrill={id => { go(id); setSelected(null); }} onRename={id => setRenaming(id)} onCommit={commitRename} onCancel={() => setRenaming(null)} />}
-        {leftTab === 'files' && mode === 'ws' && <FileTree tree={tree} onOpen={onTreeOpen} current={fileView?.path} />}
+        {leftTab === 'files' && mode === 'ws' && <FileTree tree={tree} onOpen={onTreeOpen} current={fileView?.path} api={api} />}
         {leftTab !== 'files' && graph.errors.length > 0 && <div className="errs">{graph.errors.map((er, i) => <div key={i}>第 {er.line} 行：{er.msg}</div>)}</div>}
       </aside>
       <main>

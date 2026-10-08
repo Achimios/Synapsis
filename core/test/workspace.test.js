@@ -1,9 +1,9 @@
 // >v<✅自检-工作区-临时目录里跑：大纲→文件→大纲往返、保留正文/边标签、改名搬文件、删除进 _过期的
 // node core/test/workspace.test.js
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, linkNodes, moveNodes, movePic, DIR } from '../workspace.js';
+import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, linkNodes, moveNodes, movePic, grepProject, DIR } from '../workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../scaffold.js';
 import { SAMPLE } from '../../app/src/sample.js';
 
@@ -119,6 +119,12 @@ try {
     ok(v.scope === 'C' && v.viewports.C.zoom === 0.5 && v.leftHidden === true, '视图记忆合并写入 .synapsis/view.json');
     ok(existsSync(join(r2, '.synapsis', '.gitignore')), '.synapsis/ 自带 gitignore');
     ok(listTree(r2).tree.some(t => t.name === DIR) && !listTree(r2).tree.some(t => t.name === '.synapsis'), '文件树含 __synapsis、不含 .synapsis');
+    // 搜文件内容（左栏「文件」页勾「内容」）
+    mkdirSync(join(r2, 'docs')); writeFileSync(join(r2, 'docs', '笔记.md'), '第一行\n这里讲 Rigidbody 的阻尼\n别的\n'); writeFileSync(join(r2, 'bin.dat'), Buffer.from([0, 1, 2, 82, 105, 103, 105, 100]));
+    mkdirSync(join(r2, 'node_modules')); writeFileSync(join(r2, 'node_modules', 'x.md'), 'rigidbody 阻尼');
+    const g1 = grepProject(r2, 'rigidbody 阻尼');
+    ok(g1.hits.length === 1 && g1.hits[0].path === 'docs/笔记.md' && g1.hits[0].line === 2 && g1.hits[0].text.includes('Rigidbody'), '搜内容：不分大小写、几个词同一行、带行号；跳过 node_modules ' + JSON.stringify(g1.hits));
+    ok(grepProject(r2, 'Rigid').hits.every(h => h.path !== 'bin.dat') && grepProject(r2, '').hits.length === 0, '搜内容：二进制不搜、空词不搜');
   } finally { rmSync(r2, { recursive: true, force: true }); }
 
   // 撤销删除：删一个带正文 / 属性 / 图片的分组 → restoreRemoved + 写回原大纲 → 正文、属性、图片、子节点都回来
