@@ -1,7 +1,7 @@
 // >v<✅自检-AI 循环-上一轮结果（提议 / 执行 / 执行后检查）+ 只读查看（look）多跳（core/agent.js）
 // node core/test/loop.test.js —— 只用临时目录和本机假服务，不联网
 import { createServer } from 'node:http';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runAgent, applyPlan, loadChat, outcomeNote, recordOutcome, overlapWarnings, parseReply, pageContext, lookAt, LOOK_MAX } from '../agent.js';
@@ -85,6 +85,19 @@ try {
   const b3 = seen.length;
   const rs = await run('看看本地', { ...cfg, agentSrc: 'local', url: `http://127.0.0.1:${srv.address().port}/v1` });
   ok(seen.length - b3 === 1 && !rs.looked.length, '本地 8B 不开 look');
+
+  // —— 短记忆按模式分：在线宽松版不吃严格版（旧记录没有 mode 算 strict）留下的拒绝腔（2026-10-08 实测：它照着「手册里没写，我不能编」拒演明日香）——
+  const chatFile = join(root, '.synapsis', 'ai_chat.json');
+  const keep = loadChat(root);
+  writeFileSync(chatFile, JSON.stringify([{ t: 'x', scope: '', user: '旧：你演明日香', say: '手册里没写这个，我不能编', actions: [], done: [] }, { t: 'y', mode: 'strict', scope: '', user: '旧2', say: '我只是使用说明助手', actions: [], done: [] }]));
+  let nMsgs = 0; const origListen = srv.listeners('request')[0];
+  srv.removeAllListeners('request'); srv.on('request', (req, res) => { let b = ''; req.on('data', d => b += d); req.on('end', () => { const j = JSON.parse(b); nMsgs = j.messages.length; seen.push(j.messages.at(-1).content); res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ say: '你好', actions: [] }) } }], usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10, prompt_cache_hit_tokens: 4 } })); }); });
+  await run('用明日香的口气问个好');
+  ok(nMsgs === 2, `在线宽松版：严格版 / 旧记录留下的 2 轮不喂给它（只有 system + 这一句，实际 ${nMsgs} 条）`);
+  await run('再来一句');
+  ok(nMsgs === 4, `它自己的这一轮（mode: loose）会喂回去（system + 上一轮 2 条 + 这一句 = 4，实际 ${nMsgs}）`);
+  ok(loadChat(root).at(-1).mode === 'loose' && loadChat(root).filter(t => !t.mode).length === 1, '新记录带 mode；旧的不动');
+  writeFileSync(chatFile, JSON.stringify(keep)); srv.removeAllListeners('request'); srv.on('request', origListen);
 
   // —— 用量：每次调对话模型都记（在线 / 本地分开；用途名去掉括号里的细节）——
   const us = readUsage(cfg), on = us.today.online, lo = us.today.local;

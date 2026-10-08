@@ -102,6 +102,9 @@ export function parseReply(raw, max = 1200) {
 const chatFile = root => join(root, '.synapsis', 'ai_chat.json');
 export const loadChat = root => { try { return JSON.parse(readFileSync(chatFile(root), 'utf8')); } catch { return []; } };
 export const clearChat = root => { try { mkdirSync(dirname(chatFile(root)), { recursive: true }); writeFileSync(chatFile(root), '[]'); } catch { /* */ } };
+// >v<🤖AI指令-短记忆-只喂「和这次同一种模式」的历史（2026-10-08 实测：在线模型读到严格版时代留下的「手册里没写，我不能编」，照着学，拒绝演明日香）。
+//   每轮记下 mode（loose 在线宽松版 | strict 本地严格版和问答）；没有 mode 的旧记录算 strict。界面里仍然全部显示，只是不喂给另一种模式的模型
+export const recentTurns = (root, loose, n = 8) => loadChat(root).filter(t => (t.mode || 'strict') === (loose ? 'loose' : 'strict')).slice(-n);
 const saveChat = (root, h) => { mkdirSync(dirname(chatFile(root)), { recursive: true }); writeFileSync(chatFile(root), JSON.stringify(h, null, 1)); };
 const pushChat = (root, turn) => saveChat(root, [...loadChat(root), turn].slice(-30));
 
@@ -140,7 +143,7 @@ export const estTokens = s => { const t = String(s); const cjk = (t.match(/[㐀-
 export const isLoose = cfg => !!cfg && /^\w+:/.test(chatModel(cfg) || ''); // 在线模型 → 宽松版
 export function estimateContext(root, { scope = ROOT, selected = [], loose = false } = {}) {
   const ws = loadWorkspace(root), ctx = pageContext(ws, scope, selected);
-  const hist = loadChat(root).slice(-8).map(t => t.user + JSON.stringify({ say: t.say, actions: t.actions || [] })).join('');
+  const hist = recentTurns(root, loose).map(t => t.user + JSON.stringify({ say: t.say, actions: t.actions || [] })).join('');
   const parts = { 系统提示词: estTokens(loose ? loosePrompt() : systemPrompt()), 当前页: estTokens(ctx.text), 短记忆: estTokens(hist), 回答上限: 1200 };
   return { parts, total: Object.values(parts).reduce((a, b) => a + b, 0) };
 }
@@ -183,7 +186,7 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   if (!text || !String(text).trim()) throw new Error('说点什么');
   const ws = loadWorkspace(root), ctx = pageContext(ws, scope, selected, boxes), loose = isLoose(cfg);
   // 历史里的回答按规定格式原样放回（以前存成 {say, done}，8B 会照着学、把 actions 丢掉 —— 2026-10-08 实测）；编号是当时那一页的，可能已变
-  const recent = loadChat(root).slice(-8);
+  const recent = recentTurns(root, loose);
   // 记忆索引附在那一轮的人话后面、跟着历史走：8 轮之内模型都看得见；滚出去了（或新对话 / 清空后）再附一次
   // 上一轮的结果（执行了 / 没执行 / 执行后检查出的问题）写在「下一轮的人话」前面，不写在 assistant 那条里 —— 免得 8B 学着在 JSON 后面加废话
   const history = recent.flatMap((t, i) => { const pre = outcomeNote(recent[i - 1]); return [{ role: 'user', content: (pre ? pre + '\n\n' : '') + t.user + (t.memNote ? '\n\n' + t.memNote : '') }, { role: 'assistant', content: JSON.stringify({ say: t.say, actions: t.actions || [] }) }]; });
@@ -194,7 +197,7 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
     const q = String(text).trim();
     const raw = await chat(cfg, ANSWER_PROMPT, `【软件知识】\n${know.length ? knowledgeText(know) : '（没有找到相关的段落）'}\n\n问题：${q}`, 900, { kind: 'AI 问答', usage, temperature: 0.2 });
     const say = raw.replace(/^```\w*\n?|```$/g, '').trim().slice(0, 1200) || '（模型没有回答）';
-    pushChat(root, { t: new Date().toISOString(), scope: ctx.scope, user: q, say, actions: [], done: [] });
+    pushChat(root, { t: new Date().toISOString(), mode: 'strict', scope: ctx.scope, user: q, say, actions: [], done: [] });
     return { say, actions: [], raw, knowledge: know.map(c => c.src), mode: 'answer', usage };
   }
   const idx = loose && opts.home ? memoryIndex(opts.home, root) : '';
@@ -234,7 +237,7 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   const actions = reply.actions.map(a => validateAction(a, { refs: ctx.refs, graph: g, scope: ctx.scope }));
   // 嘴上说做了、手上没给动作（8B 实测会这样）→ 明说，别让人以为做了
   if (!actions.some(a => a.ok) && (loose ? /^已(经)?(将|把|为|创建|新建|标记|改|连|设|排|对齐|选|挪|收紧)/ : /^(已|将|会|我会|我将)|已(经)?(将|把|为|创建|新建|标记|删除|改|连|设|完成|排|对齐|选)/).test(reply.say)) reply.say += /删/.test(text) ? '（⚠ 删除节点不归 AI 做：请右键节点 → 删除）' : '（⚠ 模型没有给出能执行的动作，实际什么都没做）';
-  pushChat(root, { t: new Date().toISOString(), scope: ctx.scope, user: String(text).trim(), say: reply.say, actions: reply.actions, done: actions.filter(a => a.ok).map(a => a.desc), ...(memNote ? { memNote } : {}), ...(memRead.length ? { memRead } : {}), ...(looked.length ? { looked } : {}) });
+  pushChat(root, { t: new Date().toISOString(), mode: loose ? 'loose' : 'strict', scope: ctx.scope, user: String(text).trim(), say: reply.say, actions: reply.actions, done: actions.filter(a => a.ok).map(a => a.desc), ...(memNote ? { memNote } : {}), ...(memRead.length ? { memRead } : {}), ...(looked.length ? { looked } : {}) });
   return { say: reply.say, actions, raw, knowledge: loose ? [] : know.map(c => c.src), usage, mode: loose ? 'loose' : 'strict', memRead, looked, memIndex: !!memNote };
 }
 
