@@ -3,7 +3,8 @@
 import { app, BrowserWindow, Tray, Menu, dialog, nativeImage, ipcMain, screen } from 'electron';
 import { createServer } from 'vite';
 import { join, resolve, dirname, basename } from 'node:path';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, watch } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { deflateSync } from 'node:zlib';
 
@@ -136,11 +137,53 @@ function refreshTray() {
   ]));
 }
 
+// >v<🚀启停-图标-把 png 丢进 <Synapsis>/_图标/ → 自动转出同名多尺寸 .ico（没有 ico 或 png 更新时）；客户端开着时盯着这个文件夹（👤 2026-10-08）
+//   不是方形就居中补透明。ico 里每个尺寸存 PNG（Vista 起都认）。换了 客户端.png → 托盘当场换；转完刷新 Windows 图标缓存
+//   黑底发光图想去黑底，还是用 core/tools/make_icon.py（要 Python）
+const ICONS = process.env.SYN_ICONS || join(HOME, '_图标'), ICO_SIZES = [16, 24, 32, 48, 64, 128, 256];
+function pngToIco(file) {
+  let im = nativeImage.createFromPath(file); if (im.isEmpty()) return null;
+  const { width: w, height: h } = im.getSize();
+  if (w !== h) { // 居中补成方形（toBitmap 是 BGRA，逐行拷）
+    const s = Math.max(w, h), src = im.toBitmap(), dst = Buffer.alloc(s * s * 4), ox = (s - w) >> 1, oy = (s - h) >> 1;
+    for (let y = 0; y < h; y++) src.copy(dst, ((y + oy) * s + ox) * 4, y * w * 4, (y + 1) * w * 4);
+    im = nativeImage.createFromBitmap(dst, { width: s, height: s });
+  }
+  const pngs = ICO_SIZES.map(n => im.resize({ width: n, height: n, quality: 'best' }).toPNG());
+  const head = Buffer.alloc(6 + 16 * pngs.length); head.writeUInt16LE(1, 2); head.writeUInt16LE(pngs.length, 4);
+  let off = head.length;
+  pngs.forEach((p, i) => {
+    const e = 6 + 16 * i, n = ICO_SIZES[i] % 256; // 256 写成 0
+    head[e] = n; head[e + 1] = n; head.writeUInt16LE(1, e + 4); head.writeUInt16LE(32, e + 6); head.writeUInt32LE(p.length, e + 8); head.writeUInt32LE(off, e + 12); off += p.length;
+  });
+  return Buffer.concat([head, ...pngs]);
+}
+function syncIcons() {
+  let made = [];
+  try {
+    for (const f of readdirSync(ICONS)) {
+      if (!/\.png$/i.test(f)) continue;
+      const png = join(ICONS, f), ico = png.replace(/\.png$/i, '.ico');
+      if (existsSync(ico) && statSync(ico).mtimeMs >= statSync(png).mtimeMs) continue;
+      const buf = pngToIco(png); if (buf) { writeFileSync(ico, buf); made.push(f); }
+    }
+  } catch (e) { console.log('[synapsis] 图标：', e.message); }
+  if (!made.length) return made;
+  console.log('[synapsis] png → ico：', made.join(' '));
+  if (made.some(f => f === '客户端.png') && tray) { _icon = null; tray.setImage(trayIcon()); }
+  try { spawn('ie4uinit.exe', ['-show'], { detached: true, stdio: 'ignore', windowsHide: true }).unref(); } catch { /* 刷不了缓存就等它自己过期 */ }
+  return made;
+}
+function watchIcons() {
+  let t = null;
+  try { mkdirSync(ICONS, { recursive: true }); watch(ICONS, () => { clearTimeout(t); t = setTimeout(syncIcons, 800); }); } catch { /* 没法盯就只在启动时转 */ }
+}
+
 // 托盘图标：优先用 <Synapsis>/_图标/客户端.png（core/tools/make_icon.py 从任意图片生成）；没有就代码画一个 32×32 的圆
 let _icon = null;
 function trayIcon() {
   if (_icon) return _icon;
-  const file = join(HOME, '_图标', '客户端.png');
+  const file = join(ICONS, '客户端.png');
   if (existsSync(file)) { const im = nativeImage.createFromPath(file); if (!im.isEmpty()) return (_icon = im); }
   const S = 32, raw = Buffer.alloc((S * 4 + 1) * S);
   for (let y = 0; y < S; y++) {
@@ -163,6 +206,7 @@ function trayIcon() {
 app.whenReady().then(async () => {
   await startServer();
   launcherFor(HOME); // Synapsis 根目录的两个快捷方式，没有就补
+  syncIcons(); watchIcons();
   tray = new Tray(trayIcon());
   tray.setToolTip('Synapsis');
   tray.on('click', showLauncher);

@@ -16,7 +16,7 @@ let pass = 0, fail = 0;
 const ok = (c, m) => { c ? pass++ : (fail++, console.log('  ✗', m)); };
 const sleep = t => new Promise(r => setTimeout(r, t));
 // 临时工作区不碰真的 LM Studio：工作区级 .synapsis/ai.json 指到一个没人听的端口（AI 那段自检另起假服务）
-const noAi = (ws, url = 'http://127.0.0.1:9/v1') => { mkdirSync(join(ws, '.synapsis'), { recursive: true }); writeFileSync(join(ws, '.synapsis', 'ai.json'), JSON.stringify({ url })); };
+const noAi = (ws, url = 'http://127.0.0.1:9/v1', extra = {}) => { mkdirSync(join(ws, '.synapsis'), { recursive: true }); writeFileSync(join(ws, '.synapsis', 'ai.json'), JSON.stringify({ url, ...extra })); };
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 
@@ -749,23 +749,24 @@ for (const kind of ['reactflow']) {
   const srv = createServer((req, res) => {
     let s = ''; req.on('data', c => s += c); req.on('end', () => {
       const j = s ? JSON.parse(s) : {}, send = o => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(o)); };
-      if (req.url === '/api/v0/models') return send({ data: [{ id: 'emb-x', type: 'embeddings' }, { id: 'chat-x', type: 'llm' }] });
+      if (req.url === '/api/v0/models') return send({ data: [{ id: 'emb-x', type: 'embeddings' }, { id: 'chat-x', type: 'llm', state: 'loaded', loaded_context_length: 8192, max_context_length: 40960 }] });
       if (req.url === '/v1/embeddings') return send({ data: j.input.map((t, index) => ({ index, embedding: bag(t) })) });
       const sys = j.messages?.[0]?.content || '', user = j.messages?.at(-1)?.content || ''; // 最后一条 = 这次的话（前面可能是短记忆）
       const lines = user.split(/\r?\n/).map(l => l.match(/^(\d+)\. (.*)$/)).filter(Boolean);
       let out = '';
       const ref = name => (user.match(new RegExp('(n\\d+) ' + name)) || [])[1];
-      if (/思维导图 \/ 节点图工具/.test(sys)) out = /对齐/.test(user) ? JSON.stringify({ say: '将左对齐', actions: [{ do: 'align', ids: [ref('惊慌失措'), ref('传感器')], edge: 'left' }, { do: 'delete', ids: ['n1'] }] })
+      if (/使用说明助手/.test(sys)) out = '- 按 L 搜索目标连线\n- 或者拖卡片边缘';
+      else if (/思维导图 \/ 节点图工具/.test(sys)) out = /对齐/.test(user) ? JSON.stringify({ say: '将左对齐', actions: [{ do: 'align', ids: [ref('惊慌失措'), ref('传感器')], edge: 'left' }, { do: 'delete', ids: ['n1'] }] })
         : /完成/.test(user) ? JSON.stringify({ say: '将标记完成', actions: [{ do: 'status', ids: [ref('咕噜人')], status: 'done' }] }) : '{"say":"删除请你自己来","actions":[]}';
       else if (/归类配色/.test(sys)) out = lines.map(m => `${m[1]}: ${/吓/.test(m[2]) ? 1 : 0}`).join('\n');
       else if (/值得连起来的关系/.test(sys)) out = lines.map(m => `${m[1]}. x | ${/情绪/.test(m[2]) ? 3 : 0} | ${/情绪/.test(m[2]) ? '都讲情绪' : '无关'}`).join('\n');
       else if (/配色/.test(sys)) out = words;
       else out = '它们都和情绪有关。';
-      send({ choices: [{ message: { content: out } }] });
+      send({ choices: [{ message: { content: out } }], usage: { prompt_tokens: 900, completion_tokens: 40, total_tokens: 940 } });
     });
   });
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
-  const ws = mkdtempSync(join(tmpdir(), 'syn-ai-ui-')); noAi(ws, `http://127.0.0.1:${srv.address().port}/v1`);
+  const ws = mkdtempSync(join(tmpdir(), 'syn-ai-ui-')); noAi(ws, `http://127.0.0.1:${srv.address().port}/v1`, { chat: 'chat-x', embed: 'emb-x' });
   saveOutline(ws, '惊慌失措\n情绪恐惧\n情绪反应\n传感器\n咕噜人\n吓坏了');
   writeFileSync(join(ws, '__synapsis', '_配色.md'), words);
   setNodeBody(ws, '传感器', '# 读数\n\n| 名 | 值 |\n|---|---|\n| 视野 | **90** |\n\n- 第一条\n- 第二条');
@@ -807,9 +808,12 @@ for (const kind of ['reactflow']) {
   await page.click('.aipanel .bar button'); await sleep(1500);
   ok(await col('惊慌失措') === PALETTE.粉, '新词表生效：惊慌失措 → 粉');
   // AI 指令框（Ctrl+J）：说 → 预览（✓ 能做 / ✗ 不做）→ Enter 执行 → 坐标对齐、进撤销；日志页有记录
-  await page.mouse.click(700, 760); await page.keyboard.press('Control+j'); await sleep(500);
-  ok(!!(await page.$('.agentbox textarea.ask')), 'Ctrl+J → AI 指令框');
+  await page.mouse.click(700, 760); await page.keyboard.press('Shift+F'); await sleep(500);
+  ok(!!(await page.$('.agentbox textarea.ask')), 'Shift+F → AI 指令框');
+  const meter0 = await page.$eval('.agentbox .ctxmeter', e => e.textContent).catch(() => '');
+  ok(/^🧠 ≈\S+ \/ 8\.2k$/.test(meter0), '上下文：没问之前 = 估算 / 加载时设的容量 ' + meter0);
   await page.keyboard.type('把惊慌失措和传感器左对齐'); await page.keyboard.press('Enter'); await sleep(1500);
+  ok((await page.$eval('.agentbox .ctxmeter', e => e.textContent)) === '🧠 940 / 8.2k', '上下文：问过 = LM Studio 报的真实用量');
   const plan = await page.$$eval('.agentbox .plan li', ls => ls.map(l => l.className + ':' + l.textContent));
   ok(plan.length === 2 && /^ok:✓ 对齐（左边）/.test(plan[0]) && /^no:✗ delete/.test(plan[1]), '预览：对齐 ✓，delete ✗（不执行） ' + plan);
   await page.keyboard.press('Enter'); await sleep(2000);
@@ -821,8 +825,12 @@ for (const kind of ['reactflow']) {
   ok(/status:\s*done/.test(readFileSync(join(ws, '__synapsis', '咕噜人.md'), 'utf8')), '点「执行」→ 咕噜人 ✅');
   await page.mouse.click(700, 760); await sleep(200); await page.keyboard.press('Control+z'); await sleep(1800);
   ok(!/status:\s*done/.test(readFileSync(join(ws, '__synapsis', '咕噜人.md'), 'utf8')), 'Ctrl+Z 撤销 AI 的改动');
+  // 问用法 → 问答模式：多行回答，标出参考了快捷键表，没有执行预览
+  await page.click('.agentbox textarea.ask'); await page.keyboard.type('怎么连线？'); await page.keyboard.press('Enter'); await sleep(1500);
+  const lastA = await page.$$eval('.agentbox .turn', ts => { const t = ts.at(-1); return [t.querySelector('.a')?.textContent || '', t.querySelector('.know')?.textContent || '', !!t.querySelector('.a .mdlite')]; });
+  ok(lastA[0].includes('按 L') && lastA[2] && /快捷键/.test(lastA[1]) && !(await page.$('.agentbox .plan')), '问「怎么连线？」→ 多行回答 + 📖 参考了快捷键，没有执行预览 ' + lastA);
   await page.click('.agentbox .bar a:has-text("日志")'); await sleep(800);
-  ok((await page.$$('.agentbox .logrow')).length >= 2 && (await page.$eval('.agentbox .logrow b', e => e.textContent)).includes('AI 指令'), '日志页：每次调用都有记录');
+  ok((await page.$$('.agentbox .logrow')).length >= 2 && (await page.$$eval('.agentbox .logrow b', bs => bs.map(e => e.textContent))).some(t => t.includes('AI 指令')) && (await page.$$eval('.agentbox .logrow b', bs => bs.map(e => e.textContent))).some(t => t.includes('AI 问答')), '日志页：每次调用都有记录（做事 / 问答）');
   await page.click('.agentbox .logrow .head'); await sleep(300);
   ok((await page.$eval('.agentbox .logrow', e => e.textContent)).includes('原始回答'), '点开日志 → 发出的消息 + 原始回答');
   await page.click('.agentbox .bar button[title^="关闭"]'); await sleep(300);

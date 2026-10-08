@@ -1,4 +1,4 @@
-// >v<🤖AI指令-后端-AI 指令框（Ctrl+J，👤 2026-10-08）：人用自然语言交代 → 对话模型（8B）只能从白名单「技能」里挑动作 →
+// >v<🤖AI指令-后端-AI 指令框（Shift+F，👤 2026-10-08）：人用自然语言交代 → 对话模型（8B）只能从白名单「技能」里挑动作 →
 //   代码校验（core/plan.js）→ 界面预览 → 👤 确认才执行（进撤销栈）。8B 不碰文件，执行全由这里的代码做。
 //   技能说明书 = core/skills/*.md（frontmatter: do / args；正文 = 什么时候用 + 例子），整份喂进系统提示词。
 //   短记忆 = 工作区 .synapsis/ai_chat.json（最近 30 轮，喂最近 8 轮）；日志 = .synapsis/ai_log.jsonl（core/ai.js aiLog）。
@@ -83,6 +83,16 @@ export const ANSWER_PROMPT = `你是 Synapsis（思维导图 / 节点图工具�
 - 泛泛地问「有哪些快捷键 / 能做什么」→ 只挑最常用的 8 个左右列出，最后说：完整列表按 ? / F1（或顶栏「⌨ 快捷键」）。
 - 只输出给人看的中文回答，不要 JSON，不要代码块。`;
 
+// >v<🤖AI指令-上下文-还没问之前估一下这次会占多少 token（系统提示词 + 当前页 + 短记忆 + 知识预算 + 回答上限）。
+//   粗估：中日韩字 ≈ 1 token，其它 ≈ 3.5 字符 1 token（Qwen 分词实测量级）；问过之后界面换成服务端报的真实用量
+export const estTokens = s => { const t = String(s); const cjk = (t.match(/[㐀-鿿＀-￯]/g) || []).length; return Math.round(cjk + (t.length - cjk) / 3.5); };
+export function estimateContext(root, { scope = ROOT, selected = [] } = {}) {
+  const ws = loadWorkspace(root), ctx = pageContext(ws, scope, selected);
+  const hist = loadChat(root).slice(-8).map(t => t.user + JSON.stringify({ say: t.say, actions: t.actions || [] })).join('');
+  const parts = { 系统提示词: estTokens(systemPrompt()), 当前页: estTokens(ctx.text), 短记忆: estTokens(hist), 回答上限: 1200 };
+  return { parts, total: Object.values(parts).reduce((a, b) => a + b, 0) };
+}
+
 // >v<🤖AI指令-问模型-返回 {say, actions: [{ok, why?, desc, …}], raw}；不执行。输出不合格式 → 把错误告诉它重来一次
 export async function runAgent(root, { scope = ROOT, selected = [], text }, cfg) {
   if (!text || !String(text).trim()) throw new Error('说点什么');
@@ -91,18 +101,18 @@ export async function runAgent(root, { scope = ROOT, selected = [], text }, cfg)
   const history = loadChat(root).slice(-8).flatMap(t => [{ role: 'user', content: t.user }, { role: 'assistant', content: JSON.stringify({ say: t.say, actions: t.actions || [] }) }]);
   // 问用法（怎么 / 如何 / 哪 / 快捷键 / 问号…）→ 走问答：单独的提示词 + 挑出来的软件知识，纯文本回答、不出动作。
   //   和做事混在一个 JSON 提示词里时，8B 会给「将切换到白色主题」+ 乱编动作、或者知识就在眼前还说「手册里没写」（2026-10-08 实测）
-  const know = pickKnowledge(text);
+  const know = pickKnowledge(text), usage = {}; // usage = LM Studio 报的 token 用量（prompt / completion / total），界面显示「已用 / 容量」
   if (isQuestion(text)) {
     const q = String(text).trim();
-    const raw = await chat(cfg, ANSWER_PROMPT, `【软件知识】\n${know.length ? knowledgeText(know) : '（没有找到相关的段落）'}\n\n问题：${q}`, 900, { kind: 'AI 问答', temperature: 0.2 });
+    const raw = await chat(cfg, ANSWER_PROMPT, `【软件知识】\n${know.length ? knowledgeText(know) : '（没有找到相关的段落）'}\n\n问题：${q}`, 900, { kind: 'AI 问答', usage, temperature: 0.2 });
     const say = raw.replace(/^```\w*\n?|```$/g, '').trim().slice(0, 1200) || '（模型没有回答）';
     pushChat(root, { t: new Date().toISOString(), scope: ctx.scope, user: q, say, actions: [], done: [] });
-    return { say, actions: [], raw, knowledge: know.map(c => c.src), mode: 'answer' };
+    return { say, actions: [], raw, knowledge: know.map(c => c.src), mode: 'answer', usage };
   }
   const sys = systemPrompt(), user = `${ctx.text}\n\n人说：${String(text).trim()}`;
-  let raw = await chat(cfg, sys, user, 1200, { kind: 'AI 指令', history, temperature: 0.1 }), reply;
+  let raw = await chat(cfg, sys, user, 1200, { kind: 'AI 指令', history, usage, temperature: 0.1 }), reply;
   try { reply = parseReply(raw); } catch (e) {
-    raw = await chat(cfg, sys, user + `\n\n（你上一次的输出不合格：${e.message}。只输出一个 JSON 对象。）`, 1200, { kind: 'AI 指令（重试）', history, temperature: 0.1 });
+    raw = await chat(cfg, sys, user + `\n\n（你上一次的输出不合格：${e.message}。只输出一个 JSON 对象。）`, 1200, { kind: 'AI 指令（重试）', history, usage, temperature: 0.1 });
     try { reply = parseReply(raw); } catch (e2) { reply = { say: '（模型的回答不是规定格式，没法执行：' + e2.message + '）', actions: [] }; }
   }
   const g = parseOutline(workspaceOutline(ws));
@@ -112,7 +122,7 @@ export async function runAgent(root, { scope = ROOT, selected = [], text }, cfg)
   // 嘴上说做了、手上没给动作（8B 实测会这样）→ 明说，别让人以为做了
   if (!actions.some(a => a.ok) && /^(已|将|会|我会|我将)|已(经)?(将|把|为|创建|新建|标记|删除|改|连|设|完成|排|对齐|选)/.test(reply.say)) reply.say += /删/.test(text) ? '（⚠ 删除节点不归 AI 做：请右键节点 → 删除）' : '（⚠ 模型没有给出能执行的动作，实际什么都没做）';
   pushChat(root, { t: new Date().toISOString(), scope: ctx.scope, user: String(text).trim(), say: reply.say, actions: reply.actions, done: actions.filter(a => a.ok).map(a => a.desc) });
-  return { say: reply.say, actions, raw, knowledge: know.map(c => c.src) };
+  return { say: reply.say, actions, raw, knowledge: know.map(c => c.src), usage };
 }
 
 // >v<🤖AI指令-执行-👤 确认后：大纲类（新建 / 改名 / 状态 / 连线 / 删线 / 大纲排序）一次存盘 = 一步撤销；

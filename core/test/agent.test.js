@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadSkills, pageContext, parseReply, applyPlan, runAgent, loadChat, clearChat, systemPrompt, isQuestion } from '../agent.js';
+import { loadSkills, pageContext, parseReply, applyPlan, runAgent, loadChat, clearChat, systemPrompt, isQuestion, estimateContext, estTokens } from '../agent.js';
 import { validateAction, planMoves, VALIDATORS } from '../plan.js';
 import { saveOutline, loadWorkspace, workspaceOutline, DIR } from '../workspace.js';
 import { parseOutline } from '../outline.js';
@@ -111,7 +111,7 @@ try {
     const j = JSON.parse(s); calls++; lastMsgs = j.messages;
     const last = j.messages.at(-1).content;
     const content = j.messages[0].content.includes('使用说明助手') ? '- 按 Ctrl+Z 撤销\n- Ctrl+Y 重做' : calls === 1 ? '好的我来帮你' : '{"say":"选上了","actions":[{"do":"select","ids":["n1","n9"]},{"do":"delete","ids":["n1"]}]}';
-    res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content } }] }));
+    res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 700, completion_tokens: 30, total_tokens: 730 } }));
   }); });
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
   const cfg = { url: `http://127.0.0.1:${srv.address().port}/v1`, chat: 'chat-x', log: join(root, '.synapsis', 'ai_log.jsonl') };
@@ -132,6 +132,10 @@ try {
   ok(um.includes('【软件知识】') && um.includes('Ctrl+Z') && qa.knowledge.includes('快捷键·编辑'), '问「怎么撤销」→ 消息里带上快捷键表的「编辑」段 ' + qa.knowledge);
   ok(qa.mode === 'answer' && qa.say.startsWith('- 按 Ctrl+Z') && qa.actions.length === 0 && !lastMsgs.some(m => m.role === 'assistant'), '问句走问答：纯文本回答、不出动作、不带做事的历史');
   ok(loadChat(root).at(-1)?.say === qa.say, '问答也记进短记忆');
+  ok(qa.usage?.total_tokens === 730, '带回 LM Studio 报的 token 用量（界面显示「已用 / 容量」）');
+  const est = estimateContext(root);
+  ok(est.total > 1200 && est.parts.系统提示词 > 300 && est.parts.短记忆 > 0, '没问之前能估这次大概占多少 ' + JSON.stringify(est.parts));
+  ok(estTokens('一二三四') === 4 && estTokens('abcdefg') === 2, '粗估：中文 1 字 ≈ 1 token，英文 3.5 字符 ≈ 1 token');
   ok(isQuestion('怎么连线？') && isQuestion('有哪些快捷键') && isQuestion('能撤销吗') && !isQuestion('把这几个左对齐') && !isQuestion('观测做完了') && !isQuestion('在决策后面加一个执行'), '问句判断：问用法 vs 交代事');
   clearChat(root);
 } finally {

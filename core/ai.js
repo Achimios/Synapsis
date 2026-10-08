@@ -38,7 +38,7 @@ export async function aiStatus(cfg) {
     let list = null;
     try {
       const r = await fetch(base.replace(/\/v1$/, '') + '/api/v0/models', { signal: AbortSignal.timeout(3000) });
-      if (r.ok) list = (await r.json()).data.map(m => ({ id: m.id, embed: m.type === 'embeddings', loaded: m.state === 'loaded', vision: m.type === 'vlm' }));
+      if (r.ok) list = (await r.json()).data.map(m => ({ id: m.id, embed: m.type === 'embeddings', loaded: m.state === 'loaded', vision: m.type === 'vlm', ctx: m.loaded_context_length || null, maxCtx: m.max_context_length || null })); // ctx = 加载时设的上下文长度（没加载 = null），maxCtx = 模型最多支持
     } catch { /* 不是 LM Studio */ }
     if (!list) {
       const r = await fetch(base + '/models', { signal: AbortSignal.timeout(3000) });
@@ -74,7 +74,7 @@ export async function embed(cfg, texts, cacheFile = null) {
 const cacheOf = root => join(root, '.synapsis', 'embed.json');
 
 // —— 对话：一次性短回答。Qwen3 的思考用 /no_think 关掉，回来的 <think> 段剥掉 ——
-// opts.kind = 日志里的用途名；opts.history = 之前几轮 [{role, content}]（AI 指令框的短记忆）
+// opts.kind = 日志里的用途名；opts.history = 之前几轮 [{role, content}]（AI 指令框的短记忆）；opts.usage = 传个空对象进来，填上服务端报的 token 用量
 export async function chat(cfg, system, user, maxTokens = 300, opts = {}) {
   const messages = [{ role: 'system', content: system }, ...(opts.history || []), { role: 'user', content: user + '\n/no_think' }];
   const t0 = Date.now();
@@ -82,8 +82,9 @@ export async function chat(cfg, system, user, maxTokens = 300, opts = {}) {
   try {
     const r = await post(cfg, '/chat/completions', { model: cfg.chat, temperature: opts.temperature ?? 0.3, max_tokens: maxTokens, messages });
     raw = r.choices?.[0]?.message?.content || '';
+    if (opts.usage && r.usage) Object.assign(opts.usage, r.usage);
   } catch (e) { err = e; }
-  aiLog(cfg, { kind: opts.kind || 'chat', model: cfg.chat, ms: Date.now() - t0, messages, raw, error: err?.message });
+  aiLog(cfg, { kind: opts.kind || 'chat', model: cfg.chat, ms: Date.now() - t0, messages, raw, error: err?.message, usage: opts.usage });
   if (err) throw err;
   return raw.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 }

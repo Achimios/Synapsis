@@ -7,7 +7,7 @@ import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, en
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText } from '../core/cli.js';
 import { aiConfig, saveAiConfig, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, readAiLog } from '../core/ai.js';
-import { runAgent, applyPlan, loadChat, clearChat } from '../core/agent.js';
+import { runAgent, applyPlan, loadChat, clearChat, estimateContext } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
 const SYN_HOME = resolve(fileURLToPath(new URL('.', import.meta.url)), '..'); // AI 设置是本机的：<Synapsis>/.synapsis/ai.json
 
@@ -95,6 +95,12 @@ function workspaceApi() {
             if (url.pathname === '/ai/log') return send(200, { entries: cfg.log ? readAiLog(cfg.log, Number(url.searchParams.get('n')) || 60) : [] });
             if (url.pathname === '/ai/chat' && req.method === 'GET') return send(200, { turns: loadChat(root) });
             if (url.pathname === '/ai/chat' && req.method === 'DELETE') { clearChat(root); return send(200, { turns: [] }); }
+            // 上下文：这次大概要占多少（估）+ 对话模型加载时设的上下文长度（LM Studio /api/v0/models 的 loaded_context_length）
+            if (url.pathname === '/ai/context') {
+              const est = existsSync(join(root, DIR)) ? estimateContext(root, { scope: url.searchParams.get('scope') || '', selected: (url.searchParams.get('selected') || '').split('\n').filter(Boolean) }) : null;
+              const st = await aiStatus(cfg), m = st.ok ? st.chat.find(x => x.id === cfg.chat) : null;
+              return send(200, { estimate: est, model: cfg.chat, ctx: m?.ctx || null, maxCtx: m?.maxCtx || null, loaded: !!m?.loaded });
+            }
             // AI 指令框：问模型（只回动作草案）/ 👤 确认后执行
             if (url.pathname === '/ai/apply' && req.method === 'POST') { const b = await body(req); const r = applyPlan(root, b.actions || [], b.boxes || {}); return send(200, { ...r, ...payload(root) }); }
             if (url.pathname === '/ai/config' && req.method === 'PUT') return send(200, await aiStatus(saveAiConfig(SYN_HOME, await body(req))));

@@ -7,6 +7,23 @@ const opts = (list = [], cur) => {
   return [...(cur && !ids.includes(cur) ? [cur] : []), ...ids].map(id => <option key={id} value={id}>{id}{list.find(m => m.id === id)?.loaded ? '（已加载）' : ''}</option>);
 };
 
+const kfmt = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(n);
+
+// >v<🤖AI指令-上下文-「🧠 已用 / 容量」：问过 = LM Studio 报的真实 token；没问 = 估算（≈）。超 80% 变黄、超 100% 变红（会被截断、忘掉前面）
+export function CtxMeter({ ctx, usage }) {
+  if (!ctx) return null;
+  const used = usage?.total_tokens || ctx.estimate?.total || 0, cap = ctx.ctx;
+  const pct = cap ? used / cap : 0;
+  const tip = [
+    `对话模型：${ctx.model || '?'}`,
+    cap ? `上下文容量：${cap} token（LM Studio 加载时设的；这个模型最多 ${ctx.maxCtx || '?'}）` : `模型还没加载，容量未知（最多 ${ctx.maxCtx || '?'}）`,
+    usage?.total_tokens ? `上一次实际用了：提示 ${usage.prompt_tokens} + 回答 ${usage.completion_tokens} = ${usage.total_tokens}` : '还没问过 → 下面是估算',
+    ...(ctx.estimate ? Object.entries(ctx.estimate.parts).map(([k, v]) => `  ≈ ${k} ${v}`) : []),
+    cap && cap < 16000 ? '嫌小：LM Studio 里卸载模型 → 加载时把 Context Length 调大（越大越吃显存）' : '',
+  ].filter(Boolean).join('\n');
+  return <span className={'ctxmeter' + (pct > 1 ? ' over' : pct > 0.8 ? ' warn' : '')} title={tip}>🧠 {usage?.total_tokens ? '' : '≈'}{kfmt(used)} / {cap ? kfmt(cap) : '?'}</span>;
+}
+
 export function AiPanel({ api, status, onStatus, onClose, onWordsApplied }) {
   const [draft, setDraft] = useState(null), [busy, setBusy] = useState('');
   const cfg = status?.cfg || {};
@@ -31,6 +48,7 @@ export function AiPanel({ api, status, onStatus, onClose, onWordsApplied }) {
           <label>地址<input key={cfg.url} defaultValue={cfg.url} onBlur={e => e.target.value.trim() && e.target.value !== cfg.url && save({ url: e.target.value.trim() })} /></label>
           <label>嵌入模型 <span className="hint">潜在关联</span><select value={cfg.embed || ''} onChange={e => save({ embed: e.target.value })}>{opts(status?.embed, cfg.embed)}</select></label>
           <label>对话模型 <span className="hint">配色归类 / 生成词表 / 一句话说明关系</span><select value={cfg.chat || ''} onChange={e => save({ chat: e.target.value })}>{opts(status?.chat, cfg.chat)}</select></label>
+          {(() => { const m = status?.chat?.find(x => x.id === cfg.chat); return m && (m.ctx || m.maxCtx) && <div className="hint ctxline">🧠 上下文：{m.ctx ? <b>{m.ctx}</b> : '未加载'} token{m.maxCtx ? `（这个模型最多 ${m.maxCtx}）` : ''}。AI 指令框右上角显示每次用了多少。{m.ctx && m.ctx < 16000 ? ' 嫌小：LM Studio 里卸载模型，重新加载时把 Context Length 调大（越大越吃显存）。' : ''}</div>; })()}
           <label className="chk"><input type="checkbox" checked={!!cfg.semColors} onChange={e => save({ semColors: e.target.checked })} />语义配色：词表没认出的节点让对话模型归到词表某一行（结果缓存，有新节点才再问）</label>
           <div className="row"><button onClick={gen} disabled={!status?.ok}>✨ 按这个工作区的节点生成词表…</button><span className="hint">{busy}</span></div>
           {draft != null && <>
@@ -102,7 +120,7 @@ export function RelatedDock({ api, id, label, onJump, onOpenFile, onLink }) {
   );
 }
 
-// >v<🤖AI指令-界面-AI 指令框（Ctrl+J）：说一句 → 8B 给动作草案（✓ 能做 / ✗ 不做 + 原因）→ 预览（涉及的节点先选中高亮）→ Enter 执行 / Esc 不要。
+// >v<🤖AI指令-界面-AI 指令框（Shift+F）：说一句 → 8B 给动作草案（✓ 能做 / ✗ 不做 + 原因）→ 预览（涉及的节点先选中高亮）→ Enter 执行 / Esc 不要。
 //   「日志」页 = 每次调对话模型的原始记录（core/ai.js aiLog）。短记忆存在工作区（「清空记忆」= 新话题）
 export function AgentBox({ api, scope, selected, onApplied, onPreview, onClose }) {
   const [tab, setTab] = useState('chat');
@@ -113,6 +131,10 @@ export function AgentBox({ api, scope, selected, onApplied, onPreview, onClose }
   const [log, setLog] = useState(null);
   const [openLog, setOpenLog] = useState(null);
   const inp = useRef(null), list = useRef(null);
+  // 上下文：没问之前显示估算（≈），问过之后显示 LM Studio 报的真实用量；容量 = 模型加载时设的上下文长度
+  const [ctx, setCtx] = useState(null), [usage, setUsage] = useState(null);
+  const loadCtx = () => api('/ai/context?scope=' + encodeURIComponent(scope || '') + '&selected=' + encodeURIComponent((selected || []).join('\n'))).then(setCtx).catch(() => {});
+  useEffect(() => { loadCtx(); }, [turns.length]);
   useEffect(() => { api('/ai/chat').then(d => setTurns(d.turns)).catch(() => {}); }, []);
   useEffect(() => { if (tab === 'log') api('/ai/log').then(d => setLog(d.entries)).catch(e => setLog([{ kind: '❌', raw: e.message }])); }, [tab, turns.length]);
   useEffect(() => { list.current && (list.current.scrollTop = list.current.scrollHeight); }, [turns, plan, busy]);
@@ -122,7 +144,7 @@ export function AgentBox({ api, scope, selected, onApplied, onPreview, onClose }
     setBusy('🧠 思考中…（第一次要等模型加载）'); setPlan(null);
     api('/ai/agent', { method: 'POST', body: JSON.stringify({ scope, selected, text: t }) })
       .then(d => {
-        setText(''); setBusy('');
+        setText(''); setBusy(''); setUsage(d.usage?.total_tokens ? d.usage : null);
         setTurns(ts => [...ts, { user: t, say: d.say, done: [], know: d.knowledge }]);
         const good = d.actions.filter(a => a.ok);
         if (d.actions.length) { setPlan(d); onPreview([...new Set(good.flatMap(a => a.ids || [a.id, a.from, a.to].filter(Boolean)))]); }
@@ -150,8 +172,9 @@ export function AgentBox({ api, scope, selected, onApplied, onPreview, onClose }
         <a className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')}>💬 对话</a>
         <a className={tab === 'log' ? 'on' : ''} onClick={() => setTab('log')}>📜 日志</a>
         <span style={{ flex: 1 }} />
-        {tab === 'chat' && <button title="清空短记忆（换个话题）" onClick={() => api('/ai/chat', { method: 'DELETE' }).then(d => { setTurns(d.turns); setPlan(null); })}>🧹 清空记忆</button>}
-        <button title="关闭（Esc / Ctrl+J）" onClick={onClose}>✕</button>
+        <CtxMeter ctx={ctx} usage={usage} />
+        {tab === 'chat' && <button title="清空短记忆（换个话题）" onClick={() => api('/ai/chat', { method: 'DELETE' }).then(d => { setTurns(d.turns); setPlan(null); setUsage(null); })}>🧹 清空记忆</button>}
+        <button title="关闭（Esc）" onClick={onClose}>✕</button>
       </div>
       {tab === 'chat' ? <>
         <div className="turns" ref={list}>

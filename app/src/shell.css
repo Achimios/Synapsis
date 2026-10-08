@@ -407,3 +407,8 @@ button.patsw { width: 26px; height: 18px; background-color: color-mix(in srgb, v
 .bar.tools .more { margin-left: auto; position: relative; }
 .moremenu { position: absolute; right: 0; top: 26px; z-index: 950; display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 6px; background: var(--panel); border: 1px solid var(--line2); border-radius: 5px; box-shadow: 0 6px 20px rgba(0,0,0,.35); min-width: 160px; }
 .moremenu button { text-align: left; }
+/* AI 指令框上下文用量（👤 2026-10-08） */
+.agentbox .ctxmeter { font-size: 11px; color: var(--dim); padding: 1px 6px; border-radius: 8px; background: var(--chip); margin-right: 6px; cursor: help; white-space: nowrap; }
+.agentbox .ctxmeter.warn { color: #000; background: #e6c440; }
+.agentbox .ctxmeter.over { color: #fff; background: #e05555; }
+.aipanel .ctxline { margin: -2px 0 6px; }

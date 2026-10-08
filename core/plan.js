@@ -1,4 +1,4 @@
-// >v<🤖AI指令-动作校验-AI 指令框（Ctrl+J）里 8B 给出的动作：只认白名单里的 do，参数逐个查，查不过的不执行（附原因给人看）。
+// >v<🤖AI指令-动作校验-AI 指令框（Shift+F）里 8B 给出的动作：只认白名单里的 do，参数逐个查，查不过的不执行（附原因给人看）。
 // 纯函数，不调模型、不碰文件（core/agent.js 调模型和落盘，自检 core/test/agent.test.js）。
 // 每种动作对应一份说明书 core/skills/*.md（喂给模型）；VALIDATORS 和说明书一一对应（自检核对）。
 import { PALETTE } from './colors.js';

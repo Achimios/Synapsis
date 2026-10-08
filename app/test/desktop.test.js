@@ -1,7 +1,7 @@
 // >v<✅自检-桌面-Playwright 驱动 Electron（窗口隐藏）：--ws 直接开工作区、启动台、最近列表、托盘、未初始化的文件夹自动挂上
 // node test/desktop.test.js（不需要先起 dev，主进程自己起；5410 被占则复用）
 import { _electron as electron } from 'playwright-core';
-import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +16,8 @@ const sleep = t => new Promise(r => setTimeout(r, t));
 const tmp = mkdtempSync(join(tmpdir(), 'syn-desk-'));
 const ws = join(tmp, '工作区 一'); mkdirSync(ws); saveOutline(ws, SAMPLE);
 const fresh = join(tmp, '还没挂上'); mkdirSync(fresh);
-const env = { ...process.env, SYN_TEST_HIDDEN: '1', SYN_RECENT: join(tmp, 'recent.json') };
+const icons = join(tmp, '图标'); mkdirSync(icons); copyFileSync(join(APP, '..', '_图标', '项目.png'), join(icons, '酷.png'));
+const env = { ...process.env, SYN_TEST_HIDDEN: '1', SYN_RECENT: join(tmp, 'recent.json'), SYN_ICONS: icons };
 
 try {
   // 1) --ws：直接开工作区窗口
@@ -28,6 +29,9 @@ try {
   ok(await eapp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getTitle()) === 'Synapsis — 工作区 一', '窗口标题 = 工作区名');
   const recent = JSON.parse(readFileSync(join(tmp, 'recent.json'), 'utf8'));
   ok(recent[0]?.dir === ws, '记进最近列表');
+  // _图标/ 里丢 png → 启动时转出同名 ico（ICO 头：保留 0、类型 1、7 个尺寸，每个尺寸存 PNG）
+  const ico = existsSync(join(icons, '酷.ico')) ? readFileSync(join(icons, '酷.ico')) : Buffer.alloc(0);
+  ok(ico.length > 100 && ico.readUInt16LE(2) === 1 && ico.readUInt16LE(4) === 7 && ico.subarray(ico.readUInt32LE(6 + 12), ico.readUInt32LE(6 + 12) + 4).toString('latin1') === '\x89PNG', 'png 丢进图标文件夹 → 自动转出多尺寸 ico');
   // 界面缩放：Ctrl+= 放大（Electron 默认菜单只认 Ctrl+Shift+=，👤 2026-10-08），Ctrl+- 缩小，Ctrl+0 还原
   const zoomAfter = key => eapp.evaluate(async ({ BrowserWindow }, key) => {
     const wc = BrowserWindow.getAllWindows()[0].webContents;
