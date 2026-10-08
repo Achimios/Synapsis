@@ -18,7 +18,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
     return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', key); };
   }, [onClose]);
   const item = (label, fn, opts = {}) => (
-    <div className={'mi' + (opts.danger ? ' danger' : '')} onPointerDown={e => e.stopPropagation()} onClick={() => { onClose(); fn(); }}>
+    <div className={'mi' + (opts.danger ? ' danger' : '') + (opts.quiet ? ' quiet' : '')} onPointerDown={e => e.stopPropagation()} onClick={() => { onClose(); fn(); }}>
       <span>{label}</span>{opts.key && <kbd>{opts.key}</kbd>}
     </div>
   );
@@ -37,7 +37,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
     <div className="ctx" style={style}>
       {item('＋ 在这里新建节点', actions.addHere)}
       {item(actions.allOpen ? '全部收起' : '全部展开', actions.toggleAll)}
-      {actions.canUp && item('↑ 返回上一层', actions.up, { key: 'Alt+↑' })}
+      {actions.canUp && item('↑ 返回上一层', actions.up, { key: 'Alt+↑ · 顶栏 ↑', quiet: true })}
     </div>
   );
   return (
@@ -63,15 +63,20 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         <button title="不要底纹" className={node.patternSet === '无' ? 'on auto' : 'auto'} onClick={() => { onClose(); actions.pattern(node.id, '无'); }}>无</button>
         {actions.patternWords && <button title="打开图案词表 __synapsis/_图案.md" className="auto" onClick={() => { onClose(); actions.patternWords(); }}>图案词表…</button>}
       </div>}
+      <div className="msep" />
       {item('🔗 连线到…', () => actions.linkTo(node.id), { key: 'L' })}
       {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'Tab' })}
       {item('＋ 新建同级', () => actions.addSibling(node.id), { key: 'Enter' })}
-      {node.children.length > 0 && item(node.open ? '收起子级' : '原地展开子级', () => actions.toggle(node.id), { key: '空格' })}
-      {node.children.length > 0 && item(actions.isFramed(node.id) ? '⊟ 收起框' : '⊞ 原地展开成框', () => actions.frame(node.id), { key: 'F' })}
-      {item('钻进去', () => actions.drill(node.id), { key: '双击' })}
+      {/* 画布 / 快捷键上能直接做的：灰色小字一组，右边的操作提示就是「直接怎么做」（菜单只当提示牌，不抢眼） */}
+      <div className="msep" />
+      {node.children.length > 0 && item(node.open ? '▾ 收起子级' : '▸ 原地展开子级', () => actions.toggle(node.id), { key: '空格 · 点卡片 ▸N', quiet: true })}
+      {node.children.length > 0 && item(actions.isFramed(node.id) ? '⊟ 收起框' : '⊞ 展开成框', () => actions.frame(node.id), { key: 'F', quiet: true })}
+      {item('→ 钻进去', () => actions.drill(node.id), { key: '双击', quiet: true })}
+      <div className="msep" />
       {actions.hasFile(node.id) && item('看 md 原文', () => actions.openMd(node.id))}
       {actions.hasFile(node.id) && item('在资源管理器中显示', () => actions.reveal(node.id))}
       {item('贴图…', () => actions.pasteHint(node.id), { key: 'Ctrl+V' })}
+      <div className="msep" />
       {item('🗑️ 删除' + (node.children.length ? `（含 ${countAll(node)} 个子孙）` : ''), () => actions.remove(node.id), { danger: true, key: 'Del' })}
     </div>
   );

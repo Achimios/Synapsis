@@ -146,6 +146,10 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .ctx .mi:hover { background: var(--selbg); }
 .ctx .mi kbd { margin-left: auto; font: 10px system-ui; color: var(--faint); }
 .ctx .mi.danger { color: var(--bad); }
+.ctx .mi.quiet { font-size: 11px; color: var(--dim); padding-top: 2px; padding-bottom: 2px; }
+.ctx .mi.quiet kbd { color: var(--dim); opacity: .75; }
+.ctx .msep { height: 1px; background: var(--line); margin: 3px 0; }
+.ctx .msep:last-child, .ctx .mh + .msep { display: none; }
 .ctx .mi.row { cursor: default; }
 .ctx .mi.row:hover { background: none; }
 .ctx button, .side .row button { padding: 0 5px; }
