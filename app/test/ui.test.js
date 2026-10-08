@@ -889,6 +889,32 @@ for (const kind of ['reactflow']) {
   ok((await page.$$('.agentbox .logrow')).length >= 2 && (await page.$$eval('.agentbox .logrow b', bs => bs.map(e => e.textContent))).some(t => t.includes('AI 指令')) && (await page.$$eval('.agentbox .logrow b', bs => bs.map(e => e.textContent))).some(t => t.includes('AI 问答')), '日志页：每次调用都有记录（做事 / 问答）');
   await page.click('.agentbox .logrow .head'); await sleep(300);
   ok((await page.$eval('.agentbox .logrow', e => e.textContent)).includes('原始回答'), '点开日志 → 发出的消息 + 原始回答');
+  // 关掉框不丢（👤「退出后输入框里没发出的文字要保留…是否执行也要保留」）：存在服务进程内存（/ui/stash），托盘重启才清
+  await page.click('.agentbox .bar a:has-text("对话")'); await sleep(200);
+  await page.click('.agentbox textarea.ask'); await page.keyboard.type('还没发的半句话'); await sleep(600);
+  await page.click('.agentbox .bar button[title^="关闭"]'); await sleep(300);
+  await page.mouse.click(700, 760); await page.keyboard.press('Shift+F'); await sleep(600);
+  ok((await page.$eval('.agentbox textarea.ask', e => e.value)) === '还没发的半句话', '关掉再开：没发出的话还在');
+  const stash = await page.evaluate(() => fetch('/api/ui/stash' + location.search.replace(/^\?/, '?')).then(r => r.json()));
+  ok(stash['agent.text'] === '还没发的半句话', '存在服务端（关窗口也不丢） ' + JSON.stringify(stash).slice(0, 120));
+  await page.fill('.agentbox textarea.ask', '咕噜人完成了'); await page.keyboard.press('Enter'); await sleep(1500);
+  await page.click('.agentbox .bar button[title^="关闭"]'); await sleep(300);
+  await page.mouse.click(700, 760); await page.keyboard.press('Shift+F'); await sleep(800);
+  ok(!!(await page.$('.agentbox .plan button.go')) && (await page.$eval('.agentbox textarea.ask', e => e.value)) === '', '关掉再开：待确认的「执行」还在，发出去的话不再留在输入框');
+  await page.keyboard.press('Escape'); await sleep(300);
+  ok(!(await page.$('.agentbox .plan')) && !(await page.evaluate(() => fetch('/api/ui/stash' + location.search).then(r => r.json()))).plan, 'Esc 不要 → 待确认的也从暂存里清掉');
+  // 拖标题栏移动框，位置记住；双击标题栏空白回默认
+  const bb0 = await (await page.$('.agentbox')).boundingBox();
+  await page.mouse.move(bb0.x + bb0.width * 0.55, bb0.y + 14); await page.mouse.down(); await page.mouse.move(bb0.x + bb0.width * 0.55 - 200, bb0.y - 200, { steps: 5 }); await page.mouse.up(); await sleep(300);
+  const bb1 = await (await page.$('.agentbox')).boundingBox();
+  ok(Math.abs(bb1.x - (bb0.x - 200)) < 3 && Math.abs(bb1.y - (bb0.y - 214)) < 3, '拖标题栏 → 框跟着走 ' + JSON.stringify([bb0, bb1].map(b => [Math.round(b.x), Math.round(b.y)])));
+  await page.click('.agentbox .bar button[title^="关闭"]'); await sleep(300);
+  await page.mouse.click(700, 760); await page.keyboard.press('Shift+F'); await sleep(500);
+  const bb2 = await (await page.$('.agentbox')).boundingBox();
+  ok(Math.abs(bb2.x - bb1.x) < 3 && Math.abs(bb2.y - bb1.y) < 3, '关掉再开：还在拖过去的位置');
+  await page.evaluate(() => { const b = document.querySelector('.agentbox .bar'); b.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); }); await sleep(300);
+  const bb3 = await (await page.$('.agentbox')).boundingBox();
+  ok(Math.abs(bb3.x - bb0.x) < 3 && Math.abs(bb3.y + bb3.height - bb0.y - bb0.height) < 3, '双击标题栏空白 → 回默认位置（底部居中，高度随内容） ' + JSON.stringify([bb0, bb2, bb3].map(b => [b.x, b.y, b.width, b.height].map(Math.round))));
   await page.click('.agentbox .bar button[title^="关闭"]'); await sleep(300);
   ok(!(await page.$('.agentbox')), '关闭指令框');
   // 卡片上显示人加的属性

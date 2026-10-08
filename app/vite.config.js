@@ -10,6 +10,7 @@ import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related
 import { lmsEstimate, lmsReload } from '../core/lmstudio.js';
 import { runAgent, applyPlan, loadChat, clearChat, estimateContext, isLoose } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
+const STASH = new Map(); // 工作区 → 界面暂存（见 /ui/stash）
 const SYN_HOME = resolve(fileURLToPath(new URL('.', import.meta.url)), '..'); // AI 设置是本机的：<Synapsis>/.synapsis/ai.json
 
 // >v<🚀启停-心跳-3 分钟没人 ping 就退出（SYN_IDLE_MS 可调）
@@ -90,6 +91,14 @@ function workspaceApi() {
           if (url.pathname === '/scaffold' && req.method === 'GET') return send(200, { items: scaffoldPlan(root).map(({ rel, exists, alike }) => ({ rel, exists, alike })) });
           if (url.pathname === '/scaffold' && req.method === 'POST') { if (!existsSync(join(root, DIR))) return send(404, { error: '不是 Synapsis 工作区' }); return send(200, { made: scaffoldWrite(root, (await body(req)).files) }); }
           // >v<🤖AI辅助-接口-LM Studio（core/ai.js）：连不上回 503，前端安静降级
+          // >v<🎛界面暂存-关掉 AI 框 / 关窗口不丢的界面状态（没发出的话、待确认的动作、查找词、过滤词…）。
+          //   👤 2026-10-08「退出后输入框里没发出的文字要保留…是否执行也要保留…重启托盘才重置」→ 存在这个服务进程的内存里（按工作区），
+          //   托盘程序一退出就没了；不写盘。AI 的短记忆是另一回事（.synapsis/ai_chat.json，重启托盘也在，只有「清空」才清）
+          if (url.pathname === '/ui/stash') {
+            const st = STASH.get(root) || {};
+            if (req.method === 'PUT') { for (const [k, v] of Object.entries(await body(req))) v === null ? delete st[k] : st[k] = v; STASH.set(root, st); }
+            return send(200, st);
+          }
           if (url.pathname.startsWith('/ai/')) {
             const cfg = { ...aiConfig(SYN_HOME, root), log: existsSync(join(root, DIR)) ? join(root, '.synapsis', 'ai_log.jsonl') : null };
             if (url.pathname === '/ai/status') return send(200, await aiStatus(cfg));
@@ -103,7 +112,7 @@ function workspaceApi() {
               return send(200, { estimate: est, model, ctx: m?.ctx || null, maxCtx: m?.maxCtx || null, loaded: !!m?.loaded });
             }
             // AI 指令框：问模型（只回动作草案）/ 👤 确认后执行
-            if (url.pathname === '/ai/apply' && req.method === 'POST') { const b = await body(req); const r = applyPlan(root, b.actions || [], b.boxes || {}, { home: SYN_HOME }); return send(200, { ...r, ...payload(root) }); }
+            if (url.pathname === '/ai/apply' && req.method === 'POST') { const b = await body(req); const r = applyPlan(root, b.actions || [], b.boxes || {}, { home: SYN_HOME }); delete (STASH.get(root) || {}).plan; return send(200, { ...r, ...payload(root) }); }
             // 在线 key：只写进 <Synapsis>/.synapsis/keys.json，回的状态里只有「有没有」
             if (url.pathname === '/ai/key' && req.method === 'PUT') { const b = await body(req); saveKey(SYN_HOME, b.provider || 'deepseek', b.key || ''); return send(200, await aiStatus(aiConfig(SYN_HOME))); }
             // 本地模型的上下文长度：先估显存，再「卸载 → 按新长度加载」（core/lmstudio.js，走 LM Studio 的 lms 命令行）
@@ -111,7 +120,16 @@ function workspaceApi() {
             if (url.pathname === '/ai/lms/load' && req.method === 'POST') { const b = await body(req); try { const r = await lmsReload(b.model || cfg.chat, b.ctx); if (aiConfig(SYN_HOME).chat !== r.key && (b.model || cfg.chat).replace(/:\d+$/, '') === r.key) saveAiConfig(SYN_HOME, { chat: r.key }); return send(200, { ...r, status: await aiStatus(aiConfig(SYN_HOME)) }); } catch (e) { return send(500, { error: e.message }); } }
             if (url.pathname === '/ai/config' && req.method === 'PUT') return send(200, await aiStatus(saveAiConfig(SYN_HOME, await body(req))));
             try {
-              if (url.pathname === '/ai/agent' && req.method === 'POST') { const b = await body(req); return send(200, await runAgent(root, b, cfg, { home: SYN_HOME })); }
+              if (url.pathname === '/ai/agent' && req.method === 'POST') {
+                const b = await body(req), st = STASH.get(root) || {}; STASH.set(root, st);
+                st.thinking = String(b.text || '').slice(0, 40); // 关掉框再打开时，界面看这个知道「还在想」
+                try {
+                  const r = await runAgent(root, b, cfg, { home: SYN_HOME });
+                  if (r.actions.length) st.plan = r; else delete st.plan;
+                  if (String(st['agent.text'] || '').trim() === String(b.text || '').trim()) delete st['agent.text']; // 发出去了 = 输入框该空了
+                  return send(200, r);
+                } finally { delete st.thinking; }
+              } // 待确认的动作服务端也记一份：AI 还在想时关掉框，回来照样能确认
               if (url.pathname === '/ai/related') return send(200, { items: await related(root, url.searchParams.get('id') || '', cfg) });
               if (url.pathname === '/ai/rerank' && req.method === 'POST') { const b = await body(req); return send(200, { items: await rerank(root, b.id, b.items, cfg) }); }
               if (url.pathname === '/ai/explain' && req.method === 'POST') { const b = await body(req); return send(200, { text: await explainRelation(root, b.id, b.other, cfg) }); }

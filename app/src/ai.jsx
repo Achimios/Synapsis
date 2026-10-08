@@ -1,6 +1,7 @@
 // >v<🤖AI辅助-界面-顶栏「🤖 AI」面板（连接状态 / 选模型 / 语义配色开关 / 生成词表）+ 画布右边缘「潜在关联」小窗（core/ai.js）
 import { useState, useEffect, useRef } from 'react';
 import { MdLite } from './mdlite.jsx';
+import { useStash } from './stash.js';
 
 const opts = (list = [], cur) => {
   const ids = list.map(m => m.id);
@@ -193,12 +194,57 @@ function WordsTab({ api, onWordsApplied }) {
   );
 }
 
+// >v<🤖AI指令-框的位置和大小-👤 2026-10-08「AI 界面位置最好能拖动位置和大小」：拖标题栏移动、拖右下角改大小，记在本机（localStorage，换工作区也一样）。
+//   没拖过 = 默认底部居中；双击标题栏空白处回默认。拖出窗口的会被拉回来
+const GEO_KEY = 'syn.agentbox';
+function useBoxGeometry() {
+  const ref = useRef(null);
+  const [g, setG] = useState(() => { try { return JSON.parse(localStorage.getItem(GEO_KEY)) || null; } catch { return null; } });
+  const keep = v => { setG(v); try { v ? localStorage.setItem(GEO_KEY, JSON.stringify(v)) : localStorage.removeItem(GEO_KEY); } catch { /* 存不了就只这次有效 */ } };
+  const clamp = v => v && { ...v, left: Math.max(0, Math.min(window.innerWidth - 120, v.left)), top: Math.max(0, Math.min(window.innerHeight - 40, v.top)) };
+  const drag = e => {
+    if (e.button !== 0 || e.target.closest('a, button, input, select, textarea, .ctxmeter')) return;
+    const r = ref.current.getBoundingClientRect(), x0 = e.clientX, y0 = e.clientY;
+    const move = m => setG({ left: r.left + m.clientX - x0, top: r.top + m.clientY - y0, width: r.width, height: r.height });
+    const up = m => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); keep(clamp({ left: r.left + m.clientX - x0, top: r.top + m.clientY - y0, width: r.width, height: r.height })); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+    e.preventDefault();
+  };
+  // 拖右下角（CSS resize）改了大小 → 记下来
+  useEffect(() => {
+    const el = ref.current; if (!el || typeof ResizeObserver === 'undefined') return;
+    let t = null, first = true;
+    const ro = new ResizeObserver(() => {
+      if (first) { first = false; return; }
+      clearTimeout(t);
+      t = setTimeout(() => { const r = el.getBoundingClientRect(); setG(old => { const v = { left: r.left, top: r.top, width: r.width, height: r.height }; if (old && Math.abs(old.width - v.width) < 2 && Math.abs(old.height - v.height) < 2) return old; try { localStorage.setItem(GEO_KEY, JSON.stringify(v)); } catch { /* */ } return v; }); }, 300);
+    });
+    ro.observe(el);
+    return () => { ro.disconnect(); clearTimeout(t); };
+  }, []);
+  const c = clamp(g);
+  return { ref, drag, reset: () => keep(null), style: c ? { left: c.left, top: c.top, width: c.width, height: c.height, bottom: 'auto', transform: 'none', maxHeight: 'none' } : undefined };
+}
+
 export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, onClose, onWordsApplied }) {
-  const [tab, setTab] = useState('chat');
+  // 关掉框 / 关窗口不丢（托盘重启才清，见 stash.js）：没发出的话、在哪一页、待确认的动作
+  const [tab, setTab] = useStash('agent.tab', 'chat');
   const [turns, setTurns] = useState([]);
-  const [text, setText] = useState('');
+  const [text, setText] = useStash('agent.text', '');
   const [busy, setBusy] = useState('');
-  const [plan, setPlan] = useState(null); // {say, actions}
+  const [plan, setPlan] = useStash('plan', null); // {say, actions}；服务端在 AI 回话时也会记一份
+  // 打开时 AI 还在想（上次没等它回就关了框）→ 等它想完，把结果接回来
+  useEffect(() => {
+    let stop = false;
+    const poll = () => api('/ui/stash').then(s => {
+      if (stop) return;
+      if (s.thinking) { setBusy('🧠 还在想：「' + s.thinking + '」…'); setTimeout(poll, 1000); }
+      else { setBusy(b => b.startsWith('🧠') ? '' : b); if (s.plan) setPlan(s.plan); if (!('agent.text' in s)) setText(''); api('/ai/chat').then(d => setTurns(d.turns)).catch(() => {}); }
+    }).catch(() => {});
+    poll();
+    return () => { stop = true; };
+  }, []);
+  const geo = useBoxGeometry();
   const [log, setLog] = useState(null);
   const [openLog, setOpenLog] = useState(null);
   const inp = useRef(null), list = useRef(null);
@@ -237,8 +283,8 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   };
   const fmt = t => new Date(t).toLocaleTimeString();
   return (
-    <div className="agentbox" onKeyDown={key}>
-      <div className="bar">
+    <div className={'agentbox' + (geo.style ? ' placed' : '')} onKeyDown={key} ref={geo.ref} style={geo.style}>
+      <div className="bar" onPointerDown={geo.drag} onDoubleClick={e => !e.target.closest('a, button, input, select, textarea, .ctxmeter') && geo.reset()} title="拖这条移动框；拖右下角改大小；双击空白处回到默认位置">
         <b>🤖 AI 指令</b>
         <a className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')}>💬 对话</a>
         <a className={tab === 'log' ? 'on' : ''} onClick={() => setTab('log')}>📜 日志</a>

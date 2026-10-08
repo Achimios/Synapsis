@@ -1,4 +1,5 @@
 // 右键菜单、属性面板、文件树（外部区）、文件预览。外壳把状态和动作传进来，这里只管显示。
+import { useStash } from './stash.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, Children } from 'react';
 
 import { PALETTE } from './colors.js';
@@ -169,7 +170,7 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
 //   顶上过滤框（👤 2026-10-08）：默认按文件名 / 路径过滤（命中的和它的上级目录全展开）；勾「内容」= 服务端逐行搜文本文件，列「路径:行 片段」
 export function FileTree({ tree, onOpen, current, api }) {
   const [open, setOpen] = useState({});
-  const [q, setQ] = useState(''), [inBody, setInBody] = useState(false), [grep, setGrep] = useState(null);
+  const [q, setQ] = useStash('files.q', ''), [inBody, setInBody] = useStash('files.body', false), [grep, setGrep] = useState(null); // 过滤词关窗口不丢
   const [fopen, setFopen] = useState({}); // 过滤时的展开状态（另记一份，换词就清空；不沿用平时手点开的）
   useEffect(() => setFopen({}), [q]);
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -226,7 +227,7 @@ export function FileTree({ tree, onOpen, current, api }) {
 //   想在命中处改字：点一下文本框（或按 Esc 回到文本框，光标停在当前命中处）。下面列出命中的行，点一下跳过去。
 //   children = 文本框本身（包一层，好在它后面画高亮）
 export function TextFind({ active, taRef, text, inputRef, children }) {
-  const [q, setQ] = useState(''), [cur, setCur] = useState(-1);
+  const [q, setQ] = useStash('find.q', ''), [cur, setCur] = useState(-1); // 查找词关窗口不丢
   const mir = useRef(null);
   const hits = useMemo(() => {
     const out = [], t = text.toLowerCase(), w = q.toLowerCase();

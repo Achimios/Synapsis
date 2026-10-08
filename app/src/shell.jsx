@@ -8,6 +8,7 @@ import { patternMap, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
 import { ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, HistoryPanel, OutlineTree, HelpModal, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
 const DRAG_PIC = 'application/x-synapsis-pic';
+import { initStash, useStash } from './stash.js';
 import { AiPanel, RelatedDock, AgentBox } from './ai.jsx';
 import { MdLite } from './mdlite.jsx';
 import { SAMPLE } from './sample.js';
@@ -29,6 +30,7 @@ const HIST_KEY = 'syn.hist.' + (WSQ || 'default'); // 撤销记录存 sessionSto
 const withWs = path => '/api' + path + (WSQ ? (path.includes('?') ? '&' : '?') + WSQ : '');
 const api = (path, opts) => fetch(withWs(path), opts && { ...opts, headers: { 'content-type': 'application/json' } })
   .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || (j.report && j.report.errors && JSON.stringify(j.report.errors)) || r.status); return j; });
+initStash(api); // 界面暂存（关窗口不丢，托盘重启才清）：先去服务端取回来
 
 // >v<🎨画布-卡片属性-人加的属性显示在卡片上（👤 2026-10-08：加了属性画布上看不到）；结构 / 显示用的字段不算，最多 4 条
 const SYS_META = new Set(['to', 'label', 'status', 'order', 'color', 'vec', 'axes', 'evidence', 'rate', 'picw', 'img', 'kind']);
@@ -100,7 +102,7 @@ export function Shell({ name, Canvas }) {
     return { keys, u, v, S, pts, angle: angleDeg(u, v), labels: keys.map(k => directionLabel(space, k)) };
   }, [space, spaceAxes, realScope]);
   // >v<🤖AI辅助-接入-LM Studio 状态 / 语义配色（core/ai.js）：连不上就当没有，什么都不挡
-  const [aiStatus, setAiStatus] = useState(null), [aiOpen, setAiOpen] = useState(false), [semCols, setSemCols] = useState(null), [agentOpen, setAgentOpen] = useState(false);
+  const [aiStatus, setAiStatus] = useState(null), [aiOpen, setAiOpen] = useState(false), [semCols, setSemCols] = useState(null), [agentOpen, setAgentOpen] = useStash('agent.open', false); // AI 框开着关窗口，回来还开着
   const aiCheck = () => mode === 'ws' && api('/ai/status').then(setAiStatus).catch(() => setAiStatus({ ok: false, error: 'Synapsis 服务没回应' }));
   useEffect(() => { aiCheck(); }, [mode]);
   useEffect(() => {

@@ -313,7 +313,9 @@ button.aibtn.off { opacity: .7; }
 
 /* AI 指令框（Ctrl+J） */
 .agentbox { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(680px, 94vw); max-height: 62vh; z-index: 900; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; box-shadow: 0 8px 28px rgba(0,0,0,.5); overflow: hidden; }
-.agentbox .bar { display: flex; gap: 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.agentbox .bar { display: flex; gap: 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); cursor: move; user-select: none; }
+.agentbox { resize: both; min-width: 360px; min-height: 160px; } /* 右下角拖大小（位置和大小记在本机，ai.jsx useBoxGeometry） */
+.agentbox .bar a, .agentbox .bar button { cursor: pointer; }
 .agentbox .bar a { cursor: pointer; color: var(--dim); } .agentbox .bar a.on { color: var(--text); border-bottom: 2px solid var(--accent); }
 .agentbox .turns, .agentbox .logs { overflow: auto; padding: 6px 10px; flex: 1; min-height: 60px; }
 .agentbox .turn { margin: 6px 0; }
