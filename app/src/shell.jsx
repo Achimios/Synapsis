@@ -797,6 +797,15 @@ export function Shell({ name, Canvas }) {
   };
 
   const crumbs = breadcrumb(graph, realScope);
+  // >v<🧭导航-上级导航-选中了节点时，面包屑后面接上「选中节点的路径」（👤 2026-10-08）：平时选中的是本页的子节点 = 只多一段（选中的那个）；
+  //   选中的在别的页（搜索 / 大纲跳来的）= 把它的上级链也列出来，点上级 = 选中那个上级节点。↑ = 上一级（有选中 → 选中父节点；没选 → 回到上一层页面并选中刚离开的节点）
+  const selNode = selected && graph.nodes.get(selected);
+  const selTail = selNode && selected !== ROOT ? breadcrumb(graph, selected).filter(c => !crumbs.some(x => x.id === c.id)) : [];
+  const goUp = () => {
+    if (selNode) { if (selNode.parent === ROOT || selNode.parent == null) setSelected(null); else pick(selNode.parent); return; }
+    if (realScope === ROOT) return;
+    const from = realScope; go(graph.nodes.get(from).parent); setSelected(from);
+  };
   // >v<🎨画布-左右栏宽度-拖栏边调宽（👤 2026-10-08），记进 view.json（样例模式 localStorage）
   const dragPanel = (e, side) => {
     e.preventDefault();
@@ -827,7 +836,9 @@ export function Shell({ name, Canvas }) {
       <main>
         <div className="bar top">
           <button className="ghost" onClick={() => setLeftHidden(h => !h)} title="显示/隐藏左栏（大纲、文件）">{leftHidden ? '▸' : '◂'}</button>
-          <span className="crumbs">{crumbs.map((c, i) => <span key={c.id}>{i > 0 && ' › '}<a onClick={() => { go(c.id); setSelected(null); }}>{c.label}</a></span>)}</span>
+          <button className="ghost" disabled={!selected && realScope === ROOT} onClick={goUp} title={selected ? '上一级：选中它的父节点（顶层节点 = 取消选中）' : '上一级：回到上一层页面，并选中刚离开的那个节点'}>↑</button>
+          <span className="crumbs">{crumbs.map((c, i) => <span key={c.id}>{i > 0 && ' › '}<a onClick={() => { go(c.id); setSelected(null); }}>{c.label}</a></span>)}
+            {selTail.map((c, i) => <span key={c.id}>{' › '}{i === selTail.length - 1 ? <a className="cur" title="当前选中的节点">{c.label}</a> : <a title="选中这个上级节点" onClick={() => pick(c.id)}>{c.label}</a>}</span>)}</span>
           <span className="grow" />
           <span className="save-wrap"><span className={'save' + (saveState.startsWith('❌') || saveState.startsWith('⚠') ? ' bad' : '')} title={wsData?.root || ''}>{mode === 'ws' ? (wsData?.root || '').split(/[\\/]/).slice(-1)[0] + ' · ' : mode === 'demo' ? '样例 · ' : ''}{saveState}</span></span>
           <button className="ghost sidetoggle" onClick={() => setPropsOpen(o => !o)} title="显示 / 隐藏右栏（属性）  Ctrl+Tab">{propsOpen ? '▸' : '◂'}</button>

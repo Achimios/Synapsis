@@ -351,7 +351,16 @@ export function OutlineTree({ graph, selected, scope, renaming, status, onPick, 
   const rows = [];
   const walk = (id, depth, top = null) => { for (const c of graph.nodes.get(id).children) { if (flt && !flt.keep.has(c)) continue; const n = graph.nodes.get(c); rows.push({ n, depth, top: top ?? c }); if (n.children.length && isOpen(c, depth)) walk(c, depth + 1, top ?? c); } };
   walk('', 0);
-  useEffect(() => { box.current?.querySelector('.orow.sel')?.scrollIntoView({ block: 'nearest' }); }, [selected]);
+  // 选中节点 → 大纲里把它滚到正中间（👤 2026-10-08：以前 nearest，从下面选上来就贴在最底下）。只滚大纲这个盒子，不带动外层；
+  //   人自己在大纲里点的那一下不滚（点哪行哪行不动，不然列表会在手底下跳）；键盘上下走、画布上选、面包屑 / ↑ 都居中
+  const byClick = useRef(false);
+  useEffect(() => {
+    const b = box.current, el = b?.querySelector('.orow.sel');
+    if (!b || !el) return;
+    if (byClick.current) { byClick.current = false; return; }
+    const bb = b.getBoundingClientRect(), er = el.getBoundingClientRect();
+    b.scrollTop += er.top - bb.top - (bb.height - er.height) / 2;
+  }, [selected]);
   const onKey = e => {
     if (renaming) return;
     const i = rows.findIndex(r => r.n.id === selected), r = rows[i];
@@ -367,6 +376,7 @@ export function OutlineTree({ graph, selected, scope, renaming, status, onPick, 
     <button className="ghost" title="全部折叠（只留第一层）" onClick={() => setOpen(Object.fromEntries([...graph.nodes.values()].filter(n => n.children.length).map(n => [n.id, false])))}>⊟</button>
     </div>
     <div className={'otree' + (over === '' ? ' dropr' : '')} ref={box} tabIndex={0} onKeyDown={onKey}
+      onPointerDown={() => { byClick.current = true; setTimeout(() => { byClick.current = false; }, 300); }}
       onDragOver={e => { if (onMove && e.dataTransfer.types.includes(DRAG_NODE)) { e.preventDefault(); if (e.target === box.current) setOver(''); } }}
       onDragLeave={e => { if (e.target === box.current) setOver(null); }}
       onDrop={e => { const id = e.dataTransfer.getData(DRAG_NODE); if (id && e.target === box.current) { e.preventDefault(); setOver(null); onMove(id, ''); } }}>

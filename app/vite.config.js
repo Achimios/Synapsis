@@ -6,7 +6,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, restoreRemoved, pasteNodes, ensureColorWords, ensurePatternWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, movePic, grepProject, DIR } from '../core/workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText } from '../core/cli.js';
-import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, readAiLog } from '../core/ai.js';
+import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, readAiLog, readUsage } from '../core/ai.js';
 import { lmsEstimate, lmsReload } from '../core/lmstudio.js';
 import { runAgent, applyPlan, loadChat, clearChat, estimateContext, isLoose } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
@@ -102,6 +102,7 @@ function workspaceApi() {
           if (url.pathname.startsWith('/ai/')) {
             const cfg = { ...aiConfig(SYN_HOME, root), log: existsSync(join(root, DIR)) ? join(root, '.synapsis', 'ai_log.jsonl') : null };
             if (url.pathname === '/ai/status') return send(200, await aiStatus(cfg));
+            if (url.pathname === '/ai/usage') return send(200, readUsage(cfg));
             if (url.pathname === '/ai/log') return send(200, { entries: cfg.log ? readAiLog(cfg.log, Number(url.searchParams.get('n')) || 60) : [] });
             if (url.pathname === '/ai/chat' && req.method === 'GET') return send(200, { turns: loadChat(root) });
             if (url.pathname === '/ai/chat' && req.method === 'DELETE') { clearChat(root); return send(200, { turns: [] }); }

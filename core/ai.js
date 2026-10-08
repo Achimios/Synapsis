@@ -131,7 +131,7 @@ const cacheOf = root => join(root, '.synapsis', 'embed.json');
 export async function chat(cfg, system, user, maxTokens = 300, opts = {}) {
   const model = chatModel(cfg, opts.bulk), on = onlineOf(model);
   const messages = [{ role: 'system', content: system }, ...(opts.history || []), { role: 'user', content: on ? user : user + '\n/no_think' }];
-  const t0 = Date.now();
+  const t0 = Date.now(), u = opts.usage || {}; // u = 这次的 token 用量（调用方没传就自己攒一份，用来记总用量）
   let raw = '', err = null;
   try {
     const body = { model: on ? on.model : model, temperature: opts.temperature ?? 0.3, max_tokens: maxTokens, messages };
@@ -145,9 +145,10 @@ export async function chat(cfg, system, user, maxTokens = 300, opts = {}) {
       r = await res.json();
     } else r = await post(cfg, '/chat/completions', body);
     raw = r.choices?.[0]?.message?.content || '';
-    if (opts.usage && r.usage) Object.assign(opts.usage, r.usage);
+    if (r.usage) Object.assign(u, r.usage);
   } catch (e) { err = e; }
-  aiLog(cfg, { kind: opts.kind || 'chat', model, effort: on ? cfg.onlineEffort : undefined, ms: Date.now() - t0, messages, raw, error: err?.message, usage: opts.usage });
+  aiLog(cfg, { kind: opts.kind || 'chat', model, effort: on ? cfg.onlineEffort : undefined, ms: Date.now() - t0, messages, raw, error: err?.message, usage: Object.keys(u).length ? u : undefined });
+  addUsage(cfg, { online: !!on, kind: opts.kind || 'chat', usage: u });
   if (err) throw err;
   return raw.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 }
@@ -162,6 +163,30 @@ export function aiLog(cfg, entry) {
     const s = readFileSync(cfg.log, 'utf8');
     if (s.length > 2e6) writeFileSync(cfg.log, s.slice(s.indexOf('\n', s.length / 2) + 1));
   } catch { /* 日志写不了不影响功能 */ }
+}
+// >v<🤖AI辅助-用量-每次调对话模型的 token 用量，按「天 × 在线 / 本地 × 用途」累加到 <Synapsis>/.synapsis/ai_usage.json（所有项目合计，留 60 天）。
+//   界面：AI 指令框「日志」页顶上的「📊 用量」。用途名去掉括号里的细节（「AI 指令（查看：n3）」→「AI 指令」）。
+//   n = 调用次数，p = 提示 token，c = 回答 token，h = 其中命中缓存的提示 token（DeepSeek 报了才有；缓存命中便宜得多）
+const usageFile = cfg => cfg.keys ? join(dirname(cfg.keys), 'ai_usage.json') : null;
+const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+export function addUsage(cfg, { online, kind, usage = {} }) {
+  const f = usageFile(cfg); if (!f) return;
+  try {
+    let all = {}; try { all = JSON.parse(readFileSync(f, 'utf8')); } catch { /* 第一次 */ }
+    const day = (all[today()] ??= {}), side = (day[online ? 'online' : 'local'] ??= {}), k = String(kind).replace(/（.*$/, '').trim() || 'chat', e = (side[k] ??= { n: 0, p: 0, c: 0, h: 0 });
+    e.n++; e.p += usage.prompt_tokens || 0; e.c += usage.completion_tokens || 0; e.h += usage.prompt_cache_hit_tokens || 0;
+    for (const d of Object.keys(all).sort().slice(0, -60)) delete all[d];
+    mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, JSON.stringify(all));
+  } catch { /* 记不了用量不影响功能 */ }
+}
+// 今天 / 近 7 天 的合计：{ today: { online: { n, p, c, h, kinds: { 用途: {n,p,c,h} } }, local: {…} }, week: {…} }
+export function readUsage(cfg) {
+  let all = {}; try { all = JSON.parse(readFileSync(usageFile(cfg), 'utf8')); } catch { /* 没有 */ }
+  const sum = days => { const out = { online: { n: 0, p: 0, c: 0, h: 0, kinds: {} }, local: { n: 0, p: 0, c: 0, h: 0, kinds: {} } };
+    for (const d of days) for (const side of ['online', 'local']) for (const [k, e] of Object.entries(all[d]?.[side] || {})) { const o = out[side], kk = (o.kinds[k] ??= { n: 0, p: 0, c: 0, h: 0 }); for (const x of ['n', 'p', 'c', 'h']) { o[x] += e[x] || 0; kk[x] += e[x] || 0; } }
+    return out; };
+  const last7 = Object.keys(all).sort().slice(-7);
+  return { today: sum([today()]), week: sum(last7) };
 }
 export function readAiLog(file, n = 60) {
   try { return readFileSync(file, 'utf8').trim().split('\n').slice(-n).reverse().map(l => JSON.parse(l)); } catch { return []; }

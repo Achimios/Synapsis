@@ -26,6 +26,18 @@ export function CtxMeter({ ctx, usage }) {
   return <span className={'ctxmeter' + (pct > 1 ? ' over' : pct > 0.8 ? ' warn' : '')} title={tip}>🧠 {usage?.total_tokens ? '' : '≈'}{kfmt(used)} / {cap ? kfmt(cap) : '?'}</span>;
 }
 
+// >v<🤖AI指令-用量-日志页顶上：今天 / 近 7 天 各用了多少 token，在线和本地分开（所有项目合计；指令框、配色、关联、词表……每次调对话模型都计）。悬停看按用途拆开
+function UsageBar({ api, tick }) {
+  const [u, setU] = useState(null);
+  useEffect(() => { api('/ai/usage').then(setU).catch(() => setU(null)); }, [tick]);
+  if (!u) return null;
+  const tot = s => s.p + s.c;
+  const line = (label, d) => `${label}　在线 ${kfmt(tot(d.online))}（${d.online.n} 次${d.online.h ? '，缓存命中 ' + kfmt(d.online.h) : ''}）· 本地 ${kfmt(tot(d.local))}（${d.local.n} 次）`;
+  const kinds = (d, side) => Object.entries(d[side].kinds).sort((a, b) => tot(b[1]) - tot(a[1])).map(([k, e]) => `  ${k}：${kfmt(tot(e))}（${e.n} 次）`).join('\n') || '  （无）';
+  const tip = `今天 · 在线\n${kinds(u.today, 'online')}\n今天 · 本地\n${kinds(u.today, 'local')}\n近 7 天 · 在线\n${kinds(u.week, 'online')}\n\n提示 + 回答的 token 数（服务端报的）。嵌入不计（一直在本地跑）。所有项目合计，存在 Synapsis 的 .synapsis/ai_usage.json。`;
+  return <div className="usagebar hint" title={tip}>📊 {line('今天', u.today)}　｜　{line('近 7 天', u.week)}</div>;
+}
+
 export function AiPanel({ api, status, onStatus, onClose }) {
   const [busy, setBusy] = useState('');
   const cfg = status?.cfg || {};
@@ -317,6 +329,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
         <textarea ref={inp} className="ask" rows={2} value={text} onChange={e => setText(e.target.value)}
           placeholder={plan?.actions.some(a => a.ok) ? 'Enter = 执行上面的动作；或者接着说（改主意 / 补充）' : '说要做什么…（Enter 发送，Shift+Enter 换行）' + (selected.length ? `　已选 ${selected.length} 个` : '')} />
       </> : tab === 'words' ? <WordsTab api={api} onWordsApplied={onWordsApplied} /> : <div className="logs">
+        <UsageBar api={api} tick={log} />
         {!log ? <div className="hint pad">读取中…</div> : !log.length ? <div className="hint pad">还没有调用记录</div> : log.map((l, i) => <div key={i} className="logrow">
           <div className="head" onClick={() => setOpenLog(openLog === i ? null : i)}>
             <span className="t">{fmt(l.t)}</span><b>{l.kind}</b><span className="hint">{l.model} · {l.ms} ms</span>{l.error && <span className="bad">❌ {l.error}</span>}

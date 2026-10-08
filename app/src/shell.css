@@ -54,6 +54,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .crumbs a { cursor: pointer; color: var(--text); }
 .crumbs a:hover { color: var(--accent); }
 .crumbs span:last-child a { color: #fff; }
+.crumbs span:last-child a.cur { color: var(--accent); cursor: default; } /* 选中节点那一段：不是链接 */
 button { font: inherit; color: var(--text); padding: 1px 8px; border: 1px solid var(--line2); background: var(--panel2); border-radius: 3px; cursor: pointer; }
 button:hover { background: var(--hover); border-color: var(--line2); }
 button.ghost { border-color: transparent; background: none; padding: 1px 4px; color: var(--dim); }
@@ -329,6 +330,7 @@ button.aibtn.off { opacity: .7; }
 .agentbox .plan .row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
 .agentbox button.go { border-color: var(--ok); }
 .agentbox textarea.ask { border: 0; border-top: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; font-size: 14px; padding: 8px 10px; resize: none; outline: none; }
+.agentbox .usagebar { padding: 2px 0 6px; font-size: 11px; border-bottom: 1px solid var(--line); cursor: help; }
 .agentbox .logrow { border-bottom: 1px solid var(--line); }
 .agentbox .logrow .head { display: flex; gap: 8px; align-items: center; padding: 4px 0; cursor: pointer; }
 .agentbox .logrow .head .t { color: var(--dim); font: var(--mono); }

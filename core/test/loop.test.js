@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runAgent, applyPlan, loadChat, outcomeNote, recordOutcome, overlapWarnings, parseReply, pageContext, lookAt, LOOK_MAX } from '../agent.js';
 import { saveOutline, setNodeBody, loadWorkspace } from '../workspace.js';
+import { readUsage } from '../ai.js';
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { c ? pass++ : (fail++, console.log('✗', m)); };
@@ -27,13 +28,13 @@ try {
     let b = ''; req.on('data', d => b += d); req.on('end', () => {
       const j = JSON.parse(b); seen.push(j.messages[j.messages.length - 1].content);
       const content = JSON.stringify(script.length > 1 ? script.shift() : script[0] || { say: '嗯', actions: [] });
-      res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content } }], usage: { total_tokens: 1 } }));
+      res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10, prompt_cache_hit_tokens: 4 } }));
     });
   }).listen(0);
   await new Promise(r => srv.once('listening', r));
   process.env.SYNAPSIS_ONLINE_URL = `http://127.0.0.1:${srv.address().port}`;
   process.env.DEEPSEEK_API_KEY = 'sk-fake';
-  const cfg = { url: 'http://127.0.0.1:9/v1', chat: 'q', agentSrc: 'online', onlineModel: 'deepseek-flash' };
+  const cfg = { url: 'http://127.0.0.1:9/v1', chat: 'q', agentSrc: 'online', onlineModel: 'deepseek-flash', keys: join(home, '.synapsis', 'keys.json') };
   const boxes = { 观测: { x: 0, y: 0, w: 80, h: 30 }, 决策: { x: 200, y: 0, w: 80, h: 30 } };
   const run = (text, c = cfg) => runAgent(root, { text, boxes }, c, { home });
   const last = () => seen[seen.length - 1];
@@ -84,6 +85,13 @@ try {
   const b3 = seen.length;
   const rs = await run('看看本地', { ...cfg, agentSrc: 'local', url: `http://127.0.0.1:${srv.address().port}/v1` });
   ok(seen.length - b3 === 1 && !rs.looked.length, '本地 8B 不开 look');
+
+  // —— 用量：每次调对话模型都记（在线 / 本地分开；用途名去掉括号里的细节）——
+  const us = readUsage(cfg), on = us.today.online, lo = us.today.local;
+  ok(on.n === seen.length - 1 && on.p === 7 * on.n && on.c === 3 * on.n && on.h === 4 * on.n, `在线用量累加：${on.n} 次，提示 ${on.p}、回答 ${on.c}、缓存命中 ${on.h}（共 ${seen.length} 次请求，其中 1 次本地）`);
+  ok(lo.n === 1 && lo.p === 7, '本地那一次记在本地');
+  ok(on.kinds['AI 指令']?.n >= 3 && !Object.keys(on.kinds).some(k => k.includes('（')), '用途名去掉括号里的细节：查看 / 读记忆都算进「AI 指令」 ' + Object.keys(on.kinds).join('|'));
+  ok(us.week.online.n === on.n, '近 7 天合计包含今天');
 
   // —— lookAt 单测：页 / 搜索不动工作区 ——
   const ctx = pageContext(loadWorkspace(root), '', []);
