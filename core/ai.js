@@ -13,10 +13,40 @@ import { isDropped } from './outline.js';
 
 export const AI_DEFAULTS = { url: 'http://127.0.0.1:1234/v1', embed: 'text-embedding-qwen3-embedding-0.6b', chat: 'qwen3-8b', semColors: true };
 const cfgFile = home => join(home, '.synapsis', 'ai.json');
+
+// >v<🤖AI辅助-在线对话模型-DeepSeek（👤 2026-10-08「给个在线接口」）：只接对话，嵌入照旧用 LM Studio（DeepSeek 没有嵌入接口）。
+//   key 放 <Synapsis>/.synapsis/keys.json 的 {"deepseek": "sk-…"}（.synapsis/ 整个不进 git），或环境变量 DEEPSEEK_API_KEY。
+//   key 只在服务端读，不进 cfg、不回给界面、不写日志。对话模型 id 带前缀「deepseek:」，和本地模型在同一个下拉框里选。
+//   cfg.online === false → 不查在线模型（自检用，免得跑测试时联网）
+export const ONLINE = { deepseek: { url: 'https://api.deepseek.com', env: 'DEEPSEEK_API_KEY' } };
+export const keyFile = home => join(home, '.synapsis', 'keys.json');
+const onlineOf = id => { const m = /^(\w+):(.+)$/.exec(id || ''); return m && ONLINE[m[1]] ? { provider: m[1], model: m[2], ...ONLINE[m[1]] } : null; };
+function onlineKey(cfg, provider) {
+  if (process.env[ONLINE[provider].env]) return process.env[ONLINE[provider].env];
+  try { return JSON.parse(readFileSync(cfg.keys, 'utf8'))[provider] || null; } catch { return null; }
+}
+const onlineCache = {};
+async function onlineModels(cfg) {
+  if (cfg.online === false) return [];
+  const out = [];
+  for (const [p, o] of Object.entries(ONLINE)) {
+    const key = onlineKey(cfg, p);
+    if (!key) continue;
+    if (!onlineCache[p] || Date.now() - onlineCache[p].t > 10 * 60e3) {
+      try {
+        const r = await fetch(o.url + '/models', { headers: { authorization: 'Bearer ' + key }, signal: AbortSignal.timeout(5000) });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        onlineCache[p] = { t: Date.now(), list: (await r.json()).data.map(m => ({ id: p + ':' + m.id, name: m.name || m.id, embed: false, loaded: true, online: true, ctx: m.context_window || null, maxCtx: m.context_window || null })) };
+      } catch { continue; }
+    }
+    out.push(...onlineCache[p].list);
+  }
+  return out;
+}
 // root 给了：工作区自己的 .synapsis/ai.json 可以覆盖（比如某个项目关掉语义配色；自检用它把临时工作区指到假服务）
 export function aiConfig(home, root = null) {
   const read = f => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return {}; } };
-  return { ...AI_DEFAULTS, ...read(cfgFile(home)), ...(root ? read(join(root, '.synapsis', 'ai.json')) : {}), ...(process.env.SYNAPSIS_LLM_URL ? { url: process.env.SYNAPSIS_LLM_URL } : {}) };
+  return { ...AI_DEFAULTS, keys: keyFile(home), ...read(cfgFile(home)), ...(root ? read(join(root, '.synapsis', 'ai.json')) : {}), ...(process.env.SYNAPSIS_LLM_URL ? { url: process.env.SYNAPSIS_LLM_URL } : {}) };
 }
 export function saveAiConfig(home, patch) {
   const next = { ...aiConfig(home), ...patch };
@@ -45,8 +75,10 @@ export async function aiStatus(cfg) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       list = (await r.json()).data.map(m => ({ id: m.id, embed: /embed/i.test(m.id) }));
     }
-    return { ok: true, cfg, embed: list.filter(m => m.embed), chat: list.filter(m => !m.embed) };
+    return { ok: true, cfg, embed: list.filter(m => m.embed), chat: [...list.filter(m => !m.embed), ...await onlineModels(cfg)] };
   } catch (e) {
+    const on = await onlineModels(cfg); // LM Studio 没开也能用在线对话（嵌入类功能这时没有）
+    if (on.length) return { ok: true, cfg, embed: [], chat: on, warn: `本地 LM Studio 没连上（${e.cause?.code || e.message}）：潜在关联、语义配色用不了，在线对话模型照常` };
     return { ok: false, cfg, error: `连不上 ${base}（LM Studio 开了本机服务吗？）：${e.cause?.code || e.message}` };
   }
 }
@@ -76,11 +108,20 @@ const cacheOf = root => join(root, '.synapsis', 'embed.json');
 // —— 对话：一次性短回答。Qwen3 的思考用 /no_think 关掉，回来的 <think> 段剥掉 ——
 // opts.kind = 日志里的用途名；opts.history = 之前几轮 [{role, content}]（AI 指令框的短记忆）；opts.usage = 传个空对象进来，填上服务端报的 token 用量
 export async function chat(cfg, system, user, maxTokens = 300, opts = {}) {
-  const messages = [{ role: 'system', content: system }, ...(opts.history || []), { role: 'user', content: user + '\n/no_think' }];
+  const on = onlineOf(cfg.chat);
+  const messages = [{ role: 'system', content: system }, ...(opts.history || []), { role: 'user', content: on ? user : user + '\n/no_think' }];
   const t0 = Date.now();
   let raw = '', err = null;
   try {
-    const r = await post(cfg, '/chat/completions', { model: cfg.chat, temperature: opts.temperature ?? 0.3, max_tokens: maxTokens, messages });
+    const body = { model: on ? on.model : cfg.chat, temperature: opts.temperature ?? 0.3, max_tokens: maxTokens, messages };
+    let r;
+    if (on) { // 在线：关掉思考（一句话 < 1 秒；开着要多等、多花钱，这里的活用不上）
+      const key = onlineKey(cfg, on.provider);
+      if (!key) throw new Error(`没有 ${on.provider} 的 key：写进 ${cfg.keys}（{"${on.provider}": "sk-…"}）或设环境变量 ${on.env}`);
+      const res = await fetch(on.url + '/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key }, body: JSON.stringify({ ...body, thinking: { type: 'disabled' } }), signal: AbortSignal.timeout(120000) });
+      if (!res.ok) throw new Error(`${on.provider} ${res.status}：${(await res.text()).slice(0, 200)}`);
+      r = await res.json();
+    } else r = await post(cfg, '/chat/completions', body);
     raw = r.choices?.[0]?.message?.content || '';
     if (opts.usage && r.usage) Object.assign(opts.usage, r.usage);
   } catch (e) { err = e; }

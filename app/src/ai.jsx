@@ -4,7 +4,7 @@ import { MdLite } from './mdlite.jsx';
 
 const opts = (list = [], cur) => {
   const ids = list.map(m => m.id);
-  return [...(cur && !ids.includes(cur) ? [cur] : []), ...ids].map(id => <option key={id} value={id}>{id}{list.find(m => m.id === id)?.loaded ? '（已加载）' : ''}</option>);
+  return [...(cur && !ids.includes(cur) ? [cur] : []), ...ids].map(id => <option key={id} value={id}>{(m => m?.online ? '☁ ' + m.name + '（在线，按量计费）' : id + (m?.loaded ? '（已加载）' : ''))(list.find(m => m.id === id))}</option>);
 };
 
 const kfmt = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(n);
@@ -16,7 +16,7 @@ export function CtxMeter({ ctx, usage }) {
   const pct = cap ? used / cap : 0;
   const tip = [
     `对话模型：${ctx.model || '?'}`,
-    cap ? `上下文容量：${cap} token（LM Studio 加载时设的；这个模型最多 ${ctx.maxCtx || '?'}）` : `模型还没加载，容量未知（最多 ${ctx.maxCtx || '?'}）`,
+    cap ? `上下文容量：${cap} token（${/^\w+:/.test(ctx.model || '') ? '在线模型' : 'LM Studio 加载时设的'}；这个模型最多 ${ctx.maxCtx || '?'}）` : `模型还没加载，容量未知（最多 ${ctx.maxCtx || '?'}）`,
     usage?.total_tokens ? `上一次实际用了：提示 ${usage.prompt_tokens} + 回答 ${usage.completion_tokens} = ${usage.total_tokens}` : '还没问过 → 下面是估算',
     ...(ctx.estimate ? Object.entries(ctx.estimate.parts).map(([k, v]) => `  ≈ ${k} ${v}`) : []),
     cap && cap < 16000 ? '嫌小：LM Studio 里卸载模型 → 加载时把 Context Length 调大（越大越吃显存）' : '',
@@ -37,13 +37,14 @@ export function AiPanel({ api, status, onStatus, onClose, onWordsApplied }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="aipanel" onClick={e => e.stopPropagation()}>
-        <div className="bar"><b>🤖 AI 辅助（LM Studio）</b><span style={{ flex: 1 }} /><button onClick={onClose}>✕</button></div>
+        <div className="bar"><b>🤖 AI 辅助（LM Studio / 在线）</b><span style={{ flex: 1 }} /><button onClick={onClose}>✕</button></div>
         <div className="aibody">
-          <div className={'aistat ' + (status?.ok ? 'on' : 'off')}>{!status ? '检查中…' : status.ok ? '● 已连上 ' + cfg.url : '● ' + status.error}</div>
+          <div className={'aistat ' + (status?.ok ? 'on' : 'off')}>{!status ? '检查中…' : status.ok ? '● 已连上 ' + cfg.url : '● ' + status.error}{status?.warn ? <div className="hint">⚠ {status.warn}</div> : null}</div>
           <details open={status && !status.ok}><summary>怎么连？</summary>
             <p>LM Studio 左边 <b>Developer</b>（开发者）→ <b>Start Server</b>（或命令行 <code>lms server start</code>），默认端口 1234。
               它提供 OpenAI 兼容的 HTTP 接口，Synapsis 的本机服务直接调，<b>不需要通讯桥</b>。模型不用先手动加载，第一次用时 LM Studio 会自动加载（会慢一下）。
               玩游戏前可以在 LM Studio 里卸载模型（<code>lms unload --all</code>）腾显存。</p>
+            <p><b>在线对话模型（DeepSeek）</b>：把 key 写进 Synapsis 目录下 <code>.synapsis/keys.json</code>（<code>{'{"deepseek": "sk-…"}'}</code>，这个文件夹不进 git），重开这个面板，对话模型下拉里会多出 ☁ 开头的在线模型。只管对话（AI 指令框、生成词表、配色归类）；潜在关联要的嵌入模型还是用 LM Studio。</p>
           </details>
           <label>地址<input key={cfg.url} defaultValue={cfg.url} onBlur={e => e.target.value.trim() && e.target.value !== cfg.url && save({ url: e.target.value.trim() })} /></label>
           <label>嵌入模型 <span className="hint">潜在关联</span><select value={cfg.embed || ''} onChange={e => save({ embed: e.target.value })}>{opts(status?.embed, cfg.embed)}</select></label>

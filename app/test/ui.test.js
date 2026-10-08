@@ -16,7 +16,7 @@ let pass = 0, fail = 0;
 const ok = (c, m) => { c ? pass++ : (fail++, console.log('  ✗', m)); };
 const sleep = t => new Promise(r => setTimeout(r, t));
 // 临时工作区不碰真的 LM Studio：工作区级 .synapsis/ai.json 指到一个没人听的端口（AI 那段自检另起假服务）
-const noAi = (ws, url = 'http://127.0.0.1:9/v1', extra = {}) => { mkdirSync(join(ws, '.synapsis'), { recursive: true }); writeFileSync(join(ws, '.synapsis', 'ai.json'), JSON.stringify({ url, ...extra })); };
+const noAi = (ws, url = 'http://127.0.0.1:9/v1', extra = {}) => { mkdirSync(join(ws, '.synapsis'), { recursive: true }); writeFileSync(join(ws, '.synapsis', 'ai.json'), JSON.stringify({ url, online: false, ...extra })); };
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 
