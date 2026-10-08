@@ -6,7 +6,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, restoreRemoved, pasteNodes, ensureColorWords, ensurePatternWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, movePic, grepProject, DIR } from '../core/workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText } from '../core/cli.js';
-import { aiConfig, saveAiConfig, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, readAiLog } from '../core/ai.js';
+import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, readAiLog } from '../core/ai.js';
+import { lmsEstimate, lmsReload } from '../core/lmstudio.js';
 import { runAgent, applyPlan, loadChat, clearChat, estimateContext } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
 const SYN_HOME = resolve(fileURLToPath(new URL('.', import.meta.url)), '..'); // AI 设置是本机的：<Synapsis>/.synapsis/ai.json
@@ -98,11 +99,16 @@ function workspaceApi() {
             // 上下文：这次大概要占多少（估）+ 对话模型加载时设的上下文长度（LM Studio /api/v0/models 的 loaded_context_length）
             if (url.pathname === '/ai/context') {
               const est = existsSync(join(root, DIR)) ? estimateContext(root, { scope: url.searchParams.get('scope') || '', selected: (url.searchParams.get('selected') || '').split('\n').filter(Boolean) }) : null;
-              const st = await aiStatus(cfg), m = st.ok ? st.chat.find(x => x.id === cfg.chat) : null;
-              return send(200, { estimate: est, model: cfg.chat, ctx: m?.ctx || null, maxCtx: m?.maxCtx || null, loaded: !!m?.loaded });
+              const st = await aiStatus(cfg), model = chatModel(cfg), m = chatInfo(st, model);
+              return send(200, { estimate: est, model, ctx: m?.ctx || null, maxCtx: m?.maxCtx || null, loaded: !!m?.loaded });
             }
             // AI 指令框：问模型（只回动作草案）/ 👤 确认后执行
             if (url.pathname === '/ai/apply' && req.method === 'POST') { const b = await body(req); const r = applyPlan(root, b.actions || [], b.boxes || {}); return send(200, { ...r, ...payload(root) }); }
+            // 在线 key：只写进 <Synapsis>/.synapsis/keys.json，回的状态里只有「有没有」
+            if (url.pathname === '/ai/key' && req.method === 'PUT') { const b = await body(req); saveKey(SYN_HOME, b.provider || 'deepseek', b.key || ''); return send(200, await aiStatus(aiConfig(SYN_HOME))); }
+            // 本地模型的上下文长度：先估显存，再「卸载 → 按新长度加载」（core/lmstudio.js，走 LM Studio 的 lms 命令行）
+            if (url.pathname === '/ai/lms/estimate') { try { return send(200, await lmsEstimate(url.searchParams.get('model') || cfg.chat, Number(url.searchParams.get('ctx')))); } catch (e) { return send(500, { error: e.message }); } }
+            if (url.pathname === '/ai/lms/load' && req.method === 'POST') { const b = await body(req); try { const r = await lmsReload(b.model || cfg.chat, b.ctx); return send(200, { ...r, status: await aiStatus(aiConfig(SYN_HOME)) }); } catch (e) { return send(500, { error: e.message }); } }
             if (url.pathname === '/ai/config' && req.method === 'PUT') return send(200, await aiStatus(saveAiConfig(SYN_HOME, await body(req))));
             try {
               if (url.pathname === '/ai/agent' && req.method === 'POST') { const b = await body(req); return send(200, await runAgent(root, b, cfg)); }

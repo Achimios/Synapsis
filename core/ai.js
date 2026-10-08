@@ -11,23 +11,36 @@ import { PALETTE, WORDS_FILE, DEFAULT_WORDS, parseColorWords, wordColor } from '
 import { PATTERN_HINT, DEFAULT_PATTERN_WORDS, parsePatternWords, wordPattern } from './patterns.js';
 import { isDropped } from './outline.js';
 
-export const AI_DEFAULTS = { url: 'http://127.0.0.1:1234/v1', embed: 'text-embedding-qwen3-embedding-0.6b', chat: 'qwen3-8b', semColors: true };
+// agentSrc = AI 指令框 / 问答 / 生成词表 / 「?」关系说明 用本地还是在线；bulkSrc = 高频后台（潜在关联重排、语义配色归类），默认本地（👤「高频调用的默认不用在线」）
+export const AI_DEFAULTS = { url: 'http://127.0.0.1:1234/v1', embed: 'text-embedding-qwen3-embedding-0.6b', chat: 'qwen3-8b', semColors: true,
+  agentSrc: 'local', bulkSrc: 'local', onlineModel: 'deepseek-flash', onlineEffort: 'off' };
+export const EFFORTS = ['off', 'low', 'high', 'max']; // off = 不思考（默认：快、省钱）；其余 = DeepSeek 的 reasoning_effort
 const cfgFile = home => join(home, '.synapsis', 'ai.json');
 
 // >v<🤖AI辅助-在线对话模型-DeepSeek（👤 2026-10-08「给个在线接口」）：只接对话，嵌入照旧用 LM Studio（DeepSeek 没有嵌入接口）。
-//   key 放 <Synapsis>/.synapsis/keys.json 的 {"deepseek": "sk-…"}（.synapsis/ 整个不进 git），或环境变量 DEEPSEEK_API_KEY。
-//   key 只在服务端读，不进 cfg、不回给界面、不写日志。对话模型 id 带前缀「deepseek:」，和本地模型在同一个下拉框里选。
-//   cfg.online === false → 不查在线模型（自检用，免得跑测试时联网）
+//   key 放 <Synapsis>/.synapsis/keys.json 的 {"deepseek": "sk-…"}（.synapsis/ 整个不进 git），或环境变量 DEEPSEEK_API_KEY；界面里也能填（写进同一个文件）。
+//   key 只在服务端读，不进 cfg、不回给界面（只回「有没有」）、不写日志。
+//   cfg.offline === true → 不查在线模型、全部走本地（自检用，免得跑测试时联网花钱）
 export const ONLINE = { deepseek: { url: 'https://api.deepseek.com', env: 'DEEPSEEK_API_KEY' } };
 export const keyFile = home => join(home, '.synapsis', 'keys.json');
 const onlineOf = id => { const m = /^(\w+):(.+)$/.exec(id || ''); return m && ONLINE[m[1]] ? { provider: m[1], model: m[2], ...ONLINE[m[1]] } : null; };
+// 这次调用实际用哪个对话模型（在线的带「deepseek:」前缀）
+export const chatModel = (cfg, bulk = false) => !cfg.offline && (bulk ? cfg.bulkSrc : cfg.agentSrc) === 'online' ? 'deepseek:' + (cfg.onlineModel || 'deepseek-flash') : cfg.chat;
 function onlineKey(cfg, provider) {
   if (process.env[ONLINE[provider].env]) return process.env[ONLINE[provider].env];
   try { return JSON.parse(readFileSync(cfg.keys, 'utf8'))[provider] || null; } catch { return null; }
 }
+export function saveKey(home, provider, key) {
+  if (!ONLINE[provider]) throw new Error('不认识 ' + provider);
+  let all = {}; try { all = JSON.parse(readFileSync(keyFile(home), 'utf8')); } catch { /* 第一次 */ }
+  if (key) all[provider] = String(key).trim(); else delete all[provider];
+  mkdirSync(dirname(keyFile(home)), { recursive: true });
+  writeFileSync(keyFile(home), JSON.stringify(all, null, 2));
+  delete onlineCache[provider];
+}
 const onlineCache = {};
 async function onlineModels(cfg) {
-  if (cfg.online === false) return [];
+  if (cfg.offline) return [];
   const out = [];
   for (const [p, o] of Object.entries(ONLINE)) {
     const key = onlineKey(cfg, p);
@@ -49,10 +62,10 @@ export function aiConfig(home, root = null) {
   return { ...AI_DEFAULTS, keys: keyFile(home), ...read(cfgFile(home)), ...(root ? read(join(root, '.synapsis', 'ai.json')) : {}), ...(process.env.SYNAPSIS_LLM_URL ? { url: process.env.SYNAPSIS_LLM_URL } : {}) };
 }
 export function saveAiConfig(home, patch) {
-  const next = { ...aiConfig(home), ...patch };
+  const { keys, ...next } = { ...aiConfig(home), ...patch }; // keys = key 文件的路径，每次现算，不存
   mkdirSync(dirname(cfgFile(home)), { recursive: true });
   writeFileSync(cfgFile(home), JSON.stringify(next, null, 2));
-  return next;
+  return { ...next, keys };
 }
 
 const post = async (cfg, path, body, ms = 120000) => {
@@ -75,13 +88,19 @@ export async function aiStatus(cfg) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       list = (await r.json()).data.map(m => ({ id: m.id, embed: /embed/i.test(m.id) }));
     }
-    return { ok: true, cfg, embed: list.filter(m => m.embed), chat: [...list.filter(m => !m.embed), ...await onlineModels(cfg)] };
+    return { ok: true, local: true, cfg, embed: list.filter(m => m.embed), chat: list.filter(m => !m.embed), ...await onlinePart(cfg) };
   } catch (e) {
-    const on = await onlineModels(cfg); // LM Studio 没开也能用在线对话（嵌入类功能这时没有）
-    if (on.length) return { ok: true, cfg, embed: [], chat: on, warn: `本地 LM Studio 没连上（${e.cause?.code || e.message}）：潜在关联、语义配色用不了，在线对话模型照常` };
-    return { ok: false, cfg, error: `连不上 ${base}（LM Studio 开了本机服务吗？）：${e.cause?.code || e.message}` };
+    const on = await onlinePart(cfg); // LM Studio 没开也能用在线对话（嵌入类功能这时没有）
+    if (on.online.length) return { ok: true, local: false, cfg, embed: [], chat: [], ...on, warn: `本地 LM Studio 没连上（${e.cause?.code || e.message}）：潜在关联、语义配色用不了，在线对话照常` };
+    return { ok: false, local: false, cfg, ...on, error: `连不上 ${base}（LM Studio 开了本机服务吗？）：${e.cause?.code || e.message}` };
   }
 }
+// online = 在线对话模型列表；hasKey = 各家有没有 key（只回有没有，不回 key）
+async function onlinePart(cfg) {
+  return { online: await onlineModels(cfg), hasKey: Object.fromEntries(Object.keys(ONLINE).map(p => [p, !!onlineKey(cfg, p)])) };
+}
+// 这次用的对话模型的信息（上下文容量等）
+export const chatInfo = (st, id) => (st.chat || []).find(m => m.id === id) || (st.online || []).find(m => m.id === id) || null;
 
 // —— 嵌入：缓存在工作区 .synapsis/embed.json（按 模型 + 文本 的哈希；向量归一化后存，余弦 = 点积）——
 const h = s => createHash('sha1').update(s).digest('base64').slice(0, 20);
@@ -107,25 +126,27 @@ const cacheOf = root => join(root, '.synapsis', 'embed.json');
 
 // —— 对话：一次性短回答。Qwen3 的思考用 /no_think 关掉，回来的 <think> 段剥掉 ——
 // opts.kind = 日志里的用途名；opts.history = 之前几轮 [{role, content}]（AI 指令框的短记忆）；opts.usage = 传个空对象进来，填上服务端报的 token 用量
+// opts.bulk = 高频后台调用（潜在关联重排、语义配色归类）→ 按 cfg.bulkSrc 选本地 / 在线，其余按 cfg.agentSrc
 export async function chat(cfg, system, user, maxTokens = 300, opts = {}) {
-  const on = onlineOf(cfg.chat);
+  const model = chatModel(cfg, opts.bulk), on = onlineOf(model);
   const messages = [{ role: 'system', content: system }, ...(opts.history || []), { role: 'user', content: on ? user : user + '\n/no_think' }];
   const t0 = Date.now();
   let raw = '', err = null;
   try {
-    const body = { model: on ? on.model : cfg.chat, temperature: opts.temperature ?? 0.3, max_tokens: maxTokens, messages };
+    const body = { model: on ? on.model : model, temperature: opts.temperature ?? 0.3, max_tokens: maxTokens, messages };
     let r;
-    if (on) { // 在线：关掉思考（一句话 < 1 秒；开着要多等、多花钱，这里的活用不上）
+    if (on) { // 在线：默认不思考（一句话 < 1 秒，省钱）；设了思考强度 → reasoning_effort，思考过程丢掉只要答案
       const key = onlineKey(cfg, on.provider);
-      if (!key) throw new Error(`没有 ${on.provider} 的 key：写进 ${cfg.keys}（{"${on.provider}": "sk-…"}）或设环境变量 ${on.env}`);
-      const res = await fetch(on.url + '/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key }, body: JSON.stringify({ ...body, thinking: { type: 'disabled' } }), signal: AbortSignal.timeout(120000) });
+      if (!key) throw new Error(`没有 ${on.provider} 的 key：AI 设置「在线」页填，或写进 ${cfg.keys}（{"${on.provider}": "sk-…"}），或设环境变量 ${on.env}`);
+      const eff = EFFORTS.includes(cfg.onlineEffort) && cfg.onlineEffort !== 'off' ? { reasoning_effort: cfg.onlineEffort, max_tokens: maxTokens + 4000 } : { thinking: { type: 'disabled' } };
+      const res = await fetch(on.url + '/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key }, body: JSON.stringify({ ...body, ...eff }), signal: AbortSignal.timeout(180000) });
       if (!res.ok) throw new Error(`${on.provider} ${res.status}：${(await res.text()).slice(0, 200)}`);
       r = await res.json();
     } else r = await post(cfg, '/chat/completions', body);
     raw = r.choices?.[0]?.message?.content || '';
     if (opts.usage && r.usage) Object.assign(opts.usage, r.usage);
   } catch (e) { err = e; }
-  aiLog(cfg, { kind: opts.kind || 'chat', model: cfg.chat, ms: Date.now() - t0, messages, raw, error: err?.message, usage: opts.usage });
+  aiLog(cfg, { kind: opts.kind || 'chat', model, effort: on ? cfg.onlineEffort : undefined, ms: Date.now() - t0, messages, raw, error: err?.message, usage: opts.usage });
   if (err) throw err;
   return raw.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 }
@@ -194,7 +215,7 @@ export async function rerank(root, id, items, cfg) {
   const raw = await chat(cfg, `你在帮人整理一个项目的思维导图，判断候选条目和目标条目有没有值得连起来的关系（因果、组成、输入输出、同一机制、互相制约）。
 只是用词相近、但讲的不是一回事 → 0 分。评分：0 无关，1 弱相关，2 有关，3 强相关。
 每个候选输出一行，格式严格是：序号: 分数 | 理由（不超过 25 字）
-不要输出别的任何文字。`, `目标：${nodeText(ws, id).replace(/\s+/g, ' ').slice(0, 300)}\n\n候选：\n${list.map((it, i) => `${i + 1}. ${textOf(it)}`).join('\n')}`, 60 + list.length * 40, { kind: "精排", temperature: 0.1 });
+不要输出别的任何文字。`, `目标：${nodeText(ws, id).replace(/\s+/g, ' ').slice(0, 300)}\n\n候选：\n${list.map((it, i) => `${i + 1}. ${textOf(it)}`).join('\n')}`, 60 + list.length * 40, { kind: "精排", temperature: 0.1, bulk: true });
   const got = new Map();
   // 8B 实测会把名字也复述一遍（「1. 名字 | 2 | 理由」）→ 按竖线切开，取第一个单独是 0~3 的段当分数，它后面的段当理由
   for (const line of raw.split(/\r?\n/)) {
@@ -227,7 +248,7 @@ export async function semColors(root, cfg) {
 
 // 通用：把一批名字归到 rows 的某一行（-1 = 都不贴切）。按名字缓存在 file（行或模型一变就作废），只问新名字
 async function classifyLabels(cfg, file, rows, labels, intro, kind) {
-  const key = h(cfg.chat + JSON.stringify(rows));
+  const key = h(chatModel(cfg, true) + JSON.stringify(rows));
   let cache = {};
   try { const c = JSON.parse(readFileSync(file, 'utf8')); if (c.key === key) cache = c.map; } catch { /* 第一次 */ }
   const todo = [...new Set(labels.filter(l => !(l in cache)))];
@@ -236,7 +257,7 @@ async function classifyLabels(cfg, file, rows, labels, intro, kind) {
     const part = todo.slice(i, i + 60);
     const raw = await chat(cfg, `${intro}类别（编号. 关键词）：
 ${list}
-对每个节点名，判断它最属于哪个类别；都不贴切就写 0。每行输出「节点序号: 类别编号」，不要别的文字。`, part.map((l, j) => `${j + 1}. ${l}`).join('\n'), 20 + part.length * 12, { kind, temperature: 0.1 });
+对每个节点名，判断它最属于哪个类别；都不贴切就写 0。每行输出「节点序号: 类别编号」，不要别的文字。`, part.map((l, j) => `${j + 1}. ${l}`).join('\n'), 20 + part.length * 12, { kind, temperature: 0.1, bulk: true });
     const got = {};
     for (const m of raw.matchAll(/(\d+)\s*[:：.、]\s*(\d+)/g)) got[+m[1] - 1] = +m[2] - 1;
     part.forEach((l, j) => { const r = got[j]; cache[l] = r >= 0 && r < rows.length ? r : -1; });

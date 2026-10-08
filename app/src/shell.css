@@ -411,7 +411,14 @@ button.patsw { width: 26px; height: 18px; background-color: color-mix(in srgb, v
 .agentbox .ctxmeter { font-size: 11px; color: var(--dim); padding: 1px 6px; border-radius: 8px; background: var(--chip); margin-right: 6px; cursor: help; white-space: nowrap; }
 .agentbox .ctxmeter.warn { color: #000; background: #e6c440; }
 .agentbox .ctxmeter.over { color: #fff; background: #e05555; }
-.aipanel .ctxline { margin: -2px 0 6px; }
+.aipanel .ctxline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.aigroup { display: flex; flex-direction: column; gap: 8px; }
+.aigroup > b { color: var(--dim); font-size: 12px; }
+.srcrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.seg { display: inline-flex; border: 1px solid var(--line2); border-radius: 4px; overflow: hidden; flex: none; }
+.seg a { cursor: pointer; padding: 2px 10px; color: var(--dim); }
+.seg a.on { background: var(--panel2); color: var(--text); font-weight: 600; }
+.aipanel .aitabs { margin: 6px -14px 0; padding: 4px 14px; border-top: 1px solid var(--line2); }
 /* 左栏搜索（👤 2026-10-08）：文本页查找条 + 命中行；文件页过滤 / 搜内容 */
 .textfind { flex: none; border-bottom: 1px solid var(--line); }
 .textfind .tcount { white-space: nowrap; font-size: 11px; }

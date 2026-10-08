@@ -7,7 +7,7 @@ const opts = (list = [], cur) => {
   return [...(cur && !ids.includes(cur) ? [cur] : []), ...ids].map(id => <option key={id} value={id}>{(m => m?.online ? '☁ ' + m.name + '（在线，按量计费）' : id + (m?.loaded ? '（已加载）' : ''))(list.find(m => m.id === id))}</option>);
 };
 
-const kfmt = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(n);
+const kfmt = n => n >= 1e6 ? Math.round(n / 1048576) + 'M' : n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(n);
 
 // >v<🤖AI指令-上下文-「🧠 已用 / 容量」：问过 = LM Studio 报的真实 token；没问 = 估算（≈）。超 80% 变黄、超 100% 变红（会被截断、忘掉前面）
 export function CtxMeter({ ctx, usage }) {
@@ -34,31 +34,88 @@ export function AiPanel({ api, status, onStatus, onClose, onWordsApplied }) {
   };
   const apply = () => api('/ai/words/apply', { method: 'POST', body: JSON.stringify({ text: draft }) })
     .then(d => { onWordsApplied(d); setDraft(null); setBusy('已写入 ' + d.file + '（旧的备份在 __synapsis/_过期的/）'); }).catch(e => setBusy('❌ ' + e.message));
+  // >v<🤖AI辅助-设置分页-👤 2026-10-08「一页本地，一页在线，通用设置丢哪？」→ 上面「通用」（谁用本地谁用在线、语义配色、生成词表），下面两页分别配本地 / 在线
+  const [tab, setTab] = useState(cfg.agentSrc === 'online' && !cfg.offline ? 'online' : 'local');
+  const src = (k, label, hint) => (
+    <div className="srcrow"><span>{label}<span className="hint"> {hint}</span></span>
+      <span className="seg">{[['local', '本地'], ['online', '☁ 在线']].map(([v, t]) => <a key={v} className={(cfg[k] || 'local') === v ? 'on' : ''} onClick={() => save({ [k]: v })}>{t}</a>)}</span></div>
+  );
   return (
     <div className="modal" onClick={onClose}>
       <div className="aipanel" onClick={e => e.stopPropagation()}>
-        <div className="bar"><b>🤖 AI 辅助（LM Studio / 在线）</b><span style={{ flex: 1 }} /><button onClick={onClose}>✕</button></div>
+        <div className="bar"><b>🤖 AI 设置</b><span style={{ flex: 1 }} /><button onClick={onClose}>✕</button></div>
         <div className="aibody">
-          <div className={'aistat ' + (status?.ok ? 'on' : 'off')}>{!status ? '检查中…' : status.ok ? '● 已连上 ' + cfg.url : '● ' + status.error}{status?.warn ? <div className="hint">⚠ {status.warn}</div> : null}</div>
-          <details open={status && !status.ok}><summary>怎么连？</summary>
-            <p>LM Studio 左边 <b>Developer</b>（开发者）→ <b>Start Server</b>（或命令行 <code>lms server start</code>），默认端口 1234。
-              它提供 OpenAI 兼容的 HTTP 接口，Synapsis 的本机服务直接调，<b>不需要通讯桥</b>。模型不用先手动加载，第一次用时 LM Studio 会自动加载（会慢一下）。
-              玩游戏前可以在 LM Studio 里卸载模型（<code>lms unload --all</code>）腾显存。</p>
-            <p><b>在线对话模型（DeepSeek）</b>：把 key 写进 Synapsis 目录下 <code>.synapsis/keys.json</code>（<code>{'{"deepseek": "sk-…"}'}</code>，这个文件夹不进 git），重开这个面板，对话模型下拉里会多出 ☁ 开头的在线模型。只管对话（AI 指令框、生成词表、配色归类）；潜在关联要的嵌入模型还是用 LM Studio。</p>
-          </details>
-          <label>地址<input key={cfg.url} defaultValue={cfg.url} onBlur={e => e.target.value.trim() && e.target.value !== cfg.url && save({ url: e.target.value.trim() })} /></label>
-          <label>嵌入模型 <span className="hint">潜在关联</span><select value={cfg.embed || ''} onChange={e => save({ embed: e.target.value })}>{opts(status?.embed, cfg.embed)}</select></label>
-          <label>对话模型 <span className="hint">配色归类 / 生成词表 / 一句话说明关系</span><select value={cfg.chat || ''} onChange={e => save({ chat: e.target.value })}>{opts(status?.chat, cfg.chat)}</select></label>
-          {(() => { const m = status?.chat?.find(x => x.id === cfg.chat); return m && (m.ctx || m.maxCtx) && <div className="hint ctxline">🧠 上下文：{m.ctx ? <b>{m.ctx}</b> : '未加载'} token{m.maxCtx ? `（这个模型最多 ${m.maxCtx}）` : ''}。AI 指令框右上角显示每次用了多少。{m.ctx && m.ctx < 16000 ? ' 嫌小：LM Studio 里卸载模型，重新加载时把 Context Length 调大（越大越吃显存）。' : ''}</div>; })()}
-          <label className="chk"><input type="checkbox" checked={!!cfg.semColors} onChange={e => save({ semColors: e.target.checked })} />语义配色：词表没认出的节点让对话模型归到词表某一行（结果缓存，有新节点才再问）</label>
-          <div className="row"><button onClick={gen} disabled={!status?.ok}>✨ 按这个工作区的节点生成词表…</button><span className="hint">{busy}</span></div>
-          {draft != null && <>
-            <textarea className="mono" value={draft} onChange={e => setDraft(e.target.value)} rows={14} />
-            <div className="row"><button onClick={apply}>写入 _配色.md</button><button onClick={() => setDraft(null)}>不要</button></div>
-          </>}
+          <div className="aigroup">
+            <b>通用</b>
+            {src('agentSrc', 'AI 指令框 / 问答 / 生成词表 / 「?」关系说明', '（一次一问，用在线更聪明）')}
+            {src('bulkSrc', '潜在关联精排 / 语义配色归类', '（高频、后台自动跑，默认本地，免得悄悄花钱）')}
+            <label className="chk"><input type="checkbox" checked={!!cfg.semColors} onChange={e => save({ semColors: e.target.checked })} />语义配色：词表没认出的节点让对话模型归到词表某一行（结果缓存，有新节点才再问）</label>
+            <div className="row"><button onClick={gen} disabled={!status?.ok}>✨ 按这个工作区的节点生成词表…</button><span className="hint">{busy}</span></div>
+            {draft != null && <>
+              <textarea className="mono" value={draft} onChange={e => setDraft(e.target.value)} rows={14} />
+              <div className="row"><button onClick={apply}>写入 _配色.md</button><button onClick={() => setDraft(null)}>不要</button></div>
+            </>}
+          </div>
+          <div className="bar tabs aitabs">{[['local', '本地（LM Studio）'], ['online', '☁ 在线（DeepSeek）']].map(([k, t]) => <a key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t}</a>)}</div>
+          {tab === 'local' ? <LocalTab {...{ api, status, cfg, save, onStatus }} /> : <OnlineTab {...{ api, status, cfg, save, onStatus }} />}
           <p className="hint">设置存在本机（Synapsis/.synapsis/ai.json），不跟项目走。连不上时 Synapsis 照常用，只是没有这些辅助。</p>
         </div>
       </div>
+    </div>
+  );
+}
+
+function LocalTab({ api, status, cfg, save, onStatus }) {
+  const m = status?.chat?.find(x => x.id === cfg.chat) || status?.chat?.find(x => x.loaded && x.id.replace(/:\d+$/, '') === cfg.chat);
+  const [want, setWant] = useState(''), [est, setEst] = useState(null), [msg, setMsg] = useState('');
+  const n = Number(want) || m?.ctx || 8192;
+  const estimate = () => { setMsg('估算中…'); api('/ai/lms/estimate?model=' + encodeURIComponent(cfg.chat) + '&ctx=' + n).then(e => { setEst(e); setMsg(''); }).catch(e => setMsg('❌ ' + e.message)); };
+  const reload = () => {
+    setMsg('卸载 → 按 ' + n + ' 重新加载中…（几秒到几十秒）');
+    api('/ai/lms/load', { method: 'POST', body: JSON.stringify({ model: cfg.chat, ctx: n }) }).then(r => { setMsg('✓ 已按 ' + r.ctx + ' 加载'); setEst(null); setWant(''); onStatus(r.status); }).catch(e => setMsg('❌ ' + e.message));
+  };
+  return (
+    <div className="aigroup">
+      <div className={'aistat ' + (status?.local ? 'on' : 'off')}>{!status ? '检查中…' : status.local ? '● 已连上 ' + cfg.url : '● ' + (status.warn || status.error)}</div>
+      <details open={status && !status.local}><summary>怎么连？</summary>
+        <p>LM Studio 左边 <b>Developer</b>（开发者）→ <b>Start Server</b>（或命令行 <code>lms server start</code>），默认端口 1234。
+          它提供 OpenAI 兼容的 HTTP 接口，Synapsis 的本机服务直接调，<b>不需要通讯桥</b>。模型不用先手动加载，第一次用时 LM Studio 会自动加载（会慢一下）。
+          玩游戏前可以在 LM Studio 里卸载模型（<code>lms unload --all</code>）腾显存。</p>
+      </details>
+      <label>地址<input key={cfg.url} defaultValue={cfg.url} onBlur={e => e.target.value.trim() && e.target.value !== cfg.url && save({ url: e.target.value.trim() })} /></label>
+      <label>嵌入模型 <span className="hint">潜在关联（只能本地：DeepSeek 没有嵌入接口）</span><select value={cfg.embed || ''} onChange={e => save({ embed: e.target.value })}>{opts(status?.embed, cfg.embed)}</select></label>
+      <label>本地对话模型 <span className="hint">「通用」里选了本地的那些活用它</span><select value={cfg.chat || ''} onChange={e => save({ chat: e.target.value })}>{opts(status?.chat, cfg.chat)}</select></label>
+      {/* >v<🤖AI辅助-上下文长度-👤「context 长度能直接在 syna 里配置吗」：先估显存，再卸载 → 按新长度重新加载（core/lmstudio.js） */}
+      <div className="ctxline">
+        <span>🧠 上下文：{m?.ctx ? <b>{m.ctx}</b> : '未加载'} token{m?.maxCtx ? `（最多 ${m.maxCtx}）` : ''}　改成</span>
+        <select value={want} onChange={e => { setWant(e.target.value); setEst(null); }}>
+          <option value="">选…</option>{[8192, 16384, 24576, 32768, 40960, 65536, 131072].filter(v => !m?.maxCtx || v <= m.maxCtx).map(v => <option key={v} value={v}>{v / 1024}k</option>)}
+        </select>
+        <button disabled={!want} onClick={estimate}>估显存</button>
+        <button disabled={!want} onClick={reload}>重新加载</button>
+        <span className="hint">{msg}{est && `${est.ok ? '' : '⚠ 可能装不下：'}约 ${est.gpu ?? '?'} GiB 显存（5070 12GB，桌面常驻 ≈ 3GB）`}</span>
+      </div>
+    </div>
+  );
+}
+
+const EFFORT_ZH = { off: '不思考（快、省钱，推荐）', low: '低', high: '高', max: '最高（慢、贵）' };
+function OnlineTab({ api, status, cfg, save, onStatus }) {
+  const [key, setKey] = useState(''), [msg, setMsg] = useState('');
+  const has = status?.hasKey?.deepseek, list = status?.online || [];
+  const putKey = k => api('/ai/key', { method: 'PUT', body: JSON.stringify({ provider: 'deepseek', key: k }) }).then(s => { onStatus(s); setKey(''); setMsg(k ? '✓ 已存' : '已删除'); }).catch(e => setMsg('❌ ' + e.message));
+  const cur = list.find(x => x.id === 'deepseek:' + cfg.onlineModel);
+  return (
+    <div className="aigroup">
+      <div className={'aistat ' + (list.length ? 'on' : 'off')}>{!status ? '检查中…' : list.length ? '● 已连上 DeepSeek（' + list.length + ' 个模型）' : has ? '● 有 key，但连不上 DeepSeek（网络？key 失效？）' : '● 还没有 key'}</div>
+      <label>API key <span className="hint">只存本机 Synapsis/.synapsis/keys.json（不进 git，也不会回传到页面）</span>
+        <span className="row"><input type="password" value={key} placeholder={has ? '已设置（要换就填新的）' : 'sk-…'} onChange={e => setKey(e.target.value)} style={{ flex: 1 }} />
+          <button disabled={!key.trim()} onClick={() => putKey(key.trim())}>保存</button>{has && <button onClick={() => putKey('')}>删除</button>}</span></label>
+      <label>在线模型<select value={cfg.onlineModel || 'deepseek-flash'} onChange={e => save({ onlineModel: e.target.value })}>
+        {(list.length ? list : [{ id: 'deepseek:deepseek-flash', name: 'deepseek-flash' }, { id: 'deepseek:deepseek-v4-pro', name: 'deepseek-v4-pro' }]).map(x => <option key={x.id} value={x.id.replace(/^deepseek:/, '')}>{x.name}{/flash/i.test(x.id) ? '（快、便宜，推荐）' : /pro/i.test(x.id) ? '（更强、更贵）' : ''}</option>)}
+      </select></label>
+      <label>思考强度<select value={cfg.onlineEffort || 'off'} onChange={e => save({ onlineEffort: e.target.value })}>{Object.entries(EFFORT_ZH).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></label>
+      <div className="hint">{cur?.ctx ? `🧠 上下文 ${kfmt(cur.ctx)} token。` : ''}按量计费，余额在 DeepSeek 平台看。{msg}</div>
     </div>
   );
 }

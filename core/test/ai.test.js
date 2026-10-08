@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { aiStatus, related, rerank, semColors, semPatterns, suggestWords, applyWords, explainRelation, embed, chat } from '../ai.js';
+import { aiStatus, related, rerank, semColors, semPatterns, suggestWords, applyWords, explainRelation, embed, chat, chatModel } from '../ai.js';
 import { saveOutline, loadWorkspace, DIR } from '../workspace.js';
 import { colorMap, PALETTE } from '../colors.js';
 
@@ -39,9 +39,11 @@ try {
   let msg = ''; try { await chat({ ...cfg, chat: 'deepseek:deepseek-flash', keys: kf }, 'x', 'y'); } catch (e) { msg = e.message; }
   ok(/没有 deepseek 的 key/.test(msg) && msg.includes(kf), '在线模型没 key → 报 key 该写哪 ' + msg);
   writeFileSync(kf, JSON.stringify({ deepseek: 'sk-test-secret' }));
-  const st2 = await aiStatus({ ...cfg, keys: kf, online: false });
-  ok(st2.ok && !st2.chat.some(m => m.online) && !JSON.stringify(st2).includes('sk-test-secret'), 'online:false 不查在线模型；key 不进状态');
+  const st2 = await aiStatus({ ...cfg, keys: kf, offline: true });
+  ok(st2.ok && !st2.online.length && st2.hasKey.deepseek === true && !JSON.stringify(st2).includes('sk-test-secret'), 'offline 不查在线模型；只回「有 key」，key 本身不进状态');
   rmSync(kf);
+  const both = { chat: 'qwen-x', agentSrc: 'online', bulkSrc: 'local', onlineModel: 'deepseek-v4-pro' };
+  ok(chatModel(both) === 'deepseek:deepseek-v4-pro' && chatModel(both, true) === 'qwen-x' && chatModel({ chat: 'q' }) === 'q', '指令框走在线、高频（潜在关联 / 配色）照旧本地');
 
   saveOutline(root, `情绪空间 -> 行为输出
   恐惧
