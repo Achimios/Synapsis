@@ -8,7 +8,7 @@ import { patternMap, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
 import { ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, HistoryPanel, OutlineTree, HelpModal, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
 const DRAG_PIC = 'application/x-synapsis-pic';
-import { initStash, useStash } from './stash.js';
+import { initStash, useStash, putStash } from './stash.js';
 import { AiPanel, RelatedDock, AgentBox } from './ai.jsx';
 import { MdLite } from './mdlite.jsx';
 import { SAMPLE } from './sample.js';
@@ -26,7 +26,7 @@ ping(); setInterval(ping, 20000);
 const Q = new URLSearchParams(location.search);
 const DEMO = Q.has('demo');
 const WSQ = Q.get('ws') ? 'ws=' + encodeURIComponent(Q.get('ws')) : '';
-const HIST_KEY = 'syn.hist.' + (WSQ || 'default'); // 撤销记录存 sessionStorage：刷新页面不丢，关掉窗口才清
+const HIST_KEY = 'syn.hist.' + (WSQ || 'default'); // 撤销记录：sessionStorage（刷新不丢）+ 服务进程内存暂存（关 vault 再打开也在，退出托盘才清）
 const withWs = path => '/api' + path + (WSQ ? (path.includes('?') ? '&' : '?') + WSQ : '');
 const api = (path, opts) => fetch(withWs(path), opts && { ...opts, headers: { 'content-type': 'application/json' } })
   .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || (j.report && j.report.errors && JSON.stringify(j.report.errors)) || r.status); return j; });
@@ -174,12 +174,13 @@ export function Shell({ name, Canvas }) {
   // 启动：从工作区加载（含上次的视图）；失败 → 离线（localStorage）
   useEffect(() => {
     if (DEMO) return;
-    api('/ws').then(d => {
+    Promise.all([api('/ws'), api('/ui/stash').catch(() => ({}))]).then(([d, stash]) => {
       const v = d.view || {};
       lastSaved.current = d.outline; setText(d.outline); setPositions(d.layout || {}); setWsData(d);
       hist2.current.committed = { text: d.outline, positions: d.layout || {} };
       // 页面刷新（开发服务重启、Ctrl+R）后接上撤销记录：只在文件和上次记下的一致时接（外面改过就不接，免得撤销盖掉别人的改动）
-      const sv = (() => { try { return JSON.parse(sessionStorage.getItem(HIST_KEY)); } catch { return null; } })();
+      // 撤销记录优先从服务进程的暂存取（关 vault 再从托盘打开也还在，退出托盘才没）；取不到再用 sessionStorage（刷新页面）
+      const sv = stash?.[HIST_KEY] || (() => { try { return JSON.parse(sessionStorage.getItem(HIST_KEY)); } catch { return null; } })();
       if (sv?.committed?.text === d.outline) { hist2.current.undo = sv.undo || []; hist2.current.redo = sv.redo || []; }
       setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); if (v.cardProps === false) setCardPropsOn(false); if (v.histOpen) setHistOpen(true); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
       setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
@@ -306,7 +307,13 @@ export function Shell({ name, Canvas }) {
   // 属性 / 正文编辑（含颜色、图案）也在撤销栈里（op 条目，见 saveMeta / saveBody）；不在撤销范围：空间页拖动改 vec。只在工作区模式。
   const hist2 = useRef({ undo: [], redo: [], committed: null, applying: false });
   const [histTick, setHistTick] = useState(0); // 历史栏跟着刷新
-  const persistHist = () => { setHistTick(x => x + 1); const h = hist2.current; try { sessionStorage.setItem(HIST_KEY, JSON.stringify({ undo: h.undo.slice(-50), redo: h.redo.slice(-50), committed: h.committed })); } catch { /* 配额满：只是刷新后接不上 */ } };
+  const histT = useRef(null);
+  const persistHist = () => {
+    setHistTick(x => x + 1); const h = hist2.current;
+    const snap = { undo: h.undo.slice(-50), redo: h.redo.slice(-50), committed: h.committed };
+    try { sessionStorage.setItem(HIST_KEY, JSON.stringify(snap)); } catch { /* 配额满：只是刷新后接不上 */ }
+    clearTimeout(histT.current); histT.current = setTimeout(() => putStash({ [HIST_KEY]: snap }), 300); // 同时存服务进程内存：关 vault 窗口再打开还能撤销
+  };
   const recordSave = (t, report) => {
     const h = hist2.current, c = h.committed;
     if (!c) return;

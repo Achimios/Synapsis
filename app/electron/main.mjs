@@ -13,11 +13,13 @@ const HOME = resolve(APP, '..');                                      // Synapsi
 const PORT = 5410, BASE = `http://localhost:${PORT}`;
 const HIDDEN = !!process.env.SYN_TEST_HIDDEN;                         // 自动化测试：窗口不显示
 process.env.SYN_DESKTOP = '1';
-// 关窗口 / 退出托盘时：把这个工作区本次打开期间删掉的东西（.junk/，只给 Ctrl+Z 用）整个送系统回收站。
+// 退出托盘时（不是关 vault 窗口）：把这次托盘期间各工作区删掉的东西（.junk/，只给 Ctrl+Z 用）送系统回收站。
+// 关掉 vault 再从托盘打开，撤销栈（服务进程内存里）和 .junk/ 都还在，还能撤销。
 // 开始时就把 core 载进来：退出时同步调用，赶得上（动态 import 在退出途中可能来不及）
 const { clearGraveyard } = await import(pathToFileURL(join(HOME, 'core', 'workspace.js')).href);
-const opened = new Map(); // 工作区目录 → 这次窗口打开的时间（只清这之后产生的；上次意外关闭留下的由下次打开时问用户）
-const sweepTrash = dir => { try { const t = opened.get(dir); if (t) clearGraveyard(dir, { since: t }); } catch (e) { console.log('[synapsis] 清 .junk 失败：', e.message); } };
+const APP_START = Date.now() - 2000; // 只清这之后产生的（.junk 里时间戳只到秒，留 2 秒余量）；上次意外退出留下的由下次打开时问用户
+const touched = new Set(); // 这次托盘期间打开过的工作区目录
+const sweepTrash = dir => { try { clearGraveyard(dir, { since: APP_START }); } catch (e) { console.log('[synapsis] 清 .junk 失败：', e.message); } };
 
 // 工作区参数：--ws <目录> 或 --ws=<目录>；后面紧跟的是另一个 -- 开关就不算
 const wsArg = argv => {
@@ -32,7 +34,7 @@ const wsArg = argv => {
 if (!HIDDEN && !app.requestSingleInstanceLock({ ws: wsArg(process.argv) })) app.quit();
 app.on('second-instance', (_e, _argv, _cwd, data) => { const ws = data?.ws; ws ? openWorkspace(ws) : showLauncher(); });
 app.on('window-all-closed', () => { /* 留在托盘里，不退出 */ });
-app.on('before-quit', () => { for (const dir of [...opened.keys()]) sweepTrash(dir); }); // 托盘「退出」：窗口 closed 事件可能来不及，这里再扫一遍（扫过的就空了，重复无害）
+app.on('before-quit', () => { for (const dir of touched) sweepTrash(dir); }); // 托盘「退出」才清（同步执行，赶得上退出）
 
 // —— 最近打开（.synapsis/recent.json，本机状态）——
 const RECENT = process.env.SYN_RECENT || join(HOME, '.synapsis', 'recent.json'); // 测试用 SYN_RECENT 指到临时文件
@@ -99,8 +101,8 @@ async function openWorkspace(dir) {
   w.on('resize', keepSoon); w.on('move', keepSoon); w.on('close', keep);
   w.loadURL(`${BASE}/?ws=${encodeURIComponent(dir)}`);
   w.on('page-title-updated', e => e.preventDefault());
-  w.on('closed', () => { sweepTrash(dir); opened.delete(dir); wins.delete(dir); });
-  wins.set(dir, w); opened.set(dir, Date.now());
+  w.on('closed', () => wins.delete(dir)); // 关 vault 窗口不清 .junk、不丢撤销栈
+  wins.set(dir, w); touched.add(dir);
   if (launcher && !launcher.isDestroyed()) launcher.hide();
   return w;
 }
@@ -139,7 +141,7 @@ function refreshTray() {
     { type: 'separator' },
     ...(recent.length ? recent.map(r => ({ label: r.name, sublabel: r.dir, click: () => openWorkspace(r.dir) })) : [{ label: '（还没有打开过的工作区）', enabled: false }]),
     { type: 'separator' },
-    { label: '退出 Synapsis', click: () => app.exit(0) },
+    { label: '退出 Synapsis', click: () => { for (const dir of touched) sweepTrash(dir); app.exit(0); } }, // app.exit 不触发 before-quit，所以这里直接清
   ]));
 }
 

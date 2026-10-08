@@ -353,11 +353,11 @@ let trashImpl = trashToRecycleBin;
 export const setTrash = f => { trashImpl = f || trashToRecycleBin; }; // 测试用：换成假的回收站
 // 送系统回收站；返回真正没了的路径（成没成以「文件还在不在」为准）
 const trashPaths = paths => { trashImpl(paths); return paths.filter(p => !existsSync(p)); };
-// 清空 .junk/：since（毫秒时间戳）= 只清这之后产生的（关窗口时用，不动上次留下的）；不给 = 全清。
-// 全清 / 全是新的 → 整个文件夹作为一项进回收站；否则逐项。返回 { count, size, left }
-export function clearGraveyard(root, { since = null } = {}) {
+// 清空 .junk/：since（毫秒时间戳）= 只清这之后产生的（退出托盘时用，不动上次意外关闭留下的）；before = 只清这之前的（打开时问过用户后清「上次留下的」，不动这次的）；都不给 = 全清。
+// 清的是全部 → 整个文件夹作为一项进回收站；否则逐项。返回 { count, size, left }
+export function clearGraveyard(root, { since = null, before = null } = {}) {
   const info = graveyardInfo(root), g = join(root, DIR, TRASH);
-  const pick = since == null ? info.entries : info.entries.filter(e => e.time >= since);
+  const pick = info.entries.filter(e => (since == null || e.time >= since) && (before == null || e.time < before));
   if (!pick.length) return { count: 0, size: 0, left: info.entries.length };
   const all = pick.length === info.entries.length;
   const gone = trashPaths(all ? [g] : pick.map(e => e.path));

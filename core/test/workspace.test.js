@@ -187,8 +187,11 @@ try {
     writeFileSync(join(gd, '20200101_000000_上次意外关闭留下的.md'), 'x');
     const part = clearGraveyard(rg, { since: t0 });
     ok(part.count === 2 && part.left === 1 && sent.length === 2 && existsSync(gd), '关窗口：只清本次产生的两项，上次留下的不动（交给下次打开时问）');
+    saveOutline(rg, '甲\n丁'); saveOutline(rg, '甲'); // 这次又删了一个（时间 ≥ t0）
+    const olds = clearGraveyard(rg, { before: t0 });
+    ok(olds.count === 1 && olds.left === 1 && existsSync(gd), '打开时问过后清「上次留下的」：只清 before 之前的，这次删的还在（还能撤销）');
     const all = clearGraveyard(rg);
-    ok(all.count === 1 && sent.length === 3 && sent[2] === gd && !existsSync(gd), '全清 → 整个文件夹作为一项进回收站');
+    ok(all.count === 1 && sent.length === 4 && sent[3] === gd && !existsSync(gd), '全清 → 整个文件夹作为一项进回收站');
     saveOutline(rg, '甲\n乙'); saveOutline(rg, '甲');
     setTrash(() => {}); // 回收站没成功（比如不是 Windows）：东西原样留着
     const bad = clearGraveyard(rg);

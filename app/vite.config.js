@@ -11,6 +11,7 @@ import { lmsEstimate, lmsReload } from '../core/lmstudio.js';
 import { runAgent, applyPlan, loadChat, clearChat, estimateContext, isLoose } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
 const STASH = new Map(); // 工作区 → 界面暂存（见 /ui/stash）
+const SESSION_START = Date.now() - 2000; // 这次服务进程（= 托盘）启动的时刻（留 2 秒余量：.junk 里的时间戳只到秒）。.junk/ 里比这更早的 = 上次没正常退出留下的
 const SYN_HOME = resolve(fileURLToPath(new URL('.', import.meta.url)), '..'); // AI 设置是本机的：<Synapsis>/.synapsis/ai.json
 
 // >v<🚀启停-心跳-3 分钟没人 ping 就退出（SYN_IDLE_MS 可调）
@@ -56,12 +57,13 @@ function workspaceApi() {
           if (url.pathname === '/ws' && req.method === 'GET') {
             ensureWorkspaceReadme(root, manualText(root));
             ensureGitignore(root);
-            // .junk/ 里有东西 = 上次没正常关闭（正常关窗口会清空），或 CLI / AI 删过东西：交给界面问一句要不要清
-            const gi = graveyardInfo(root);
-            return send(200, { ...payload(root), view: loadView(root), graveyard: gi.entries.length ? { count: gi.entries.length, size: gi.total } : null });
+            // .junk/ 里有「这次托盘启动之前」留下的东西 = 上次没正常退出托盘，或 CLI / AI 删过东西：交给界面问一句要不要清。
+            // 这次托盘期间删的不问（关 vault 再打开还要能撤销，退出托盘才清）
+            const left = graveyardInfo(root).entries.filter(e => e.time < SESSION_START);
+            return send(200, { ...payload(root), view: loadView(root), graveyard: left.length ? { count: left.length, size: left.reduce((s, e) => s + e.size, 0) } : null });
           }
-          // 清空 .junk/（整个送系统回收站）；界面在打开时问过用户才调
-          if (url.pathname === '/graveyard/clear' && req.method === 'POST') return send(200, clearGraveyard(root));
+          // 清空 .junk/ 里上次留下的（送系统回收站）；界面在打开时问过用户才调
+          if (url.pathname === '/graveyard/clear' && req.method === 'POST') return send(200, clearGraveyard(root, { before: SESSION_START }));
           // 只往已挂上 Synapsis 的目录写（别因为一个拼错的 ?ws= 在磁盘上凭空建目录）
           if (url.pathname === '/view' && req.method === 'PUT') { if (!existsSync(join(root, DIR))) return send(404, { error: '不是 Synapsis 工作区' }); saveView(root, await body(req)); return send(200, { ok: true }); }
           // 在资源管理器里显示 / 用默认程序打开（服务只在本机跑，等于本机操作；路径限定在项目内）
