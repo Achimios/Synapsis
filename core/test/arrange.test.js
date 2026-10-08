@@ -1,6 +1,6 @@
 // >v<✅自检-框选缩放排列-缩放、卡在不重叠的下限、对齐、排开、已对齐再摊开
 // node core/test/arrange.test.js
-import { scaleAxis, dragScale, minScale, overlaps, GAP } from '../arrange.js';
+import { scaleAxis, dragScale, minScale, overlaps, GAP, tighten } from '../arrange.js';
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { c ? pass++ : (fail++, console.log('✗', m)); };
@@ -50,5 +50,15 @@ ok(r.mode === 'spread' && byId(r.rects, 'a').x === 0 && near(byId(r.rects, 'c').
 r = dragScale(diag, 'n', 0, 100);
 ok(near(byId(r.rects, 'a').y, 100) && byId(r.rects, 'c').y === 200, '拖上边往下：下边不动，上面的往下收');
 
+// 整体收紧（👤 2026-10-08「相对方位不要变，只是整体紧凑一点」）
+{
+  const R = [{ id: 'a', x: 0, y: 0, w: 100, h: 40 }, { id: 'b', x: 600, y: 0, w: 100, h: 40 }, { id: 'c', x: 300, y: 500, w: 100, h: 40 }];
+  const T = tighten(R), cen = r => [r.x + r.w / 2, r.y + r.h / 2];
+  const dir = (rs, i, j) => { const p = cen(rs[i]), q = cen(rs[j]); return Math.atan2(q[1] - p[1], q[0] - p[0]); };
+  ok([[0, 1], [0, 2], [1, 2]].every(([i, j]) => Math.abs(dir(R, i, j) - dir(T, i, j)) < 0.02), '收紧：两两方位不变');
+  ok(T[1].x - T[0].x < 300 && !T.some((r, i) => T.some((q, j) => i < j && overlaps(r, q, 39))), '收紧：明显变近，且不挨着 ' + JSON.stringify(T));
+  const H = tighten(R, { s: 0.5 });
+  ok(H[1].x - H[0].x === 300 && H[2].y - H[0].y === 250, '收紧 s=0.5：距离减半');
+}
 console.log(`arrange: ${pass} 过 / ${fail} 挂`);
 process.exit(fail ? 1 : 0);

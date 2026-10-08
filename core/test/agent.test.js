@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadSkills, pageContext, parseReply, applyPlan, runAgent, loadChat, clearChat, systemPrompt, isQuestion, estimateContext, estTokens } from '../agent.js';
+import { loadSkills, pageContext, parseReply, applyPlan, runAgent, loadChat, clearChat, systemPrompt, isQuestion, isFollowup, estimateContext, estTokens } from '../agent.js';
 import { validateAction, planMoves, VALIDATORS } from '../plan.js';
 import { saveOutline, loadWorkspace, workspaceOutline, DIR } from '../workspace.js';
 import { parseOutline } from '../outline.js';
@@ -55,6 +55,11 @@ m = planMoves([{ do: 'arrange', ids: ['c', 'a', 'b'], as: 'row', gap: 20 }], box
 ok(m.c.x === 0 && m.a.x === 100 && m.b.x === 220 && m.a.y === 0 && m.c.y === 0, '横排：按给的顺序，间距 20，顶边对齐 ' + JSON.stringify(m));
 m = planMoves([{ do: 'arrange', ids: ['a', 'b', 'c'], as: 'grid', gap: 10 }], boxes);
 ok(m.a.y === m.b.y && m.c.y > m.a.y && m.c.x === m.a.x, '网格：2 列');
+
+m = planMoves([{ do: 'tighten', ids: ['a', 'b', 'c'], s: 0.5, gap: 40 }], boxes);
+ok(m.a.y < m.b.y && m.b.y < m.c.y && m.c.y - m.a.y < 200, '收紧：上下顺序不变，距离变近 ' + JSON.stringify(m));
+ok(V({ do: 'tighten', ids: ['n1', 'n2'] }).ok && !V({ do: 'tighten', ids: ['n1', 'n2'], s: 2 }).ok, '收紧：s 只能 0~1');
+ok(isFollowup('啊？你为什么什么都没做？') && !isQuestion('啊？你为什么什么都没做？') && isQuestion('怎么把这几个左对齐') && !isFollowup('怎么让它不显示'), '追问上一轮 → 不走问答（问答没历史）');
 
 // 解析模型输出
 ok(parseReply('好的：\n```json\n{"say":"嗯","actions":[{"do":"select","ids":["n1"]}]}\n```').actions.length === 1, '解析：容忍前后废话和代码块');

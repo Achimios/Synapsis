@@ -79,6 +79,27 @@ export function scaleAxis(rects, axis, anchor, s) {
   return { rects: alignStack(rects, axis, anchor), mode: 'align' };
 }
 
+// >v<🎨画布-整体收紧-卡片中心朝共同重心等比靠拢，x、y 同一个倍数 → 相对方位完全不变，只是距离变近。
+//   👤 2026-10-08「相对方位不要变，只是整体紧凑一点」（以前 AI 只会对齐 / 排列，拿「上边对齐」凑数把布局改了）。
+//   s 给了就按 s；没给 = 收到「再紧任意两张就靠得比 gap 近」为止。原本就挨太近的两张不算（不然一步都收不了）
+export function tighten(rects, { s = null, gap = 40 } = {}) {
+  if (rects.length < 2) return rects.map(r => ({ ...r }));
+  const c = rs => rs.map(r => [r.x + r.w / 2, r.y + r.h / 2]);
+  const cs = c(rects), mx = cs.reduce((a, p) => a + p[0], 0) / cs.length, my = cs.reduce((a, p) => a + p[1], 0) / cs.length;
+  const at = k => rects.map((r, i) => ({ ...r, x: mx + (cs[i][0] - mx) * k - r.w / 2, y: my + (cs[i][1] - my) * k - r.h / 2 }));
+  const close = new Set();
+  rects.forEach((r, i) => rects.forEach((q, j) => { if (i < j && overlaps(r, q, gap)) close.add(i + ',' + j); }));
+  const bad = rs => rs.some((r, i) => rs.some((q, j) => i < j && !close.has(i + ',' + j) && overlaps(r, q, gap)));
+  let k = s;
+  if (k == null) {
+    let lo = 0, hi = 1;
+    if (!bad(at(0))) hi = 0;
+    else for (let i = 0; i < 30; i++) { const m = (lo + hi) / 2; if (bad(at(m))) lo = m; else hi = m; }
+    k = hi;
+  }
+  return at(Math.max(0, Math.min(1, k))).map(r => ({ ...r, x: Math.round(r.x), y: Math.round(r.y) }));
+}
+
 // 拖动柄 → 各轴的 s：handle 是 'e' 'w' 's' 'n' 或角 'ne' 'nw' 'se' 'sw'；dx/dy 是画布坐标位移
 export function dragScale(rects, handle, dx, dy) {
   let out = rects, modes = [];

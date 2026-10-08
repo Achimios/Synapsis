@@ -3,6 +3,7 @@
 // 每种动作对应一份说明书 core/skills/*.md（喂给模型）；VALIDATORS 和说明书一一对应（自检核对）。
 import { PALETTE } from './colors.js';
 import { withMoved, ROOT } from './outline.js';
+import { tighten } from './arrange.js';
 
 export const KINDS = { '': '', 普通: '', 调节: '调节', 离散: '离散' };
 export const STATUSES = { done: 'done', partial: 'partial', todo: 'todo', dropped: 'dropped', none: null };
@@ -42,6 +43,14 @@ export const VALIDATORS = {
     const gap = a.gap == null ? 40 : Number(a.gap);
     if (!(gap >= 10 && gap <= 300)) throw new Error('gap 要在 10~300 之间');
     return { ids, as: a.as, gap, desc: `${SHAPE_ZH[a.as]}（按这个顺序，间距 ${gap}）：` + ids.map(label).join(' → ') };
+  },
+  tighten: (a, { many, label }) => {
+    const ids = many(a.ids, 2);
+    const gap = a.gap == null ? 40 : Number(a.gap);
+    if (!(gap >= 10 && gap <= 300)) throw new Error('gap 要在 10~300 之间');
+    const s = a.s == null ? null : Number(a.s);
+    if (s != null && !(s > 0 && s < 1)) throw new Error('s 要在 0~1 之间（0.7 = 距离变成 70%）');
+    return { ids, gap, s, desc: `收紧（方位不变，${s == null ? '收到最近留 ' + gap : '距离 × ' + s}）：` + ids.map(label).join('、') };
   },
   order: (a, { many, label, graph }) => {
     const ids = many(a.ids, 2);
@@ -98,11 +107,17 @@ export const VALIDATORS = {
   },
 };
 
-// >v<🤖AI指令-排版-对齐 / 排列的新坐标（boxes = {id: {x, y, w, h}}，左上角坐标；返回 {id: {x, y}}）
+// >v<🤖AI指令-排版-对齐 / 排列 / 收紧的新坐标（boxes = {id: {x, y, w, h}}，左上角坐标；返回 {id: {x, y}}）
 export function planMoves(actions, boxes) {
   const cur = Object.fromEntries(Object.entries(boxes).map(([id, b]) => [id, { ...b }]));
   const out = {};
   for (const a of actions) {
+    if (a.do === 'tighten') {
+      const bs = a.ids.map(id => cur[id] && { id, ...cur[id] }).filter(Boolean);
+      if (bs.length < 2) continue;
+      for (const r of tighten(bs, { s: a.s, gap: a.gap ?? 40 })) { cur[r.id].x = r.x; cur[r.id].y = r.y; out[r.id] = { x: r.x, y: r.y }; }
+      continue;
+    }
     if (a.do !== 'align' && a.do !== 'arrange') continue;
     const bs = a.ids.map(id => cur[id] && { id, ...cur[id] }).filter(Boolean);
     if (bs.length < 2) continue;

@@ -44,7 +44,7 @@ export function systemPrompt(skills = loadSkills()) {
 
 硬规则：
 1. 只输出一个 JSON 对象，不要任何别的文字、不要代码块标记：{"say": "给人看的一句中文", "actions": [ 动作, … ]}
-   每次都必须有 actions 字段（做不了就是空数组）。做事时 say 说「将要做什么」（人确认后才会执行），不要说「已经做了」。
+   每次都必须有 actions 字段（做不了就是空数组）。做事时 say 用一句话具体说出要做的事，比如「将把 6 张卡朝中间收紧，方位不变」（人确认后才会执行），不要说「已经做了」，也不要照抄这句例子。
 2. 每个动作是 {"do": 动作名, …参数}。动作名只能是：${skills.map(s => s.do).join('、')}。
 3. 节点只能用本页列出的编号（n1、n2…），不要写名字当 id，不要编造编号。
 4. 不能删除节点（没有这个动作）。人要删节点 → actions 留空，say 里请他自己右键删除。
@@ -52,6 +52,7 @@ export function systemPrompt(skills = loadSkills()) {
 6. 只做人要求的事，不要顺手多做。
 7. 「这几个 / 选中的」= 标了 ★选中 的节点。
 8. 人问的是软件怎么用而不是让你做事 → actions 留空，say 里请他换成问句再问一次（比如「怎么连线？」），会有专门的问答回答他。
+9. 人追问「为什么没做 / 怎么没变」→ 看上一轮：上一轮 actions 是空的就老实说没给出动作，这次把该做的动作补上；做不到就说做不到。
 
 可用动作（说明书）：
 ${skills.map(s => `## ${s.name}：${s.do}\n参数：${s.args}\n${s.body}`).join('\n\n')}`;
@@ -74,12 +75,15 @@ export const clearChat = root => { try { mkdirSync(dirname(chatFile(root)), { re
 const pushChat = (root, turn) => { const h = [...loadChat(root), turn].slice(-30); mkdirSync(dirname(chatFile(root)), { recursive: true }); writeFileSync(chatFile(root), JSON.stringify(h, null, 1)); };
 
 // >v<🤖AI指令-问答-问句 = 问软件怎么用（不是让它做事）。「怎么把这几个左对齐」也算问句：答法 + 提示可以直接说让它做
-export const isQuestion = t => /怎么|如何|怎样|哪里|在哪|哪个|有哪些|什么|能不能|可不可以|吗[？?。！!\s]*$|[？?]\s*$|快捷键|是干嘛|干什么用/.test(String(t));
+// 追问上一轮（「为什么什么都没做 / 怎么没反应」）不是问用法：走做事那条路，它看得到上一轮 —— 问答那条没有历史，只会答「手册里没写」（2026-10-08 实测）
+export const isFollowup = t => /(为什么|为啥).{0,6}(没|不)|(怎么|咋).{0,4}(没|还是)|没反应|没动|没变/.test(String(t));
+export const isQuestion = t => !isFollowup(t) && /怎么|如何|怎样|哪里|在哪|哪个|有哪些|什么|能不能|可不可以|吗[？?。！!\s]*$|[？?]\s*$|快捷键|是干嘛|干什么用/.test(String(t));
 export const ANSWER_PROMPT = `你是 Synapsis（思维导图 / 节点图工具）的使用说明助手。人问软件怎么用，你只根据消息里的【软件知识】回答。
 - 写出具体的按键、按钮名和操作步骤；简洁，几行就好，可以用「- 」列点。
 - 【软件知识】里没有的，就说「手册里没写这个」，不要编造按键或功能。
+- 没有固定口令，别编「说『整理页面』」这种。
 - Synapsis 没有菜单栏，也没有知识里没列出的快捷键（比如别编 Ctrl+L）。
-- 如果人想做的事属于你能代劳的动作（选中、对齐、排列、大纲排序、配色、状态、连线、删线、新建、改名、移动进别的节点），先答怎么手动做，最后加一句：也可以直接对我说「……」，我来做。别的事（开关显示、主题、删除……）不要说你能做。
+- 如果人想做的事属于你能代劳的动作（选中、对齐、排列、收紧（方位不变整体靠拢）、大纲排序、配色、状态、连线、删线、新建、改名、移动进别的节点），先答怎么手动做，最后加一句：也可以直接用自己的话叫我做，我来做。别的事（开关显示、主题、删除……）不要说你能做。
 - 泛泛地问「有哪些快捷键 / 能做什么」→ 只挑最常用的 8 个左右列出，最后说：完整列表按 ? / F1（或顶栏「⌨ 快捷键」）。
 - 只输出给人看的中文回答，不要 JSON，不要代码块。`;
 
@@ -164,7 +168,7 @@ export function applyPlan(root, actions, boxes = {}) {
   for (const a of kinds) setEdgeLabel(root, fix(a.from), fix(a.to), a.label, a.kind);
   for (const a of colors) for (const id of a.ids) setNodeMeta(root, fix(id), { color: a.color === 'auto' ? null : a.color });
   const fixedBoxes = Object.fromEntries(Object.entries(boxes).map(([id, b]) => [fix(id), b]));
-  const moves = planMoves(actions.filter(a => a.do === 'align' || a.do === 'arrange').map(a => ({ ...a, ids: a.ids.map(fix) })), fixedBoxes);
+  const moves = planMoves(actions.filter(a => ['align', 'arrange', 'tighten'].includes(a.do)).map(a => ({ ...a, ids: a.ids.map(fix) })), fixedBoxes);
   const select = [...new Set(actions.filter(a => a.do === 'select').flatMap(a => a.ids.map(fix)))];
   return { report: { ...report, outline: workspaceOutline(loadWorkspace(root)) }, moves, select };
 }
