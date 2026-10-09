@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSy
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { saveOutline, setNodeBody } from '../../core/workspace.js';
+import { saveOutline, setNodeBody, setNodeMeta } from '../../core/workspace.js';
 import { runBatch } from '../../core/cli.js';
 import { SAMPLE } from '../src/sample.js';
 import { PALETTE } from '../../core/colors.js';
@@ -212,7 +212,7 @@ for (const kind of ['reactflow']) {
   ok(camIn !== camFit, '缩放平移确实改变了视图（否则下面的还原检查无意义）');
   await page.mouse.click(1000, 780); await page.keyboard.press('Escape');
   await page.keyboard.press('Alt+ArrowUp'); await sleep(800);
-  ok((await page.$eval('.crumbs', e => e.innerText)) === '根', 'Alt+↑ 返回上一级');
+  ok((await page.$eval('.crumbs a', e => e.innerText)) === '根' && /^根( › [^›]+)?$/.test((await page.$eval('.crumbs', e => e.innerText)).trim()), 'Alt+↑ 返回上一级（面包屑回到根；选中刚离开的节点 → 后面多接它一段）');
   await page.keyboard.press('Alt+ArrowLeft'); await sleep(800);
   ok((await page.$eval('.crumbs', e => e.innerText)).includes('游戏AI'), 'Alt+← 后退回游戏AI');
   ok(await cam() === camIn, `返回再进来视图还原 ${camIn} vs ${await cam()}`);
@@ -760,7 +760,7 @@ for (const kind of ['reactflow']) {
   const lay = () => JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'));
   await page.mouse.click(...mid(await (await lab('组')).boundingBox())); await sleep(300);
   await page.mouse.click(...mid(await (await lab('组')).boundingBox()), { button: 'right' }); await sleep(300);
-  ok(!!(await page.$('.ctx .mi:has-text("原地展开成框")')), '右键菜单有「原地展开成框」');
+  ok(!!(await page.$('.ctx .mi.quiet:has-text("展开成框")')), '右键菜单有「⊞ 展开成框」（灰色小字一组）');
   await page.keyboard.press('Escape'); await page.mouse.click(...mid(await (await lab('组')).boundingBox())); await sleep(300);
   if (!(await page.$('.card.sel'))) await page.mouse.click(...mid(await (await lab('组')).boundingBox()));
   await page.keyboard.press('f'); await sleep(1500);
@@ -804,9 +804,10 @@ for (const kind of ['reactflow']) {
       const lines = user.split(/\r?\n/).map(l => l.match(/^(\d+)\. (.*)$/)).filter(Boolean);
       let out = '';
       const ref = name => (user.match(new RegExp('(n\\d+) ' + name)) || [])[1];
+      const ask = user.replace(/【上一轮结果】[^\n]*\n?/, ''); // 判断「人这次说了什么」不能看【上一轮结果】那行（它会带着上次的动作名，比如「对齐」）
       if (/使用说明助手/.test(sys)) out = '- 按 L 搜索目标连线\n- 或者拖卡片边缘';
-      else if (/思维导图 \/ 节点图工具/.test(sys)) out = /对齐/.test(user) ? JSON.stringify({ say: '将左对齐', actions: [{ do: 'align', ids: [ref('惊慌失措'), ref('传感器')], edge: 'left' }, { do: 'delete', ids: ['n1'] }] })
-        : /完成/.test(user) ? JSON.stringify({ say: '将标记完成', actions: [{ do: 'status', ids: [ref('咕噜人')], status: 'done' }] }) : '{"say":"删除请你自己来","actions":[]}';
+      else if (/思维导图 \/ 节点图工具/.test(sys)) out = /对齐/.test(ask) ? JSON.stringify({ say: '将左对齐', actions: [{ do: 'align', ids: [ref('惊慌失措'), ref('传感器')], edge: 'left' }, { do: 'delete', ids: ['n1'] }] })
+        : /完成/.test(ask) ? JSON.stringify({ say: '将标记完成', actions: [{ do: 'status', ids: [ref('咕噜人')], status: 'done' }] }) : '{"say":"删除请你自己来","actions":[]}';
       else if (/归类配色/.test(sys)) out = lines.map(m => `${m[1]}: ${/吓/.test(m[2]) ? 1 : 0}`).join('\n');
       else if (/值得连起来的关系/.test(sys)) out = lines.map(m => `${m[1]}. x | ${/情绪/.test(m[2]) ? 3 : 0} | ${/情绪/.test(m[2]) ? '都讲情绪' : '无关'}`).join('\n');
       else if (/配色/.test(sys)) out = words;
@@ -1019,6 +1020,233 @@ for (const kind of ['reactflow']) {
   ok(nb && Math.abs(nb.x - 700) < 60 && Math.abs(nb.y - 600) < 40, '右键「在这里新建」→ 卡片落在鼠标位置 ' + JSON.stringify(nb));
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close(); srv.close();
+  rmSync(ws, { recursive: true, force: true });
+}
+// —— 📌 钉子（👤 2026-10-09）：右键钉到… → 反引号开窗 → ☐ / 双击跳转 / 清空 / 删组 → 撤销 → 改名后钉子跟着走 → 刷新还在 ——
+{
+  console.log('== 钉子');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-pin-ui-')); noAi(ws);
+  saveOutline(ws, '甲\n乙\n丙\n  丁');
+  writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 甲: { x: 0, y: 0 }, 乙: { x: 260, y: 0 }, 丙: { x: 520, y: 0 }, '丙/丁': { x: 0, y: 0 } }));
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
+  const lab = async l => { for (const t of await page.$$('.card .lab')) if ((await t.textContent()) === l) return t; };
+  const mid = b => [b.x + b.width / 2, b.y + b.height / 2];
+  const hk = () => JSON.parse(readFileSync(join(ws, '.synapsis', 'pins.json'), 'utf8'));
+  const names = () => hk().groups.map(g => g.name + ':' + g.items.map(i => i.node).join('+')).join(' | ');
+  const rclick = async l => { await page.mouse.click(...mid(await (await lab(l)).boundingBox()), { button: 'right' }); await sleep(300); };
+  ok(!!(await page.$('button:has-text("📌 钉子")')) && !(await page.$('.pinbox')), '顶栏有 📌 钉子 按钮，窗口默认不开');
+  // 右键 甲 → 还没有组 → 只有「钉到新组」
+  await rclick('甲');
+  ok(!!(await page.$('.ctx .mi:has-text("钉到新组")')) && !(await page.$('.ctx .mi:has-text("钉到「")')), '还没有组 → 右键只有「📌 钉到新组」');
+  await page.click('.ctx .mi:has-text("钉到新组")'); await sleep(900);
+  ok(names() === '组 1:甲', '钉到新组 → 写进 .synapsis/pins.json ' + names());
+  // 再右键 乙 → 第一项 = 钉到「组 1」（当前），另有灰字「钉到新组」
+  await rclick('乙');
+  ok(!!(await page.$('.ctx .mi:has-text("钉到「组 1」")')) && !!(await page.$('.ctx .mi.quiet:has-text("钉到新组")')), '有组了 → 第一项是当前组「组 1」，灰字「＋ 钉到新组」');
+  await page.click('.ctx .mi:has-text("钉到「组 1」")'); await sleep(900);
+  ok(names() === '组 1:甲+乙', '钉到当前组 ' + names());
+  await rclick('乙'); await page.click('.ctx .mi:has-text("钉到「组 1」")'); await sleep(700);
+  ok(names() === '组 1:甲+乙', '同一个节点在同一组里不重复');
+  // 再建一个新组钉 丙；它成为当前组，右键里 组 1 变成灰字
+  await rclick('丙'); await page.click('.ctx .mi.quiet:has-text("钉到新组")'); await sleep(900);
+  ok(names() === '组 1:甲+乙 | 组 2:丙' && hk().current === hk().groups[1].id, '钉到新组 → 组 2，成为当前组 ' + names());
+  await rclick('甲');
+  ok(!!(await page.$('.ctx .mi:has-text("钉到「组 2」")')) && !!(await page.$('.ctx .mi.quiet:has-text("钉到「组 1」")')), '右键：第一项 = 当前组（组 2），其他组灰字');
+  await page.keyboard.press('Escape'); await sleep(200);
+  // 反引号开窗
+  await page.mouse.click(700, 800); await page.keyboard.press('Backquote'); await sleep(500);
+  ok(!!(await page.$('.pinbox')) && (await page.$$('.pinbox .hgroup')).length === 2, '反引号 → 钉子窗口，两个组');
+  ok((await page.$eval('.pinbox .hgroup.cur .hgname', e => e.textContent)) === '组 2', '当前组高亮 = 组 2');
+  const box = await page.$eval('.pinbox', e => e.getBoundingClientRect().toJSON()), side = await page.$eval('.side', e => e.getBoundingClientRect().toJSON());
+  ok(box.right <= side.left + 1, '默认位置不盖住右栏属性面板 ' + Math.round(box.right) + ' vs ' + Math.round(side.left));
+  // 点组 1 的标题 = 设成当前组
+  await page.click('.pinbox .hgroup:nth-child(1) .hghead .hgname'); await sleep(700);
+  ok(hk().current === hk().groups[0].id, '点组标题 → 设成当前组（写盘）');
+  // ☐ 勾
+  await page.click('.pinbox .hgroup:nth-child(1) li:nth-child(2) input[type=checkbox]'); await sleep(700);
+  ok(hk().groups[0].items[1].checked === true && !!(await page.$('.pinbox .hlab.done')), '☐ 勾上 → 划线 + 写盘');
+  // 双击名字 → 跳过去选中
+  await page.dblclick('.pinbox .hgroup:nth-child(1) li:nth-child(2) .hlab'); await sleep(900);
+  ok((await page.$eval('.side h3 input', e => e.value)) === '乙', '双击钉子 → 跳到并选中 乙');
+  // 折叠（不进历史）
+  await page.click('.pinbox .hgroup:nth-child(2) .hgtog'); await sleep(500);
+  ok(hk().groups[1].collapsed === true && !(await page.$('.pinbox .hgroup:nth-child(2) li')), '折叠组 2');
+  await page.click('.pinbox .hgroup:nth-child(2) .hgtog'); await sleep(400);
+  // 钉一个别的页的节点：钻进 丙，右键 丁 → 钉到当前组（组 1）；回上一层，双击钉子 → 回到 丙 并选中 丁
+  await page.dblclick('.react-flow__node[data-id="丙"] .lab'); await sleep(900);
+  await rclick('丁'); await page.click('.ctx .mi:has-text("钉到「组 1」")'); await sleep(900);
+  ok(names() === '组 1:甲+乙+丙/丁 | 组 2:丙', '在别的页钉 丁 → 组 1 ' + names());
+  await page.mouse.click(700, 800); await page.keyboard.press('Alt+ArrowUp'); await sleep(900);
+  await page.dblclick('.pinbox .hgroup:nth-child(1) li:nth-child(3) .hlab'); await sleep(1200);
+  ok((await page.$eval('.crumbs', e => e.innerText)).includes('丙') && (await page.$eval('.side h3 input', e => e.value)) === '丁', '双击别页的钉子 → 换页并选中 丁');
+  await page.mouse.click(700, 800); await page.keyboard.press('Alt+ArrowUp'); await sleep(700);
+  // 撤销 / 重做：撤销刚才钉 丁；操作历史里有一句人话
+  await page.mouse.click(700, 800); await page.keyboard.press('Control+z'); await sleep(900);
+  ok(names() === '组 1:甲+乙 | 组 2:丙', 'Ctrl+Z → 撤销钉 丁 ' + names());
+  await page.keyboard.press('Control+Shift+z'); await sleep(900);
+  ok(names() === '组 1:甲+乙+丙/丁 | 组 2:丙', 'Ctrl+Shift+Z → 重做 ' + names());
+  await page.keyboard.press('Shift+Tab'); await sleep(500);
+  ok((await page.$$eval('.histcol .hrow', ls => ls.map(l => l.innerText)).catch(() => [])).some(t => t.includes('钉到「组 1」')), '操作历史栏里记着「钉到「组 1」…」');
+  await page.keyboard.press('Shift+Tab'); await sleep(300);
+  // 清空 → 组留着；撤销 → 钉子回来
+  await page.click('.pinbox .hgroup:nth-child(1) .hghead a:has-text("清空")'); await sleep(800);
+  ok(hk().groups.length === 2 && hk().groups[0].items.length === 0, '清空 → 钉子没了，组还在');
+  await page.mouse.click(700, 800); await page.keyboard.press('Control+z'); await sleep(800);
+  ok(hk().groups[0].items.length === 3, '撤销清空 → 钉子回来');
+  // 双击组名改名
+  await page.dblclick('.pinbox .hgroup:nth-child(2) .hgname'); await sleep(300);
+  await page.keyboard.press('Control+a'); await page.keyboard.type('翻NPC'); await page.keyboard.press('Enter'); await sleep(800);
+  ok(hk().groups[1].name === '翻NPC', '双击组名 → 改名 ' + names());
+  // 删组 → 撤销
+  await page.click('.pinbox .hgroup:nth-child(2) .hghead a[title^="删除这个组"]'); await sleep(800);
+  ok(hk().groups.length === 1, '🗑 删组');
+  await page.mouse.click(700, 800); await page.keyboard.press('Control+z'); await sleep(800);
+  ok(hk().groups.length === 2 && hk().groups[1].name === '翻NPC', '撤销删组 → 组回来');
+  // 画布上改名 甲 → 甲改：钉子跟着走，窗口里不显示「找不到」
+  await page.mouse.click(...mid(await (await lab('甲')).boundingBox())); await sleep(300);
+  await page.keyboard.press('F2'); await sleep(300);
+  await page.keyboard.press('Control+a'); await page.keyboard.type('甲改'); await page.keyboard.press('Enter'); await sleep(2500);
+  ok(hk().groups[0].items.some(i => i.node === '甲改') && !hk().groups[0].items.some(i => i.node === '甲'), '改名 甲→甲改：pins.json 里钉子跟着改 ' + names());
+  ok(!/找不到/.test(await page.$eval('.pinbox', e => e.innerText)) && (await page.$eval('.pinbox', e => e.innerText)).includes('甲改'), '窗口里也跟着，没有「找不到」');
+  // 刷新页面：钉子还在，窗口还开着（stash）
+  await page.reload(); await sleep(2500);
+  ok(!!(await page.$('.pinbox')) && (await page.$$('.pinbox .hgroup')).length === 2 && (await page.$eval('.pinbox', e => e.innerText)).includes('甲改'), '刷新后：窗口还开着，两个组都在');
+  // 窗口缩小：浮窗整个留在屏幕里（默认位置会跟着右栏 / 窗口走；拖过的位置显示时拉回来，窗口放大再回去）
+  const inside = async () => { const b = await page.$eval('.pinbox', e => e.getBoundingClientRect().toJSON()), v = page.viewportSize(); return b.left >= -1 && b.top >= -1 && b.right <= v.width + 1 && b.bottom <= v.height + 1; };
+  for (const [w, h] of [[900, 600], [700, 480], [420, 320]]) {
+    await page.setViewportSize({ width: w, height: h }); await sleep(500);
+    ok(await inside(), `窗口缩到 ${w}×${h}：钉子窗口整个还在屏幕里（默认位置）`);
+  }
+  await page.setViewportSize({ width: 1400, height: 850 }); await sleep(500);
+  // 拖到右下角，再缩小：拉回来；不污染 AI 框的位置记录
+  const bar = await page.$eval('.pinbox .bar', e => e.getBoundingClientRect().toJSON());
+  await page.mouse.move(bar.left + 20, bar.top + 8); await page.mouse.down(); await page.mouse.move(1100, 700, { steps: 6 }); await page.mouse.up(); await sleep(400);
+  ok(await page.evaluate(() => !!localStorage.getItem('syn.pinbox') && localStorage.getItem('syn.agentbox') === null), '拖过：位置记在 syn.pinbox，没碰 AI 框的 syn.agentbox');
+  for (const [w, h] of [[900, 600], [500, 400]]) {
+    await page.setViewportSize({ width: w, height: h }); await sleep(500);
+    ok(await inside(), `拖过的钉子窗口，窗口缩到 ${w}×${h}：也被拉回屏幕里`);
+  }
+  await page.setViewportSize({ width: 1400, height: 850 }); await sleep(500);
+  ok(await inside(), '窗口放回 1400×850：还在屏幕里');
+  await page.dblclick('.pinbox .bar b'); await sleep(300);
+  // 跳转要快：别页的钉子，双击后 450ms 内目标卡片已经居中（以前固定等 400ms + 300ms 动画）
+  await page.mouse.click(700, 800); await sleep(100);
+  const ctr = async l => { const cb = await (await lab(l))?.boundingBox(), rb = await page.$eval('.react-flow', e => e.getBoundingClientRect().toJSON()); return cb ? Math.hypot(cb.x + cb.width / 2 - (rb.left + rb.width / 2), cb.y + cb.height / 2 - (rb.top + rb.height / 2)) : 9999; };
+  await page.dblclick('.pinbox .hgroup:nth-child(1) li:nth-child(3) .hlab'); await sleep(450);
+  ok((await ctr('丁')) < 220, '双击别页的钉子 → 450ms 内换页并居中 ' + Math.round(await ctr('丁')));
+  await page.mouse.click(700, 800); await page.keyboard.press('Alt+ArrowUp'); await sleep(500);
+  // AI 指令框也一样（和钉子窗口共用同一套拖动 / 缩放）：缩小窗口 → 默认位置和拖过的位置都拉回屏幕里
+  await page.mouse.click(700, 800); await page.keyboard.press('Shift+F'); await sleep(600);
+  const aiIn = async () => { const b = await page.$eval('.agentbox', e => e.getBoundingClientRect().toJSON()), v = page.viewportSize(); return b.left >= -1 && b.top >= -1 && b.right <= v.width + 1 && b.bottom <= v.height + 1; };
+  for (const [w, h] of [[800, 500], [420, 320]]) { await page.setViewportSize({ width: w, height: h }); await sleep(500); ok(await aiIn(), `AI 框（默认位置）：窗口缩到 ${w}×${h} 还在屏幕里`); }
+  await page.setViewportSize({ width: 1400, height: 850 }); await sleep(500);
+  const abar = await page.$eval('.agentbox .bar', e => e.getBoundingClientRect().toJSON());
+  await page.mouse.move(abar.left + 12, abar.top + 8); await page.mouse.down(); await page.mouse.move(1250, 760, { steps: 6 }); await page.mouse.up(); await sleep(400);
+  for (const [w, h] of [[900, 600], [500, 400]]) { await page.setViewportSize({ width: w, height: h }); await sleep(500); ok(await aiIn(), `AI 框（拖到右下角后）：窗口缩到 ${w}×${h} 被拉回屏幕里`); }
+  await page.setViewportSize({ width: 1400, height: 850 }); await sleep(500);
+  await page.click('.agentbox .bar button[title^="关闭"]'); await sleep(400);
+  // 反引号收起
+  await page.mouse.click(700, 800); await page.keyboard.press('Backquote'); await sleep(400);
+  ok(!(await page.$('.pinbox')), '反引号 → 收起');
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
+// —— 📌 钉子 第 2 步：文件里的某一行（选中文字右键钉；文件改了还能找回；找不到让人选）——
+{
+  console.log('== 行钉子');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-pinline-ui-')); noAi(ws);
+  saveOutline(ws, '甲\n乙');
+  setNodeMeta(ws, '甲', { 备注: '测试' }); // 让 md 有 frontmatter：正文框里的行号和真文件的行号不一样
+  setNodeBody(ws, '甲', '开头一行\n第二行：这是一段比较长的话，用来测试按二十个字一段做探针的搜索方法，改动之后还能不能找回来。\n结尾一行');
+  writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 甲: { x: 0, y: 0 }, 乙: { x: 260, y: 0 } }));
+  writeFileSync(join(ws, '笔记.txt'), '头\n中间有一句话要记住：别忘了测试文件预览里的钉子\n尾');
+  const mdFile = join(ws, '__synapsis', '甲.md'), txtFile = join(ws, '笔记.txt');
+  const mdLines = () => readFileSync(mdFile, 'utf8').split('\n'), lineOf = s => mdLines().findIndex(l => l.includes(s)) + 1;
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
+  const pins = () => JSON.parse(readFileSync(join(ws, '.synapsis', 'pins.json'), 'utf8'));
+  const items = () => pins().groups.flatMap(g => g.items);
+  const lab = async l => { for (const t of await page.$$('.card .lab')) if ((await t.textContent()) === l) return t; };
+  const mid = b => [b.x + b.width / 2, b.y + b.height / 2];
+  // 在 pre.raw 里选中第 ln 行的 [a, b) 字，右键选区中央
+  const selectRaw = async (scope, ln, a, b) => {
+    await page.evaluate(([sc, ln, a, b]) => { const span = document.querySelector(`${sc} [data-ln="${ln}"]`), tn = span.firstChild, r = document.createRange(); r.setStart(tn, a); r.setEnd(tn, b); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }, [scope, ln, a, b]);
+    const c = await page.evaluate(() => { const r = getSelection().getRangeAt(0).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+    await page.mouse.click(c[0], c[1], { button: 'right' }); await sleep(400);
+  };
+  // 1) 原文页里选中 → 右键 → 钉到新组
+  await page.mouse.click(...mid(await (await lab('甲')).boundingBox())); await sleep(400);
+  await page.click('.side .tabs a:has-text("原文")'); await sleep(900);
+  const L2 = lineOf('第二行');
+  await selectRaw('pre.raw', L2, 3, 15);
+  ok((await page.$eval('.ctx .mh', e => e.textContent).catch(() => '')) === '选中的文字', '原文页里选中一段文字，右键 → 出现「选中的文字」菜单（不是浏览器自己的）');
+  await page.click('.ctx .mi:has-text("钉到新组")'); await sleep(900);
+  let it = items()[0];
+  ok(it?.kind === 'line' && it.file === '__synapsis/甲.md' && it.node === '甲' && it.line === L2 && it.text.startsWith('第二行') && it.seg === 0, '钉到新组 → 行钉子：文件 / 节点 / 行号 / 整行文字 / 段号 ' + JSON.stringify(it));
+  // 2) 正文框里选中 → 右键 → 钉到当前组：行号要加上 frontmatter 的行数
+  await page.click('.side .tabs a:has-text("概览")'); await sleep(500);
+  await page.evaluate(() => { const ta = document.querySelector('textarea.body'); ta.focus(); const i = ta.value.indexOf('结尾一行'); ta.setSelectionRange(i, i + 4); const r = ta.getBoundingClientRect(); ta.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.x + 30, clientY: r.y + 30 })); });
+  await sleep(400);
+  ok((await page.$eval('.ctx .mh', e => e.textContent).catch(() => '')) === '选中的文字', '正文框里选中文字右键 → 同一个菜单');
+  await page.click('.ctx .mi:has-text("钉到「组 1」")'); await sleep(900);
+  ok(items().length === 2 && items()[1].line === lineOf('结尾一行') && items()[1].line > 3, '正文框里的钉子：行号是真文件里的行号（带上 frontmatter） ' + items()[1]?.line + ' vs ' + lineOf('结尾一行'));
+  // 没选中文字时右键 = 浏览器自己的菜单（我们不抢）
+  await page.evaluate(() => { const ta = document.querySelector('textarea.body'); ta.setSelectionRange(2, 2); window.__ctxPrevented = null; ta.addEventListener('contextmenu', e => { window.__ctxPrevented = e.defaultPrevented; }, { once: false }); const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); ta.dispatchEvent(ev); window.__ctxPrevented = ev.defaultPrevented; });
+  ok(await page.evaluate(() => window.__ctxPrevented) === false && !(await page.$('.ctx')), '没选中文字 → 不拦右键');
+  // 3) 文件在外面被改：上面插了两行 → 双击钉子，高亮到新位置，钉子里的行号更新
+  writeFileSync(mdFile, readFileSync(mdFile, 'utf8').replace('开头一行', '新加的一行\n又一行\n开头一行'));
+  await page.mouse.click(700, 800); await page.keyboard.press('Backquote'); await sleep(500);
+  await page.dblclick('.pinbox li:nth-child(1) .hlab'); await sleep(1200);
+  const L2b = lineOf('第二行');
+  ok(L2b === L2 + 2 && (await page.$eval('pre.raw .ln.hl', e => e.dataset.ln).catch(() => '')) === String(L2b), '文件上面插了两行 → 双击钉子，原文页高亮到新位置（第 ' + L2b + ' 行）');
+  ok((await page.$eval('pre.raw .ln.hl', e => e.textContent).catch(() => '')).startsWith('第二行'), '高亮的就是那一行');
+  ok(items()[0].line === L2b, '钉子里的行号顺手更新成新的 ' + items()[0].line);
+  // 4) 行中间被改了几个字 → 照样认得出
+  writeFileSync(mdFile, readFileSync(mdFile, 'utf8').replace('按二十个字一段做探针', '按二十个字一段做【改动】'));
+  await page.dblclick('.pinbox li:nth-child(1) .hlab'); await sleep(1000);
+  ok((await page.$eval('pre.raw .ln.hl', e => e.dataset.ln).catch(() => '')) === String(L2b) && items()[0].text.includes('【改动】'), '行中间改了几个字 → 还是找到，钉子里的文字也跟着更新');
+  // 5) 那一行整个被删了 → 找不到：列最像的几行让人选；「都不是」收起
+  writeFileSync(mdFile, readFileSync(mdFile, 'utf8').split('\n').filter(l => !l.startsWith('第二行')).join('\n'));
+  await page.dblclick('.pinbox li:nth-child(1) .hlab'); await sleep(1000);
+  ok(!!(await page.$('.pinbox .pinask')), '那一行被删了 → 钉子下面出现「找不到原来的那一行」');
+  await page.click('.pinbox .pinask .cand.dim'); await sleep(300);
+  ok(!(await page.$('.pinbox .pinask')), '点「都不是」收起');
+  // 6) 节点改名：md 文件跟着搬，行钉子按节点找到新路径
+  // 甲 已经被上一步的跳转选中了（再点一下卡片反而会取消选中）
+  await page.keyboard.press('F2'); await sleep(300); await page.keyboard.press('Control+a'); await page.keyboard.type('甲改'); await page.keyboard.press('Enter'); await sleep(2500);
+  ok(items()[1].node === '甲改', '节点改名 甲→甲改：行钉子的 node 跟着改 ' + items()[1].node);
+  await page.dblclick('.pinbox li:nth-child(2) .hlab'); await sleep(1300);
+  ok((await page.$eval('pre.raw .ln.hl', e => e.textContent).catch(() => '')).startsWith('结尾一行'), '改名之后双击行钉子：还是找到那一行（按节点取新路径）');
+  // 7) 文件预览里选中 → 钉；文件被改后双击 → 文件预览里高亮
+  await page.click('a[title^="项目根目录的文件"]'); await sleep(800);
+  await page.click('.fi:has-text("笔记.txt")'); await sleep(900);
+  await selectRaw('.side.wide pre.raw', 2, 6, 12);
+  await page.click('.ctx .mi:has-text("钉到「组 1」")'); await sleep(800);
+  it = items().find(i => i.file === '笔记.txt');
+  ok(it && it.node === null && it.line === 2 && it.text.startsWith('中间有一句话'), '文件预览里选中 → 钉：普通文件（不是节点）也行 ' + JSON.stringify(it));
+  writeFileSync(txtFile, '新的第一行\n' + readFileSync(txtFile, 'utf8'));
+  await page.click('.side.wide .bar button'); await sleep(400);
+  ok(!(await page.$('.side.wide')), '关掉文件预览');
+  await page.dblclick('.pinbox li:nth-child(3) .hlab'); await sleep(1300);
+  ok((await page.$eval('.side.wide pre.raw .ln.hl', e => e.dataset.ln).catch(() => '')) === '3', '文件被改（上面多了一行）→ 双击钉子 → 重新打开文件预览，高亮第 3 行');
+  // 8) 文件搬了位置：按文件名找（项目里只有一个同名文件就用它）
+  mkdirSync(join(ws, '子目录'), { recursive: true });
+  writeFileSync(join(ws, '子目录', '笔记.txt'), readFileSync(txtFile, 'utf8')); rmSync(txtFile);
+  await page.click('.side.wide .bar button'); await sleep(300);
+  await page.dblclick('.pinbox li:nth-child(3) .hlab'); await sleep(1300);
+  ok((await page.$eval('.side.wide .bar b', e => e.textContent).catch(() => '')).includes('子目录/笔记.txt') && items().find(i => i.text.startsWith('中间有一句话')).file === '子目录/笔记.txt', '文件搬进「子目录」→ 按文件名找到，钉子里的路径更新');
+  // 9) 文件被删：明说，不崩
+  rmSync(join(ws, '子目录'), { recursive: true, force: true });
+  await page.click('.side.wide .bar button'); await sleep(300);
+  await page.dblclick('.pinbox li:nth-child(3) .hlab'); await sleep(1000);
+  ok(/找不到文件/.test(await page.$eval('.save', e => e.textContent).catch(() => '')), '文件被删 → 状态栏说找不到文件');
+  await page.mouse.click(700, 800);
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
   rmSync(ws, { recursive: true, force: true });
 }
 await browser.close();

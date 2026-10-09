@@ -104,7 +104,8 @@ function ScaleFrame({ nodes, ids, setNodes, onMove }) {
 function FlowBridge() {
   const rf = useReactFlow();
   cardActions.toFlow = p => rf.screenToFlowPosition(p);
-  cardActions.centerOn = id => rf.getNode(id) && rf.fitView({ nodes: [{ id }], duration: 300, padding: 1.5, maxZoom: Math.max(1, rf.getZoom()) });
+  // 居中到某张卡：卡片还没量好尺寸（刚换页）就返回 false，让调用方等一下再试；force = 不等了，量没量好都居中。动画 120ms（以前 300，跳转显得拖）
+  cardActions.centerOn = (id, force) => { const n = rf.getNode(id); if (!n || (!force && !n.measured?.width)) return false; rf.fitView({ nodes: [{ id }], duration: 120, padding: 1.5, maxZoom: Math.max(1, rf.getZoom()) }); return true; };
   return null;
 }
 

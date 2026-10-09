@@ -1,4 +1,4 @@
-// >v<🔎搜索-全局搜索-Ctrl+K / 连线到… / 大纲树过滤共用（👤 2026-10-08）：名字、属性、正文；空格分开的几个词都要命中（可分布在不同地方）
+// >v<🔎搜索-全局搜索-Ctrl+F / 连线到… / 大纲树过滤共用（👤 2026-10-08）：名字、属性、正文；空格分开的几个词都要命中（可分布在不同地方）
 // items = [{id, label, path, meta?, body?}]；返回按得分排好的 [{id, label, path, where, snippet, score}]
 const lower = s => String(s || '').toLowerCase();
 export function searchNodes(items, q, limit = 50) {

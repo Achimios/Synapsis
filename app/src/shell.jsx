@@ -10,6 +10,8 @@ import { ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, HistoryPanel, O
 const DRAG_PIC = 'application/x-synapsis-pic';
 import { initStash, useStash, putStash } from './stash.js';
 import { AiPanel, RelatedDock, AgentBox } from './ai.jsx';
+import { PinDock } from './pindock.jsx';
+import { emptyPins, addGroup, addNodes, addLines, updateItem, lineAt, makeLinePin, locateLine } from './pins.js';
 import { MdLite } from './mdlite.jsx';
 import { SAMPLE } from './sample.js';
 import './shell.css';
@@ -38,6 +40,20 @@ const cardProps = meta => Object.entries(meta || {}).filter(([k, v]) => !SYS_MET
 export function Shell({ name, Canvas }) {
   const [mode, setMode] = useState(DEMO ? 'demo' : 'loading'); // demo | loading | ws | offline
   const [wsData, setWsData] = useState(null);
+  // >v<📌钉子-接入-临时翻阅组：服务端 .synapsis/pins.json 是真源（/ws 和每次保存的返回里都带 pins，节点改名时服务端已迁移）；界面每次操作整份 PUT /pins
+  //   edit = 进操作历史（撤销 / 重做）；view = 只是折叠 / 设当前组，不进历史。PUT 还在路上时不采纳服务端回来的旧值
+  const [pins, setPins] = useState(emptyPins), [pinsOpen, setPinsOpen] = useStash('pins.open', false);
+  const pinsRef = useRef(pins), pinsInflight = useRef(0);
+  const [rawHl, setRawHl] = useState(null), [fileHl, setFileHl] = useState(null), [pinAsk, setPinAsk] = useState(null); // 行钉子跳转后高亮的那一行（右栏原文 / 文件预览）、找不到时让人选的候选
+  const setPinsDoc = doc => {
+    pinsRef.current = doc; setPins(doc); pinsInflight.current++;
+    api('/pins', { method: 'PUT', body: JSON.stringify(doc) }).catch(e => setSaveState('❌ 钉子没存上：' + e.message)).finally(() => { pinsInflight.current--; });
+  };
+  useEffect(() => {
+    const h = wsData?.pins;
+    if (!h || pinsInflight.current || JSON.stringify(h) === JSON.stringify(pinsRef.current)) return;
+    pinsRef.current = h; setPins(h);
+  }, [wsData]);
   const [saveState, setSaveState] = useState('');
   const lastSaved = useRef(null);
   const local = mode === 'demo' || mode === 'offline';
@@ -354,7 +370,7 @@ export function Shell({ name, Canvas }) {
     const h = hist2.current;
     if (mode !== 'ws' || !h.committed) return setSaveState('撤销只在工作区模式');
     const e = h.undo.pop(); if (!e) return setSaveState('没有可撤销的');
-    if (e.op) { h.redo.push(e); persistHist(); return applyOp(e, 'undo').then(() => setSaveState('已撤销' + (e.op === 'meta' ? '属性修改' : '正文修改') + ' · 还能撤 ' + h.undo.length + ' 步')); }
+    if (e.op) { h.redo.push(e); persistHist(); return applyOp(e, 'undo').then(() => setSaveState('已撤销' + ({ meta: '属性修改', pins: '钉子操作' }[e.op] || '正文修改') + ' · 还能撤 ' + h.undo.length + ' 步')); }
     h.redo.push({ text: h.committed.text, positions: h.committed.positions, hint: flip(e.hint), desc: e.desc, t: e.t });
     return applyHist(e).then(() => setSaveState(h.lost > 0 ? `⚠ 已撤销，但有 ${h.lost} 项没能从 .junk/ 搬回来（已被清理，或原位置有同名文件）：那部分的正文 / 图片找不回，去系统回收站看看 · 还能撤 ${h.undo.length} 步` : '已撤销' + (e.restore ? '（删掉的节点从 .junk/ 搬回来了）' : '') + ' · 还能撤 ' + h.undo.length + ' 步'));
   };
@@ -422,7 +438,9 @@ export function Shell({ name, Canvas }) {
     if (p == null) return;
     if (p !== realScope && !(framed[p] && view.nodes.some(n => n.id === id))) go(p);
     setSelected(id); setPropsOpen(true);
-    setTimeout(() => cardActions.centerOn?.(id), 400);
+    // 等画布把这张卡画出来再居中（以前固定等 400ms + 300ms 动画，跳转显得拖）：同一页立刻就成，换页一般 1~2 帧
+    const center = (n = 0) => { if (n > 30 || cardActions.centerOn?.(id, n >= 15)) return; setTimeout(() => center(n + 1), 30); };
+    center();
   };
   // >v<🎨画布-改接连线-Alt 拖连线一端：放到别的节点 = 改接（标签 / 类型跟过去），放到空白 = 删除，拖的时候右键 / Esc = 取消（👤 2026-10-08）
   const rewire = (from, to, nf, nt) => {
@@ -497,6 +515,13 @@ export function Shell({ name, Canvas }) {
     openMd: id => { setSelected(id); setPropsOpen(true); setPropsTab('raw'); },
     reveal: id => reveal(nodeFile(id), 'select'),
     linkTo: id => setFinder({ mode: 'link', from: id }),
+    // 📌 右键 → 钉到…：右键的节点在多选里就一起钉；当前组（高亮）排第一，最好点到
+    pinsSelMenu: mode === 'ws' ? sel => { const d = pinsRef.current, cur = d.groups.find(g => g.id === d.current) || null; return { cur, others: d.groups.filter(g => g !== cur), pin: gid => pinSelection(sel, gid) }; } : null,
+    pinsMenu: mode === 'ws' ? id => {
+      const d = pinsRef.current, cur = d.groups.find(g => g.id === d.current) || null, m = cardActions.multi;
+      const ids = (m?.length > 1 && m.includes(id) ? m : [id]).filter(x => !x.startsWith('@'));
+      return { cur, others: d.groups.filter(g => g !== cur), n: ids.length, pin: gid => pinNodes(ids, gid) };
+    } : null,
     removeEdges: ids => removeEdges(ids),
     edgeKind: (from, to) => { const e = (wsData?.edges || []).find(x => x.from === from && x.to === to); if (e) cycleKind(from, to, e.label || '', e.kind || ''); },
     canEdgeKind: mode === 'ws',
@@ -529,7 +554,81 @@ export function Shell({ name, Canvas }) {
     api('/raw?p=' + encodeURIComponent(nodeFile(sel))).then(r => setRawText(r.text ?? r.note)).catch(e => setRawText('读取失败：' + e.message));
   }, [propsTab, sel, wsData]);
   // >v<🧭导航-撤销重做-属性 / 正文编辑也进撤销栈（👤 待办）：记 {op, id, undo: 改之前, redo: 改之后}，撤销 = 把旧值写回
-  const pushOp = e => { const h = hist2.current; if (!h.committed) return; const lb = graph.nodes.get(e.id)?.label || e.id; h.undo.push({ ...e, desc: e.op === 'meta' ? `改属性 ${lb}：${Object.keys(e.redo).join('、')}` : `改正文 ${lb}`, t: Date.now() }); h.redo = []; persistHist(); };
+  const pushOp = e => { const h = hist2.current; if (!h.committed) return; const lb = graph.nodes.get(e.id)?.label || e.id; h.undo.push({ ...e, desc: e.desc || (e.op === 'meta' ? `改属性 ${lb}：${Object.keys(e.redo).join('、')}` : `改正文 ${lb}`), t: Date.now() }); h.redo = []; persistHist(); };
+  // 📌 钉子的每一步：旧 doc / 新 doc 整份存进撤销栈（很小）。撤销 / 重做时折叠、当前组用现在的（那只是看法，不是内容）
+  const editPins = (next, desc) => { const prev = pinsRef.current; if (next === prev) return; pushOp({ op: 'pins', undo: prev, redo: next, desc }); setPinsDoc(next); };
+  const viewPins = next => { if (next !== pinsRef.current) setPinsDoc(next); };
+  const restorePins = snap => {
+    const live = pinsRef.current;
+    setPinsDoc({ ...snap, current: snap.groups.some(g => g.id === live.current) ? live.current : snap.current,
+      groups: snap.groups.map(g => { const l = live.groups.find(x => x.id === g.id); return l ? { ...g, collapsed: l.collapsed } : g; }) });
+  };
+  // 钉进某一组（'new' = 新组）：apply(doc, gid) → { doc, added }；labs = 给人看的名字
+  const pinInto = (gid, apply, labs) => {
+    let doc = pinsRef.current, made = false;
+    if (gid === 'new' || !doc.groups.some(x => x.id === gid)) { const r = addGroup(doc); doc = r.doc; gid = r.id; made = true; }
+    const r = apply(doc, gid);
+    const name = r.doc.groups.find(x => x.id === gid).name;
+    if (!r.added && !made) { viewPins(r.doc); setSaveState(`📌 「${name}」里已经有了：${labs}`); return; }
+    editPins(r.doc, `钉到「${name}」：${labs}`);
+    setSaveState(`📌 已钉到「${name}」：${labs}（Ctrl+Z 撤销；反引号 \` 或顶栏 📌 看钉子）`);
+  };
+  const pinNodes = (ids, gid) => {
+    ids = ids.filter(id => graph.nodes.has(id) && id !== ROOT);
+    if (!ids.length) return;
+    const labs = ids.length > 2 ? `${graph.nodes.get(ids[0]).label} 等 ${ids.length} 个` : ids.map(id => graph.nodes.get(id).label).join('、');
+    pinInto(gid, (doc, g) => addNodes(doc, g, ids.map(id => ({ node: id, label: graph.nodes.get(id).label }))), labs);
+  };
+  // >v<📌钉子-行钉子-在正文 / 原文 / 文件预览里选中一段文字，右键 → 钉到…：存「文件 + 行号 + 整行文字」（👤 2026-10-09 第 2 步）。
+  //   正文框里的文字没有 frontmatter，行号要到真文件里对一下；选中跨了几行就只钉第一行
+  const nodeOfFile = file => Object.keys(wsData?.nodes || {}).find(id => wsData.nodes[id].file === file) || null;
+  const pinSelection = async (sel, gid) => {
+    const { line, start, text: lineText } = lineAt(sel.text, sel.start);
+    let ln = line;
+    if (sel.from === 'body') {
+      try {
+        const r = await api('/raw?p=' + encodeURIComponent(sel.file));
+        if (r.text) { const rl = r.text.split('\n'), guess = line + Math.max(0, rl.length - sel.text.split('\n').length), loc = locateLine(rl, { line: guess, text: lineText, seg: 0 }); if (loc.line) ln = loc.line; }
+      } catch { /* 取不到就用正文里的行号 */ }
+    }
+    const it = makeLinePin({ file: sel.file, node: nodeOfFile(sel.file), line: ln, lineText, selStart: sel.start - start, selEnd: Math.min(sel.end - start, lineText.length) });
+    pinInto(gid, (doc, g) => addLines(doc, g, [it]), `${sel.file.split('/').pop()} 第 ${ln} 行「${it.label.slice(0, 16)}」`);
+  };
+  // 双击钉子：节点 = 跳过去；行 = 打开那个文件、找回那一行、高亮（行号 / 文字变了顺手更新；找不到就让人在最像的几行里选）
+  const showFile = (file, line, nid) => {
+    const hl = line ? { file, line, n: Date.now() } : null;
+    if (nid && graph.nodes.has(nid)) { jumpTo(nid); setPropsTab('raw'); setRawHl(hl); } // 节点的 md → 右栏「原文」页
+    else { setFileHl(hl); openFile(file); } // 别的文件 → 文件预览
+  };
+  const jumpPin = async (gid, item) => {
+    if (item.kind === 'node') return jumpTo(item.node);
+    const nid = item.node && wsData?.nodes?.[item.node] ? item.node : null; // 节点 md 跟着改过名 → 按节点取现在的路径
+    let file = nid ? wsData.nodes[nid].file : item.file;
+    const get = f => api('/raw?p=' + encodeURIComponent(f)).catch(() => null);
+    let r = await get(file);
+    if (!r) { // 文件不在原路径：按文件名在项目里找，只有一个就用它
+      const f = await api('/findfile?p=' + encodeURIComponent(item.file)).catch(() => ({ matches: [] }));
+      if (f.matches.length !== 1) { setSaveState(f.matches.length ? `❌ 「${item.file}」不在原处，项目里有 ${f.matches.length} 个同名文件，没法自动选` : `❌ 找不到文件「${item.file}」（被删了或搬出项目）`); return; }
+      file = f.matches[0]; r = await get(file);
+      if (!r) { setSaveState(`❌ 读不了「${file}」`); return; }
+    }
+    if (r.text == null) { setSaveState('❌ ' + (r.note || '这个文件不能预览')); return; }
+    const lines = r.text.split('\n'), loc = locateLine(lines, item);
+    if (loc.line == null) {
+      setPinAsk({ gid, iid: item.id, file, nid, cands: loc.candidates.map(c => ({ line: c.line, text: lines[c.line - 1].replace(/\r$/, '') })) });
+      showFile(file, null, nid);
+      setSaveState(`❓ 找不到「${item.label}」原来的那一行（文件改过了）：在钉子窗口里选一行，或点「都不是」`);
+      return;
+    }
+    setPinAsk(null);
+    if (loc.how !== 'exact' || file !== item.file) viewPins(updateItem(pinsRef.current, gid, item.id, { line: loc.line, text: lines[loc.line - 1].replace(/\r$/, '').slice(0, 2000), file }));
+    showFile(file, loc.line, nid);
+  };
+  const choosePinLine = c => {
+    const a = pinAsk; if (!a) return;
+    viewPins(updateItem(pinsRef.current, a.gid, a.iid, { line: c.line, text: c.text.slice(0, 2000), file: a.file }));
+    setPinAsk(null); showFile(a.file, c.line, a.nid);
+  };
   const saveMeta = (id, patch, opt = {}) => {
     const old = wsData?.nodes[id]?.meta || {};
     if (!opt.silent) pushOp({ op: 'meta', id, undo: Object.fromEntries(Object.keys(patch).map(k => [k, k in old ? old[k] : null])), redo: patch });
@@ -553,7 +652,7 @@ export function Shell({ name, Canvas }) {
     if (!opt.silent) pushOp({ op: 'body', id, undo: old, redo: body });
     return api('/node', { method: 'PATCH', body: JSON.stringify({ id, body }) }).then(d => { setWsData(d); setSaveState('正文已保存 ' + new Date().toLocaleTimeString() + '（Ctrl+Z 撤销）'); }).catch(e => setSaveState('❌ 正文保存失败：' + e.message));
   };
-  const applyOp = (e, which) => e.op === 'meta' ? saveMeta(e.id, e[which], { silent: true }) : saveBody(e.id, e[which], { silent: true });
+  const applyOp = (e, which) => e.op === 'pins' || e.op === 'hooks' ? Promise.resolve(restorePins(e[which])) : e.op === 'meta' ? saveMeta(e.id, e[which], { silent: true }) : saveBody(e.id, e[which], { silent: true });
 
   const toggle = id => setExpanded(x => ({ ...x, [id]: !x[id] }));
   cardActions.toggle = toggle;
@@ -573,6 +672,7 @@ export function Shell({ name, Canvas }) {
       const inText = e.target.closest && e.target.closest('textarea, input, [contenteditable="true"]');
       if (inText) return;
       if (helpOpen && e.key === 'Escape') { setHelpOpen(false); return; }
+      if (e.key === '`' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.isComposing) { e.preventDefault(); e.stopPropagation(); if (mode === 'ws') setPinsOpen(o => !o); return; } // 👤 2026-10-09 反引号 = 钉子窗口开关
       if (e.shiftKey && !e.ctrlKey && !e.altKey && e.code === 'KeyF') { e.preventDefault(); e.stopPropagation(); if (mode === 'ws') setAgentOpen(o => !o); return; } // 👤 2026-10-08 Shift+F = AI 指令框（单手）
       if (e.ctrlKey && !e.altKey && (e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y')) { e.preventDefault(); e.stopPropagation(); (e.key.toLowerCase() === 'y' || e.shiftKey ? redo : undo)(); return; }
       if (e.key === 'Tab' && e.ctrlKey) { e.preventDefault(); e.stopPropagation(); setPropsOpen(o => !o); } // 👤 Ctrl+Tab = 右栏开关
@@ -863,6 +963,7 @@ export function Shell({ name, Canvas }) {
           <button onClick={() => addNode(false)} title="在当前层新建（选中节点时建在它后面）；建完直接打字改名">＋ 节点</button>
           <button onClick={() => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; })}>{allOpen ? '全部收起' : '全部展开'}</button>
           {mode === 'ws' && <button className={histOpen ? '' : 'off'} title="操作历史：每一步改了什么，点一行回到那一步（Shift+Tab）" onClick={() => setHistOpen(o => !o)}>🕘 历史</button>}
+          {mode === 'ws' && <button className={pinsOpen ? '' : 'off'} title="钉子：临时翻阅用的书签组（右键卡片 → 📌 钉到…；反引号 ` 开关）" onClick={() => setPinsOpen(o => !o)}>📌 钉子{pins.groups.some(g => g.items.length) ? ' ' + pins.groups.reduce((s, g) => s + g.items.length, 0) : ''}</button>}
           {mode === 'ws' && <button className={cardPropsOn ? '' : 'off'} title="卡片上显示人加的属性（卡片太高就关掉；属性面板里照样能看能改）" onClick={() => setCardPropsOn(o => !o)}>🏷 {cardPropsOn ? '收起属性' : '显示属性'}</button>}
           {withText.length > 0 && <button title="当前页所有带正文的卡片：一起展开 / 收起正文（单张点卡片上的 📄）" onClick={() => setTextOpen(f => { const g = { ...f }; for (const n of withText) { if (allTextOpen) delete g[n.id]; else g[n.id] = true; } return g; })}>{allTextOpen ? '📄 收起正文' : '📄 展开正文'}</button>}
           {withPics.length > 0 && <button onClick={() => setPicFold(f => { const g = { ...f }; for (const n of withPics) g[n.id] = !allPicsFolded; return g; })} title="当前页所有卡片的图片一起收起 / 显示">{allPicsFolded ? '显示图片' : '收起图片'}</button>}
@@ -899,7 +1000,8 @@ export function Shell({ name, Canvas }) {
       {propsOpen && sel && !sel.startsWith('@') && graph.nodes.has(sel) && (
         <PropsPanel id={sel} graph={graph} wsNode={wsData?.nodes[sel]} edges={mode === 'ws' ? (wsData?.edges || []) : graph.edges}
           editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} onMeta={saveMeta} metaHints={mode === 'ws' ? metaHints(sel) : []} file={nodeFile(sel)} tab={propsTab} onTab={setPropsTab} raw={rawText} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)}
-          onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} onEdgeRemove={(from, to) => removeEdges([[from, to]])} color={colors.get(sel)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} onColorWords={menuActions.colorWords} pattern={patterns.get(sel)} onPattern={menuActions.pattern} onPatternWords={menuActions.patternWords} />
+          onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} onEdgeRemove={(from, to) => removeEdges([[from, to]])} color={colors.get(sel)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} onColorWords={menuActions.colorWords} pattern={patterns.get(sel)} onPattern={menuActions.pattern} onPatternWords={menuActions.patternWords}
+          hl={rawHl && rawHl.file === nodeFile(sel) ? rawHl : null} onSelMenu={mode === 'ws' ? (e, s) => setMenu({ x: e.clientX, y: e.clientY, sel: s }) : null} />
       )}
       {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（I 开关）</div></aside>}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
@@ -907,6 +1009,7 @@ export function Shell({ name, Canvas }) {
         <img src={lightbox.urls[lightbox.i]} onClick={e => e.stopPropagation()} />
         {lightbox.urls.length > 1 && <div className="lbcount">{lightbox.i + 1} / {lightbox.urls.length}（← →）</div>}
       </div>}
+      {pinsOpen && mode === 'ws' && <PinDock doc={pins} graph={graph} edit={editPins} view={viewPins} jump={jumpPin} ask={pinAsk} onChoose={choosePinLine} onIgnore={() => setPinAsk(null)} onClose={() => setPinsOpen(false)} />}
       {agentOpen && mode === 'ws' && <AgentBox api={api} scope={realScope} boxes={() => cardActions.boxes?.() || {}} selected={cardActions.multi?.length ? cardActions.multi : sel ? [sel] : []}
         onPreview={ids => ids.length && cardActions.select?.(ids)} onClose={() => setAgentOpen(false)}
         onWordsApplied={d => { setWsData(d); setSaveState('配色词表已更新：' + d.file); }}
@@ -922,7 +1025,7 @@ export function Shell({ name, Canvas }) {
         onClose={() => setFinder(null)} onPick={id => finder.mode === 'link' ? connect(finder.from, id) : jumpTo(id)} />}
       {scaffold && <ScaffoldModal items={scaffold} root={wsData?.root || ''} onClose={() => setScaffold(null)}
         onCreate={files => api('/scaffold', { method: 'POST', body: JSON.stringify({ files }) }).then(d => { setScaffold(null); setTree(null); setSaveState(d.made.length ? '已创建 ' + d.made.join('、') : '没有新建（都已存在）'); }).catch(e => setSaveState('❌ ' + e.message))} />}
-      {fileView && <FilePanel file={fileView.text !== undefined || fileView.error || fileView.note ? fileView : null} onClose={() => setFileView(null)} />}
+      {fileView && <FilePanel file={fileView.text !== undefined || fileView.error || fileView.note ? fileView : null} onClose={() => setFileView(null)} hl={fileHl && fileHl.file === fileView.path ? fileHl : null} onSelMenu={mode === 'ws' ? (e, s) => setMenu({ x: e.clientX, y: e.clientY, sel: s }) : null} />}
       {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), color: colors.get(menu.id), colorSet: getMeta(menu.id)?.color || null, patternSet: getMeta(menu.id)?.pattern || null, pattern: patterns.get(menu.id) || null, open: !!expanded[menu.id], descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
         actions={{ ...menuActions, allOpen }} onClose={() => setMenu(null)} />}
       {exportText !== null && (

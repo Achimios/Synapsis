@@ -21,6 +21,7 @@ import { spawnSync } from 'node:child_process';
 import { PATTERN_FILE, DEFAULT_PATTERN_WORDS, parsePatternWords } from './patterns.js';
 import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, withCopies, withEdge, withoutEdge, withMoved, ROOT } from './outline.js';
 import { checkSpaces } from './space.js';
+import { emptyPins, cleanPins, remapNodes } from './pins.js';
 import { WORDS_FILE, DEFAULT_WORDS, OLD_DEFAULT_WORDS, parseColorWords } from './colors.js';
 
 export const DIR = '__synapsis';
@@ -300,6 +301,7 @@ export function saveOutline(root, text, hint = null) {
     layout['@pic:' + (hit ? picKeys[hit] + p.slice(hit.length) : p)] = ws.layout[k];
   }
   writeLayout(base, layout);
+  try { migratePinsFile(root, map); } catch { /* 钉子文件坏了不该拦住保存 */ } // 📌 钉子指向的节点改名 / 搬家了 → 钉子跟着走（撤销时反向的对应表也走这里）
   return report;
 }
 
@@ -496,6 +498,32 @@ export function movePic(root, relPath, to, scope = ROOT) {
   const lay = { ...loadWorkspace(root).layout };
   if (lay['@pic:' + relPath]) { delete lay['@pic:' + relPath]; writeLayout(base, lay); }
   return { path: posix(relative(base, join(dir, name))) };
+}
+
+// >v<📌钉子-存取-<项目>/.synapsis/pins.json（本机，不进 git）：整份读写；纯函数操作在 core/pins.js
+const pinsFile = root => join(root, '.synapsis', 'pins.json');
+const oldPinsFile = root => join(root, '.synapsis', 'hooks.json'); // 2026-10-09 改名「钉子」之前叫钩子：读得到旧的就接着用，下次保存时换成新文件
+export function loadPins(root) {
+  for (const f of [pinsFile(root), oldPinsFile(root)]) { try { return cleanPins(JSON.parse(readFileSync(f, 'utf8'))); } catch { /* 试下一个 */ } }
+  return emptyPins();
+}
+export function savePins(root, doc) {
+  const d = cleanPins(doc);
+  mkdirSync(join(root, '.synapsis'), { recursive: true });
+  writeFileSync(pinsFile(root), JSON.stringify(d, null, 1));
+  try { unlinkSync(oldPinsFile(root)); } catch { /* 没有旧文件 */ }
+  return d;
+}
+// saveOutline 保存时调：matchNodes 给的 Map(新id → 旧id|null)。只在钉子文件已存在且真有变化时才写
+export function migratePinsFile(root, idMap) {
+  if (!existsSync(pinsFile(root)) && !existsSync(oldPinsFile(root))) return false;
+  const map = {};
+  for (const [nid, cid] of idMap) if (cid && cid !== nid) map[cid] = nid;
+  if (!Object.keys(map).length) return false;
+  const d = loadPins(root), n = remapNodes(d, map);
+  if (n === d) return false;
+  savePins(root, n);
+  return true;
 }
 
 // >v<🧭导航-视图记忆-每个工作区的 .synapsis/view.json：各页平移缩放、上次所在页、展开状态、左栏（本机状态，不进 git）
@@ -711,6 +739,14 @@ export function listTree(root, maxEntries = 3000) {
     return out;
   };
   return { tree: walk(root, ''), truncated: count >= maxEntries };
+}
+// >v<📌钉子-找文件-行钉子指向的文件搬了位置：按文件名在项目里找（不含原路径本身），界面只在「只有一个」时自动用，多个就让人选
+export function findFilesByName(root, rel) {
+  const name = String(rel).replace(/\\/g, '/').split('/').pop();
+  const out = [];
+  const walk = items => { for (const it of items) { if (it.dir) walk(it.children); else if (it.name === name && it.path !== rel) out.push(it.path); } };
+  walk(listTree(root, 20000).tree);
+  return out.slice(0, 20);
 }
 // >v<🗂️外部区-搜内容-左栏「文件」页勾「也搜内容」：项目里的文本文件逐行找（不分大小写，空格分开的词都要在同一行），
 //   跳过 listTree 跳过的目录、> 1MB 的、二进制的；每个文件最多 5 行，总共最多 200 行（👤 2026-10-08）

@@ -461,3 +461,30 @@ button.patsw { width: 26px; height: 18px; background-color: color-mix(in srgb, v
 .histcol .hd { width: 10px; flex: none; color: var(--dim); }
 .histcol .ht { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .histcol .ha { flex: none; font-size: 10.5px; color: var(--dim); }
+
+/* >v<📌钉子-窗口样式-浮窗（拖标题栏移动、右下角改大小，位置记在本机，pindock.jsx）。颜色全用主题变量 */
+.pinbox { position: fixed; right: 16px; top: 120px; width: 270px; height: 340px; min-width: 200px; min-height: 120px; max-width: calc(100vw - 8px); max-height: calc(100vh - 132px); z-index: 880; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 22px rgba(0,0,0,.45); resize: both; overflow: hidden; font-size: 12px; }
+.pinbox .bar { display: flex; gap: 8px; align-items: center; padding: 5px 8px; border-bottom: 1px solid var(--line); cursor: move; user-select: none; }
+.pinbox .bar a, .pinbox .bar button, .pinbox .hghead a { cursor: pointer; }
+.pinbox .grow { flex: 1; }
+.pinbox .hbody { overflow: auto; padding: 4px 6px 8px; flex: 1; }
+.pinbox .hgroup { margin: 6px 0; border: 1px solid transparent; border-radius: 5px; }
+.pinbox .hgroup.cur { border-color: var(--accent); }
+.pinbox .hghead { display: flex; gap: 6px; align-items: center; padding: 3px 6px; cursor: pointer; }
+.pinbox .hghead a { color: var(--dim); } .pinbox .hghead a:hover { color: var(--text); }
+.pinbox .hgname { font-weight: 600; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pinbox input.hgname { width: 120px; font: inherit; font-weight: 600; background: var(--bg); color: var(--text); border: 1px solid var(--accent); border-radius: 3px; padding: 0 3px; }
+.pinbox ul { list-style: none; margin: 0; padding: 0 4px 4px 14px; }
+.pinbox li { display: flex; gap: 6px; align-items: center; padding: 2px; border-radius: 3px; }
+.pinbox li:hover { background: rgba(127,127,127,.14); }
+.pinbox .hlab { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pinbox .hlab.done { text-decoration: line-through; color: var(--dim); }
+.pinbox li.miss .hlab { color: var(--dim); font-style: italic; }
+.pinbox .hx { visibility: hidden; color: var(--dim); cursor: pointer; } .pinbox li:hover .hx { visibility: visible; } .pinbox .hx:hover { color: var(--text); }
+.pinbox .hempty { padding: 6px 4px; }
+.pinbox .hline { color: var(--dim); font-size: 11px; }
+.pinbox li.pinask { display: block; padding: 4px 6px 6px 18px; background: rgba(224,184,77,.12); border-radius: 4px; }
+.pinbox li.pinask .cand { display: block; cursor: pointer; padding: 1px 0; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pinbox li.pinask .cand.dim { color: var(--dim); }
+/* >v<📌钉子-原文视图-跳过来的那一行高亮（RawText，panels.jsx） */
+pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shadow: 0 0 0 1px rgba(77,155,255,.55); }

@@ -209,11 +209,14 @@ function WordsTab({ api, onWordsApplied }) {
 // >v<🤖AI指令-框的位置和大小-👤 2026-10-08「AI 界面位置最好能拖动位置和大小」：拖标题栏移动、拖右下角改大小，记在本机（localStorage，换工作区也一样）。
 //   没拖过 = 默认底部居中；双击标题栏空白处回默认。拖出窗口的会被拉回来
 const GEO_KEY = 'syn.agentbox';
-function useBoxGeometry() {
-  const ref = useRef(null);
-  const [g, setG] = useState(() => { try { return JSON.parse(localStorage.getItem(GEO_KEY)) || null; } catch { return null; } });
-  const keep = v => { setG(v); try { v ? localStorage.setItem(GEO_KEY, JSON.stringify(v)) : localStorage.removeItem(GEO_KEY); } catch { /* 存不了就只这次有效 */ } };
-  const clamp = v => v && { ...v, left: Math.max(0, Math.min(window.innerWidth - 120, v.left)), top: Math.max(0, Math.min(window.innerHeight - 40, v.top)) };
+export function useBoxGeometry(storeKey = GEO_KEY) { // 钉子窗口也用（pindock.jsx），各自记各自的位置
+  const ref = useRef(null), styleSize = useRef(null), [, bump] = useState(0);
+  // 窗口缩小 → 重画一遍：记下来的位置 / 大小不改，只是显示时拉回屏幕里（窗口再放大，框回到原来记的位置）
+  useEffect(() => { const f = () => bump(n => n + 1); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
+  const [g, setG] = useState(() => { try { return JSON.parse(localStorage.getItem(storeKey)) || null; } catch { return null; } });
+  const keep = v => { setG(v); try { v ? localStorage.setItem(storeKey, JSON.stringify(v)) : localStorage.removeItem(storeKey); } catch { /* 存不了就只这次有效 */ } };
+  // 整个框都留在窗口里：太大就缩，位置超出就拉回（以前只管左上角别出去 120px，缩小窗口会把框整个挤没）
+  const clamp = v => { if (!v) return v; const w = Math.min(v.width || 360, window.innerWidth - 8), h = Math.min(v.height || 200, window.innerHeight - 8); return { ...v, width: w, height: h, left: Math.max(0, Math.min(window.innerWidth - w, v.left)), top: Math.max(0, Math.min(window.innerHeight - h, v.top)) }; };
   const drag = e => {
     if (e.button !== 0 || e.target.closest('a, button, input, select, textarea, .ctxmeter')) return;
     const r = ref.current.getBoundingClientRect(), x0 = e.clientX, y0 = e.clientY;
@@ -229,12 +232,13 @@ function useBoxGeometry() {
     const ro = new ResizeObserver(() => {
       if (first) { first = false; return; }
       clearTimeout(t);
-      t = setTimeout(() => { const r = el.getBoundingClientRect(); setG(old => { const v = { left: r.left, top: r.top, width: r.width, height: r.height }; if (old && Math.abs(old.width - v.width) < 2 && Math.abs(old.height - v.height) < 2) return old; try { localStorage.setItem(GEO_KEY, JSON.stringify(v)); } catch { /* */ } return v; }); }, 300);
+      t = setTimeout(() => { const r = el.getBoundingClientRect(), s = styleSize.current; if (s && Math.abs(r.width - s.w) < 2 && Math.abs(r.height - s.h) < 2) return; /* 这是我们自己按窗口大小缩的，不是人拖的 → 别记 */ setG(old => { const v = { left: r.left, top: r.top, width: r.width, height: r.height }; if (old && Math.abs(old.width - v.width) < 2 && Math.abs(old.height - v.height) < 2) return old; try { localStorage.setItem(storeKey, JSON.stringify(v)); } catch { /* */ } return v; }); }, 300);
     });
     ro.observe(el);
     return () => { ro.disconnect(); clearTimeout(t); };
-  }, []);
+  }, [storeKey]);
   const c = clamp(g);
+  styleSize.current = c ? { w: c.width, h: c.height } : null;
   return { ref, drag, reset: () => keep(null), style: c ? { left: c.left, top: c.top, width: c.width, height: c.height, bottom: 'auto', transform: 'none', maxHeight: 'none' } : undefined };
 }
 

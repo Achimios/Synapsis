@@ -33,6 +33,19 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       </div>
     );
   }
+  if (menu.sel) { // 📌 在正文 / 原文 / 文件预览里选中一段文字后右键：钉到哪一组（当前组最好点）
+    const h = actions.pinsSelMenu(menu.sel), picked = menu.sel.text.slice(menu.sel.start, menu.sel.end);
+    return (
+      <div className="ctx" style={style}>
+        <div className="mh">选中的文字</div>
+        {h.cur ? item(`📌 钉到「${h.cur.name}」`, () => h.pin(h.cur.id)) : item('📌 钉到新组', () => h.pin('new'))}
+        {h.others.slice(0, 6).map(g => item(`↳ 钉到「${g.name}」`, () => h.pin(g.id), { quiet: true }))}
+        {h.cur && item('＋ 钉到新组', () => h.pin('new'), { quiet: true })}
+        <div className="msep" />
+        {item('复制', () => navigator.clipboard?.writeText(picked))}
+      </div>
+    );
+  }
   if (!node) return (
     <div className="ctx" style={style}>
       {item('＋ 在这里新建节点', actions.addHere)}
@@ -65,6 +78,14 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       </div>}
       <div className="msep" />
       {item('🔗 连线到…', () => actions.linkTo(node.id), { key: 'L' })}
+      {actions.pinsMenu && (() => { // 📌 钉到钉子组：当前（高亮）组最好点，其余组和新组灰色小字（👤 2026-10-09）
+        const h = actions.pinsMenu(node.id), many = h.n > 1 ? `（${h.n} 个）` : '';
+        return <>
+          {h.cur ? item(`📌 钉到「${h.cur.name}」${many}`, () => h.pin(h.cur.id)) : item(`📌 钉到新组${many}`, () => h.pin('new'))}
+          {h.others.slice(0, 6).map(g => item(`↳ 钉到「${g.name}」`, () => h.pin(g.id), { quiet: true }))}
+          {h.cur && item('＋ 钉到新组', () => h.pin('new'), { quiet: true })}
+        </>;
+      })()}
       {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'Tab' })}
       {item('＋ 新建同级', () => actions.addSibling(node.id), { key: 'Enter' })}
       {/* 画布 / 快捷键上能直接做的：灰色小字一组，右边的操作提示就是「直接怎么做」（菜单只当提示牌，不抢眼） */}
@@ -116,7 +137,24 @@ function MetaTable({ id, meta, editable, onMeta, hints = [] }) {
   );
 }
 
-export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, tab, onTab, raw, onReveal, onRename, color, onColor, onColorWords, pattern, onPattern, onPatternWords, onEdgeKind, onEdgeRemove }) {
+// >v<📌钉子-原文视图-md 原文 / 文件预览：一行一个 span（data-ln = 行号），能高亮「跳过来的那一行」、能算选中文字在第几行（右键 → 钉到…）
+//   hl = { file, line, n }：n 每次跳转 +1，同一行再跳一次也会重新滚到
+export function RawText({ text, hl, file, onSelMenu }) {
+  const ref = useRef(null);
+  const lines = useMemo(() => text.split('\n'), [text]);
+  useEffect(() => { if (hl && ref.current) ref.current.querySelector(`[data-ln="${hl.line}"]`)?.scrollIntoView({ block: 'center' }); }, [hl, text]);
+  const menu = e => {
+    const sel = window.getSelection();
+    if (!onSelMenu || !sel || sel.isCollapsed || !ref.current?.contains(sel.anchorNode)) return; // 没选中文字 = 浏览器自己的菜单
+    const r = sel.getRangeAt(0), pre = document.createRange();
+    pre.selectNodeContents(ref.current); pre.setEnd(r.startContainer, r.startOffset);
+    const start = pre.toString().length;
+    e.preventDefault(); onSelMenu(e, { from: 'raw', file, text, start, end: start + r.toString().length });
+  };
+  return <pre className="raw" ref={ref} onContextMenu={menu}>{lines.map((l, i) => <span key={i} data-ln={i + 1} className={hl?.line === i + 1 ? 'ln hl' : 'ln'}>{l}{i < lines.length - 1 ? '\n' : ''}</span>)}</pre>;
+}
+
+export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, tab, onTab, raw, onReveal, onRename, color, onColor, onColorWords, pattern, onPattern, onPatternWords, onEdgeKind, onEdgeRemove, hl, onSelMenu }) {
   const n = graph.nodes.get(id);
   const [body, setBody] = useState(wsNode?.body || '');
   useEffect(() => setBody(wsNode?.body || ''), [id, wsNode?.body]);
@@ -139,7 +177,7 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
         <div className="filerow"><span className="hint" title={file}>{file}</span>
           <button onClick={() => onReveal(file, 'select')} title="在资源管理器中显示">📂</button>
           <button onClick={() => onReveal(file, 'open')} title="用默认程序打开（Obsidian / 编辑器）">↗</button></div>
-        <pre className="raw">{raw ?? '读取中…'}</pre></div> :
+        {raw == null ? <pre className="raw">读取中…</pre> : <RawText text={raw} hl={hl} file={file} onSelMenu={onSelMenu} />}</div> :
       <div className="sidebody">
         {/* >v<🎨画布-属性面板-名字（改了回车 / 失焦 = 改名）、状态、颜色（色块 = 写 color:，自动 = 删掉）—— 👤 2026-10-08 */}
         <h3><input key={id + '|' + n.label} className="nameedit" defaultValue={n.label} title="改名：回车或点别处生效，Esc 还原"
@@ -162,7 +200,8 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
         </div>}
         <div className="eh">正文{editable ? '（失焦自动保存）' : '（样例模式不可编辑）'}</div>
         <textarea className="body" value={body} readOnly={!editable} placeholder={editable ? '想法、职责、验收方式……（存进这个节点的 .md）' : ''}
-          onChange={e => setBody(e.target.value)} onBlur={() => { if (editable && body !== (wsNode?.body || '')) onBody(id, body); }} />
+          onChange={e => setBody(e.target.value)} onBlur={() => { if (editable && body !== (wsNode?.body || '')) onBody(id, body); }}
+          onContextMenu={e => { const t = e.target; if (!onSelMenu || !file || t.selectionStart === t.selectionEnd) return; e.preventDefault(); onSelMenu(e, { from: 'body', file, text: t.value, start: t.selectionStart, end: t.selectionEnd }); }} />
         {file && tab !== 'raw' && <div className="filerow"><span className="hint" title={file}>{file}</span>
           <button onClick={() => onReveal(file, 'select')} title="在资源管理器中显示">📂</button>
           <button onClick={() => onReveal(file, 'open')} title="用默认程序打开（Obsidian / 编辑器）">↗</button></div>}
@@ -329,12 +368,12 @@ export function HistoryPanel({ hist, busy, onJump, onClose }) {
   </aside>;
 }
 
-export function FilePanel({ file, onClose }) {
+export function FilePanel({ file, onClose, hl, onSelMenu }) {
   return (
     <aside className="side wide">
       <div className="bar"><b>📄 {file?.path}</b><span className="hint">只读预览</span><button onClick={onClose}>✕</button></div>
       <div className="sidebody">
-        {!file ? <div className="hint">加载中…</div> : file.error ? <div className="errs">{file.error}</div> : file.text === null ? <div className="hint">{file.note}</div> : <pre className="raw">{file.text}</pre>}
+        {!file ? <div className="hint">加载中…</div> : file.error ? <div className="errs">{file.error}</div> : file.text === null ? <div className="hint">{file.note}</div> : <RawText text={file.text} hl={hl} file={file.path} onSelMenu={onSelMenu} />}
       </div>
     </aside>
   );

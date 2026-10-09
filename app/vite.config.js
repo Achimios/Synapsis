@@ -3,8 +3,9 @@ import react from '@vitejs/plugin-react';
 import { resolve, join, normalize, relative } from 'node:path';
 import { spawn } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
-import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, saveLooseImage, removeLooseImage, restoreRemoved, graveyardInfo, clearGraveyard, ensureGitignore, pasteNodes, ensureColorWords, ensurePatternWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, movePic, grepProject, DIR } from '../core/workspace.js';
+import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, loadPins, savePins, findFilesByName, saveLooseImage, removeLooseImage, restoreRemoved, graveyardInfo, clearGraveyard, ensureGitignore, pasteNodes, ensureColorWords, ensurePatternWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, movePic, grepProject, DIR } from '../core/workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
+
 import { workspaceRoot, manualText } from '../core/cli.js';
 import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, readAiLog, readUsage } from '../core/ai.js';
 import { lmsEstimate, lmsReload } from '../core/lmstudio.js';
@@ -43,7 +44,7 @@ function workspaceApi() {
     const nodes = {};
     // file = 相对项目根的路径（文件树和「打开 md」用）；pics = 相对 __synapsis 的图片路径
     for (const [id, n] of ws.graph.nodes) if (id) nodes[id] = { meta: n.meta, body: n.body, file: relative(root, n.file).split('\\').join('/'), pics: n.pics };
-    return { root, outline: workspaceOutline(ws), layout: ws.layout, nodes, edges: ws.graph.edges, errors: ws.graph.errors, loose: ws.loose, colorWords: ws.colorWords, patternWords: ws.patternWords };
+    return { root, outline: workspaceOutline(ws), layout: ws.layout, nodes, edges: ws.graph.edges, errors: ws.graph.errors, loose: ws.loose, colorWords: ws.colorWords, patternWords: ws.patternWords, pins: loadPins(root) };
   };
   return {
     name: 'synapsis-workspace',
@@ -62,6 +63,8 @@ function workspaceApi() {
             const left = graveyardInfo(root).entries.filter(e => e.time < SESSION_START);
             return send(200, { ...payload(root), view: loadView(root), graveyard: left.length ? { count: left.length, size: left.reduce((s, e) => s + e.size, 0) } : null });
           }
+          // 📌 钉子（临时翻阅组）：整份读写，界面每次操作后整份 PUT；存 .synapsis/pins.json（本机）
+          if (url.pathname === '/pins' && req.method === 'PUT') { if (!existsSync(join(root, DIR))) return send(404, { error: '不是 Synapsis 工作区' }); return send(200, { ok: true, pins: savePins(root, await body(req)) }); }
           // 清空 .junk/ 里上次留下的（送系统回收站）；界面在打开时问过用户才调
           if (url.pathname === '/graveyard/clear' && req.method === 'POST') return send(200, clearGraveyard(root, { before: SESSION_START }));
           // 只往已挂上 Synapsis 的目录写（别因为一个拼错的 ?ws= 在磁盘上凭空建目录）
@@ -152,6 +155,7 @@ function workspaceApi() {
           }
           if (url.pathname === '/tree' && req.method === 'GET') return send(200, listTree(root));
           if (url.pathname === '/grep' && req.method === 'GET') return send(200, grepProject(root, url.searchParams.get('q') || ''));
+          if (url.pathname === '/findfile' && req.method === 'GET') return send(200, { matches: findFilesByName(root, url.searchParams.get('p') || '') }); // 📌 行钉子的文件搬了位置：按文件名找
           if (url.pathname === '/raw' && req.method === 'GET') return send(200, readProjectFile(root, url.searchParams.get('p') || ''));
           if (url.pathname === '/layout' && req.method === 'PUT') { saveLayout(root, (await body(req)).positions); return send(200, { ok: true }); }
           // 图片：/asset 进某个节点；/loose 当散图放进某一页；/loose-remove 删散图（进 .junk/）
