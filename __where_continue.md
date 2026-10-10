@@ -32,8 +32,9 @@
 
 ## 2026-10-11 交接（Sonnet → Opus，用户要压缩后让 Opus 接，**debug 请细心**）
 - 最新提交：`92c4b65`（大纲 ↑∞/↑1/↓、多列大纲整棵子树不拆列、预览展开两态 + 顶部提示条）、`6f2031e`（UI 节点也吃预览展开、`tempDeep`、真展开本页排除 UI 框内节点）、本次 keymap 补 Shift+1~4。**全部只做了编译检查，没跑自检**（用户要求不跑全量；他自己手测）。
-- 🐞 **未解决 1：Shift+1（递进预览展开子图）时，UI 框直接子级的临时子图「刚展开不裁剪，立刻又被裁剪」**。我加了 `tempDeep`（`shell.jsx` view 节点里 `sm.frame==='deep' && !framed[id]`，`main.jsx` `uiClip` 里 `n.tempDeep` 就 return {}）——读代码逻辑上应该生效，但用户实测仍被裁。没找到原因，没能复现（我的调试脚本场景太小没溢出；脚本已删）。线索：`uiClip` 靠 measured 宽度，第一帧没 measured 所以「刚展开不裁」可能只是还没量；真正的问题是 `tempDeep` 为什么在量完后是假——查 `view.nodes` 里该节点的 `tempDeep` 值、`nodes` 里 style、是否另有地方写 clipPath（`sizeFrames` 会 `{...n.style}`）、以及 `[view, layout, selected, …, fv]` 重建时 `{...o,...n}` 的覆盖。建议用 `?ws=临时目录` + playwright 造「UI 框 → 子（带孙）」，孙多几个让子图超出框，再按 Shift+Digit1 读各 `.react-flow__node` 的 `style.clipPath`。
-- 🐞 **未解决 2：「真的展开本页」（竖栏 ⋯）对 UI 框的孙级仍会生效**。用户明确要求「递进关系写法」，不要打补丁：我现在的 `expIds`（`shell.jsx`）只排除了 `uiId(n.id)` 和 `uiId(n.frame)`（UI 框自己和直接子级），孙级及更深的没排除。应改为沿 `frame` 链往上走：任一祖先是 UI 框就排除（`view.nodes` 里 `frame` 是直接父框 id，要逐级向上查）。同理看 `expChange` / 预览 `eff` 是否也该按祖先链判断。
+- ✅ **已修 1（Opus）**：Shift+1 时 UI 框里的子图又被裁。原因有两个：① `tempDeep` 要求 `!framed[id]`，一级子节点自己真展开过子图就不算，于是被裁；② 裁剪在 `build()` 时按当时的 measured 算并存进节点 style，子图被递进撑大后裁剪还停在旧尺寸。改法：裁剪挪到 `main.jsx` 的 `clipUi`，每次渲染按当前坐标和 measured 现算、不存进 nodes（`shown = clipUi(sizeFrames(nodes))`）；view 节点改带 `seeDeep`（本页开着 Shift+1），有子图的那层不裁。playwright 复现过、修后验过（开 = 不裁，关 = 按新尺寸裁回）。
+- ✅ **已修 2（Opus）**：真的展开本页改用 `underUi(id)`，沿 graph 父级一路往上查到本页为止，任一祖先是 UI 框就不动。验过：UI 框里三层真展开状态在展开 / 收起本页时都不变。
+- ✅ **贴图进撤销（Opus）**：`{op:'pics'}`，贴进节点 / 散图，撤销 = 挪进 .junk/（`/pic-remove`，`core/workspace.js removePic`），重做 = `/restore` 搬回并写回坐标；删散图也能撤销。改了 `vite.config.js` 和 core → **托盘要重启**才生效。
 - 待决：框内缩放 / 平移要不要存盘（用户问「存盘会有冲突？」：我的回答是不会，只是几个数；会和外部 CLI/AI 改布局放在同一文件里。倾向存到 `view.json` 而不是 `_layout.json`，就不会冲突）。
 - 用户要求：快捷键页（`core/keymap.js`）已补；`_开发进度.md` / vault 节点还没更新到最近几批（框内画布、⛶、compact、大纲三态、托盘重启、中键平移、图案词表、预览展开两态）。
 - 托盘需重启一次：新菜单项「重启 Synapsis」和 `/ai/words` 路由才生效。

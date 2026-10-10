@@ -183,7 +183,7 @@ export function Shell({ name, Canvas }) {
         spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
         picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id], body: wsData?.nodes[n.id]?.body || '', file: wsData?.nodes[n.id]?.meta?.file || null, ui: isUi(wsData?.nodes[n.id]?.meta), uiW: uiSize(wsData?.nodes[n.id]?.meta).w, uiH: uiSize(wsData?.nodes[n.id]?.meta).h, ref: wsData?.nodes[n.id]?.meta?.ref || null, refMissing: !!wsData?.nodes[n.id]?.meta?.ref && !graph.nodes.has(String(wsData.nodes[n.id].meta.ref)), textOpen: txtE(n.id),
         open: expE(n.id) && n.children.length > 0 && !v.parentOf.has(n.id) && !(frmE(n.id) && !space), renaming: canvasRename === n.id,
-        framed: !space && frmE(n.id) && n.children.length > 0, tempDeep: sm.frame === 'deep' && !framed[n.id] && n.children.length > 0,
+        framed: !space && frmE(n.id) && n.children.length > 0, seeDeep: sm.frame === 'deep', // 本页开着 Shift+1 递进预览（画布据此让 UI 框里的子图超出、不裁）
         tempFrame: !space && frmE(n.id) && !framed[n.id] && n.children.length > 0, // 只是「看」临时展开的子图：不挪别的卡，也不存坐标
         frame: v.parentOf.get(n.id) ?? null,
         kids: n.children.map(c => { const k = graph.nodes.get(c); return { id: c, label: k.label, status: k.status, n: k.children.length, renaming: canvasRename === c }; }),
@@ -398,7 +398,7 @@ export function Shell({ name, Canvas }) {
     const h = hist2.current;
     if (mode !== 'ws' || !h.committed) return setSaveState('撤销只在工作区模式');
     const e = h.undo.pop(); if (!e) return setSaveState('没有可撤销的');
-    if (e.op) { h.redo.push(e); persistHist(); return applyOp(e, 'undo').then(() => setSaveState('已撤销' + ({ meta: '属性修改', pins: '钉子操作', vs: '展开状态' }[e.op] || '正文修改') + ' · 还能撤 ' + h.undo.length + ' 步')); }
+    if (e.op) { h.redo.push(e); persistHist(); return applyOp(e, 'undo').then(() => setSaveState('已撤销' + ({ meta: '属性修改', pins: '钉子操作', vs: '展开状态', pics: e.desc }[e.op] || '正文修改') + ' · 还能撤 ' + h.undo.length + ' 步')); }
     h.redo.push({ text: h.committed.text, positions: h.committed.positions, hint: flip(e.hint), desc: e.desc, t: e.t });
     return applyHist(e).then(() => setSaveState(h.lost > 0 ? `⚠ 已撤销，但有 ${h.lost} 项没能从 .junk/ 搬回来（已被清理，或原位置有同名文件）：那部分的正文 / 图片找不回，去系统回收站看看 · 还能撤 ${h.undo.length} 步` : '已撤销' + (e.restore ? '（删掉的节点从 .junk/ 搬回来了）' : '') + ' · 还能撤 ' + h.undo.length + ' 步'));
   };
@@ -514,8 +514,8 @@ export function Shell({ name, Canvas }) {
   const remove = id => {
     if (id?.startsWith('@pic:')) { // 散图：进 .junk/
       if (local) setLocalLoose(m => ({ ...m, [realScope]: (m[realScope] || []).filter(p => p.id !== id) }));
-      else api('/loose-remove', { method: 'POST', body: JSON.stringify({ path: id.slice(5) }) }).then(() => api('/ws')).then(setWsData).catch(e => setSaveState('❌ ' + e.message));
-      setSelected(null); setSaveState('已删除散图' + (local ? '' : '（移进 .junk/）'));
+      else { const at = positions[id]; api('/loose-remove', { method: 'POST', body: JSON.stringify({ path: id.slice(5) }) }).then(r => { pushOp({ op: 'pics', del: true, paths: [id.slice(5)], pairs: [r.pair], layout: r.pair[2] ? { [id]: r.pair[2] } : at ? { [id]: at } : null, desc: '删除散图' }); return api('/ws'); }).then(setWsData).catch(e => setSaveState('❌ ' + e.message)); }
+      setSelected(null); setSaveState('已删除散图' + (local ? '' : '（移进 .junk/，Ctrl+Z 撤销）'));
       return;
     }
     const n = graph.nodes.get(id);
@@ -737,7 +737,20 @@ export function Shell({ name, Canvas }) {
   // 展开竖栏「改」：四份展开状态整份存进撤销栈（几十个 true，很小）；撤销 / 重做 = 整份写回
   const vsRef = useRef({}); vsRef.current = { expanded, framed, textOpen, propsShut };
   const restoreVS = s => { setExpanded(s.expanded || {}); setFramed(s.framed || {}); setTextOpen(s.textOpen || {}); setPropsShut(s.propsShut || {}); };
-  const applyOp = (e, which) => e.op === 'vs' ? Promise.resolve(restoreVS(e[which])) : e.op === 'pins' || e.op === 'hooks' ? Promise.resolve(restorePins(e[which])) : e.op === 'meta' ? saveMeta(e.id, e[which], { silent: true }) : saveBody(e.id, e[which], { silent: true });
+  // 图片进撤销：{op:'pics', paths, pairs, layout, del}。贴进来的（del 假）撤销 = 挪进 .junk/、重做 = 搬回；删掉的（del 真）反过来
+  const applyPics = async (e, which) => {
+    if ((which === 'undo') !== !!e.del) { // pairs 第三项 = 删之前的坐标（散图被自动摆过、拖过都以这时的为准）
+      e.pairs = (await api('/pic-remove', { method: 'POST', body: JSON.stringify({ paths: e.paths }) })).pairs;
+      const lay = Object.fromEntries(e.pairs.filter(p => p[2]).map(p => ['@pic:' + p[1], p[2]])); e.layout = Object.keys(lay).length ? lay : null;
+      persistHist();
+    }
+    else {
+      await api('/restore', { method: 'POST', body: JSON.stringify({ pairs: e.pairs || [] }) });
+      if (e.layout) { setPositions(p => ({ ...p, ...e.layout })); await api('/layout', { method: 'PUT', body: JSON.stringify({ positions: e.layout }) }); }
+    }
+    setWsData(await api('/ws'));
+  };
+  const applyOp = (e, which) => e.op === 'vs' ? Promise.resolve(restoreVS(e[which])) : e.op === 'pins' || e.op === 'hooks' ? Promise.resolve(restorePins(e[which])) : e.op === 'pics' ? applyPics(e, which) : e.op === 'meta' ? saveMeta(e.id, e[which], { silent: true }) : saveBody(e.id, e[which], { silent: true });
 
   const toggle = id => setExpanded(x => ({ ...x, [id]: !x[id] }));
   cardActions.toggle = toggle;
@@ -807,7 +820,9 @@ export function Shell({ name, Canvas }) {
   const EXP_KEY = { frame: '1', kids: '2', props: '3', text: '4' };
   const [expMore, setExpMore] = useState(false); // 竖栏最上面的 ⋯ 菜单（「改」放这里，用得少）
   useEffect(() => { if (!expMore) return; const c = e => { if (!e.target.closest?.('.expmore, .expmenu')) setExpMore(false); }; window.addEventListener('pointerdown', c, true); return () => window.removeEventListener('pointerdown', c, true); }, [expMore]);
-  const expIds = k => view.nodes.filter(n => !uiId(n.id) && !uiId(n.frame) && EXP[k].ok(n)).map(n => n.id); // 真的展开本页：UI 框自己和 UI 框里面的节点都不动（UI 框自己单独展开）
+  // 真的展开本页：UI 框自己和它里面所有层的子孙都不动（UI 框自己单独展开）。沿父级往上查到本页为止，钻进 UI 框那页时里面的照常
+  const underUi = id => { for (let p = id; p != null && p !== realScope; p = graph.nodes.get(p)?.parent ?? null) if (uiId(p)) return true; return false; };
+  const expIds = k => view.nodes.filter(n => !underUi(n.id) && EXP[k].ok(n)).map(n => n.id);
   const expAnyOpen = k => expIds(k).some(EXP[k].own);
   // 改：有没折叠的 → 先全部折叠；已经全折叠了 → 全部展开（本页的节点；没东西可展开的不算）。进 Ctrl+Z；节点之间的位置照原有的展开逻辑，不额外挪
   const expChange = k => {
@@ -885,8 +900,13 @@ export function Shell({ name, Canvas }) {
           if (at) move(Object.fromEntries(urls.map((u, i) => [u.id, { x: at.x + i * 30, y: at.y + i * 30 }])));
           return;
         }
-        let last = null;
-        for (const [i, s] of srcs.entries()) last = await api('/loose', { method: 'POST', body: JSON.stringify({ scope: realScope, ...s, at: at && { x: at.x + i * 30, y: at.y + i * 30 } }) });
+        let last = null; const paths = [], lay = {};
+        for (const [i, s] of srcs.entries()) {
+          const p = at && { x: at.x + i * 30, y: at.y + i * 30 };
+          last = await api('/loose', { method: 'POST', body: JSON.stringify({ scope: realScope, ...s, at: p }) });
+          paths.push(last.path); if (p && !last.node) lay['@pic:' + last.path] = p;
+        }
+        pushOp({ op: 'pics', paths, layout: Object.keys(lay).length ? lay : null, desc: `贴进 ${paths.length} 张散图` });
         const d = await api('/ws');
         setWsData(d); setPositions(p => ({ ...p, ...Object.fromEntries(Object.entries(d.layout || {}).filter(([k]) => k.startsWith('@pic:'))) }));
         setSaveState(last.node ? '这一页是叶子，没有自己的文件夹 → 图归给它：' + last.path : '散图已存 ' + last.path);
@@ -898,8 +918,9 @@ export function Shell({ name, Canvas }) {
         if (urls.length < srcs.length) setSaveState('样例模式拿不到网页图片，拖本地文件或粘贴试试');
         return setImages(m => ({ ...m, [id]: [...(m[id] || []), ...urls] }));
       }
-      let last = '';
-      for (const s of srcs) last = (await api('/asset', { method: 'POST', body: JSON.stringify({ id, ...s }) })).path;
+      let last = ''; const paths = [];
+      for (const s of srcs) paths.push(last = (await api('/asset', { method: 'POST', body: JSON.stringify({ id, ...s }) })).path);
+      pushOp({ op: 'pics', id, paths, desc: `给「${graph.nodes.get(id)?.label || id}」贴了 ${paths.length} 张图` });
       setSaveState('图片已存 ' + last + (srcs.length > 1 ? ` 等 ${srcs.length} 张` : ''));
       setWsData(await api('/ws'));
     } catch (e) { setSaveState('❌ 贴图失败：' + e.message); }

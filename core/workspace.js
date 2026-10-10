@@ -513,16 +513,22 @@ export function saveLooseImage(root, scope, dataUrl) {
   if (!d) return { path: writeImage(picsDir(n.file, n.label), ws.base, dataUrl), node: scope };
   return { path: writeImage(join(d, '_pics'), ws.base, dataUrl) };
 }
-// 删散图 = 移进 __synapsis/.junk/（不真删），坐标一并去掉
-export function removeLooseImage(root, relPath) {
+// 删一张图（散图 _pics/ 或节点的 _pics_名字/）= 移进 __synapsis/.junk/（不真删），坐标一并去掉。
+// 返回 [.junk 里的路径, 原路径, 原坐标?]（路径相对 __synapsis），交给 restoreRemoved 就能搬回来（撤销用；坐标由调用方写回）
+export function removePic(root, relPath, tag = '图') {
   const base = join(root, DIR), f = join(base, relPath);
-  if (relPath.includes('..') || !/(^|\/)_pics\/[^/]+$/.test(relPath) || !existsSync(f)) throw new Error('不是散图：' + relPath);
-  const g = join(base, TRASH);
+  if (relPath.includes('..') || !/(^|\/)_pics(_[^/]+)?\/[^/]+$/.test(relPath) || !existsSync(f)) throw new Error('不是图片：' + relPath);
+  const g = join(base, TRASH), name = `${stamp()}_${tag}_${relPath.replace(/\//g, '～')}`;
   junkDir(g);
-  renameSync(f, join(g, `${stamp()}_散图_${relPath.replace(/\//g, '～')}`));
-  const lay = { ...loadWorkspace(root).layout };
-  delete lay['@pic:' + relPath];
-  writeLayout(base, lay);
+  renameSync(f, join(g, name));
+  const lay = { ...loadWorkspace(root).layout }, at = lay['@pic:' + relPath];
+  if (at) { delete lay['@pic:' + relPath]; writeLayout(base, lay); }
+  return at ? [TRASH + '/' + name, relPath, at] : [TRASH + '/' + name, relPath];
+}
+// 删散图：只收 _pics/ 里的
+export function removeLooseImage(root, relPath) {
+  if (!/(^|\/)_pics\/[^/]+$/.test(relPath)) throw new Error('不是散图：' + relPath);
+  return removePic(root, relPath, '散图');
 }
 
 // >v<🖼️图片-归属-散图拖到卡片上 = 归给那个节点（进它的 _pics_名字/）；节点的图拖到空白 = 变成那一页的散图（进 _pics/）（👤 待办）

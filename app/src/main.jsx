@@ -248,16 +248,21 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
     return () => { window.removeEventListener('wheel', onWheel, true); window.removeEventListener('mousedown', down, true); window.removeEventListener('mousemove', move, true); window.removeEventListener('mouseup', up, true); window.removeEventListener('auxclick', aux, true); window.removeEventListener('blur', up); };
   }, []);
   // UI 框里的东西被平移 / 缩放到框外的部分裁掉（子节点是画布上的独立节点，不在框的 DOM 里，用 clip-path 按框的范围裁）
-  const uiClip = n => {
-    const f = n.frame != null && view.nodes.find(x => x.id === n.frame);
-    if (!f || !f.ui || n.tempDeep) return {}; // Shift+1 递进预览展开的子图：塞不下就让它超出 UI 框，不裁
-    const p = posOf(n), m = nodesRef.current?.find(x => x.id === n.id)?.measured; if (!p || !m?.width) return {};
-    const t = Math.max(0, UI_TITLE - p.y), l = Math.max(0, -p.x), r = Math.max(0, p.x + m.width - f.uiW), b = Math.max(0, p.y + m.height - f.uiH);
-    return t || l || r || b ? { clipPath: `inset(${t}px ${r}px ${b}px ${l}px)` } : {};
+  // 每次渲染按当前坐标和测量值现算，不存进 nodes：存进去的话子节点被撑大（递进展开、加子级）后裁剪还停在旧尺寸
+  const clipUi = ns => {
+    const byId = new Map(ns.map(n => [n.id, n]));
+    return ns.map(n => {
+      const f = n.parentId != null && byId.get(n.parentId)?.data?.node, me = n.data?.node, m = n.measured;
+      if (!f?.ui || !me || !m?.width) return n;
+      if (me.seeDeep && me.children.length) return n; // Shift+1 递进预览：UI 框里有子图的那层塞不下就让它超出，不裁（👤 2026-10-11 bug 当设计）
+      const o = n.origin || [0, 0], x = n.position.x - o[0] * m.width, y = n.position.y - o[1] * m.height;
+      const t = Math.max(0, UI_TITLE - y), l = Math.max(0, -x), r = Math.max(0, x + m.width - f.uiW), b = Math.max(0, y + m.height - f.uiH);
+      return t || l || r || b ? { ...n, style: { ...n.style, clipPath: `inset(${t}px ${r}px ${b}px ${l}px)` } } : n;
+    });
   };
-  // 一个节点的 style 在这里一次算好（框的初始大小 / UI 框的宽高 / 被裁剪）；没有就明确给 undefined，别让上一次的裁剪留在节点上
+  // 一个节点的 style 在这里一次算好（框的初始大小 / UI 框的宽高）；没有就明确给 undefined。裁剪不在这里，见 clipUi
   const nodeStyle = n => {
-    const sty = { ...(n.framed && !n.ui ? { width: FMIN.w, height: FMIN.h } : {}), ...(n.ui && (n.framed || !n.children.length) ? { width: n.uiW * (fx[n.frame]?.z || 1), height: n.uiH * (fx[n.frame]?.z || 1) } : {}), ...uiClip(n) }; // 框里的 UI 框随框内缩放，外层宽高也要跟着乘
+    const sty = { ...(n.framed && !n.ui ? { width: FMIN.w, height: FMIN.h } : {}), ...(n.ui && (n.framed || !n.children.length) ? { width: n.uiW * (fx[n.frame]?.z || 1), height: n.uiH * (fx[n.frame]?.z || 1) } : {}) }; // 框里的 UI 框随框内缩放，外层宽高也要跟着乘
     return Object.keys(sty).length ? sty : undefined;
   };
   const build = () => [
@@ -323,7 +328,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
     const p = toLayout(n.id, n.position), o = n.origin || [0, 0];
     return [n.id, { x: p.x - o[0] * n.measured.width, y: p.y - o[1] * n.measured.height, w: n.measured.width, h: n.measured.height }];
   }));
-  const shown = useMemo(() => sizeFrames(nodes), [nodes]);
+  const shown = useMemo(() => clipUi(sizeFrames(nodes)), [nodes]);
   // 刚展开成框：框比原来的卡大，压住的顶层卡片挪到框右边（只在展开那一刻做一次；打开页面时已经展开的不动）
   const seenFrames = useRef(null);
   useEffect(() => {

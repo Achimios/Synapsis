@@ -4,7 +4,7 @@ import { resolve, join, normalize, relative } from 'node:path';
 import { spawn } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { loadSettings, saveSettings, settingsPath, SCHEMA as SETTINGS_SCHEMA } from '../core/settings.js';
-import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, loadPins, savePins, findFilesByName, addFileNode, addRefNode, addUiNode, saveLooseImage, removeLooseImage, restoreRemoved, graveyardInfo, clearGraveyard, ensureGitignore, pasteNodes, ensureColorWords, ensurePatternWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, movePic, grepProject, DIR } from '../core/workspace.js';
+import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, loadPins, savePins, findFilesByName, addFileNode, addRefNode, addUiNode, saveLooseImage, removeLooseImage, removePic, restoreRemoved, graveyardInfo, clearGraveyard, ensureGitignore, pasteNodes, ensureColorWords, ensurePatternWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, movePic, grepProject, DIR } from '../core/workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 
 import { workspaceRoot, manualText } from '../core/cli.js';
@@ -186,7 +186,9 @@ function workspaceApi() {
             }
             return send(200, { path: saveAsset(root, b.id, b.dataUrl) });
           }
-          if (url.pathname === '/loose-remove' && req.method === 'POST') { removeLooseImage(root, (await body(req)).path); return send(200, { ok: true }); }
+          if (url.pathname === '/loose-remove' && req.method === 'POST') return send(200, { pair: removeLooseImage(root, (await body(req)).path) });
+          // 撤销「贴图 / 拖进图片」：这几张挪进 .junk/，回 pairs 给重做时 /restore 搬回来
+          if (url.pathname === '/pic-remove' && req.method === 'POST') { const pairs = []; for (const p of (await body(req)).paths || []) try { pairs.push(removePic(root, p)); } catch { /* 已经不在了（手动删了 / 挪走了）就跳过 */ } return send(200, { pairs }); }
           if (url.pathname === '/file' && req.method === 'GET') {
             const base = join(root, DIR);
             const f = normalize(join(base, url.searchParams.get('p') || ''));
