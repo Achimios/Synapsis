@@ -1,5 +1,5 @@
 ---
-status: todo
+status: done
 order: 5
 to:
   - AI 指令框
