@@ -85,8 +85,37 @@ export const wordColor = (label, rules = DEFAULT_RULES) => {
 
 // graph = parseOutline 的结果（nodes: Map id → {label, parent, children}），getMeta(id) → frontmatter 或 undefined；
 // words = 词表 md 文本（undefined / null → 默认词表）；sem = {id: 颜色}（LM Studio 语义配色，core/ai.js semColors）—— 词表没命中时当命中用
-export function colorMap(graph, getMeta = () => undefined, words = null, sem = null) {
+// focus = { scope, sel }（👤 2026-10-10「内 1 层」）：配色只看眼前这一层——没选中 = 当前画布（scope）上的每个节点各自一组，
+//   选中了有子节点的节点 = 它里面的每个子节点各自一组；组头自己的名字命中词表就用那一行，没命中就轮色（跳过同层已被词表占掉的），
+//   组头下面的子孙继承组头的色（有 color: 的照旧优先）。不给 focus = 旧算法（最外层命中，自检里的老用例）
+export function colorMap(graph, getMeta = () => undefined, words = null, sem = null, focus = null) {
   const rules = words == null ? DEFAULT_RULES : parseColorWords(words).rules;
+  if (focus) {
+    const ROOT = '', scope = graph.nodes.has(focus.scope) ? focus.scope : ROOT, S = focus.sel && graph.nodes.get(focus.sel)?.children.length ? focus.sel : null;
+    const hit = id => wordColor(graph.nodes.get(id).label, rules) || sem?.[id] || null;
+    const heads = new Map(); // 组头 id → 色
+    const level = parent => {
+      const kids = graph.nodes.get(parent)?.children || [];
+      const taken = new Set(kids.map(hit).filter(Boolean)), free = CYCLE.filter(c => !taken.has(c)), cyc = free.length ? free : CYCLE;
+      let k = 0; for (const id of kids) heads.set(id, hit(id) || cyc[k++ % cyc.length]);
+    };
+    level(scope); if (S && S !== scope) level(S);
+    const topLevel = new Map(); // 不在这两层里的（传送门指向的别处 / 祖先）：按最顶层分组轮色，只求有个色
+    { const top = graph.nodes.get(ROOT)?.children || []; let k = 0; for (const id of top) topLevel.set(id, hit(id) || CYCLE[k++ % CYCLE.length]); }
+    const out = new Map();
+    for (const id of graph.nodes.keys()) {
+      if (id === ROOT) continue;
+      let explicit = null, head = null, topId = id;
+      for (let x = id; x != null && x !== ROOT; x = graph.nodes.get(x)?.parent) {
+        if (!explicit) explicit = parseColor(getMeta(x)?.color);
+        const p = graph.nodes.get(x)?.parent;
+        if (!head && ((S && p === S) || p === scope)) head = x;
+        topId = x;
+      }
+      out.set(id, explicit || (head && heads.get(head)) || topLevel.get(topId) || PALETTE.灰);
+    }
+    return out;
+  }
   const ROOT = '', out = new Map();
   // 顶层分组轮色：词表占的色先让出来
   const top = graph.nodes.get(ROOT)?.children || [];

@@ -15,7 +15,7 @@ let ws = loadWorkspace(root);
 ok(isUi(ws.graph.nodes.get(a.id).meta) && uiSize(ws.graph.nodes.get(a.id).meta).w === 1000, 'addUiNode：ui: / w / h 写进 frontmatter');
 ok(!ws.graph.nodes.get(a.id).status, '不带 status');
 ok(!checkWorkspace(ws).some(i => i.where === a.id && /没有 status/.test(i.msg)), 'check 不报「没有 status」');
-ok(uiSize({}).w === 320 && uiSize({}).h === 200, '没写宽高 → 默认 320×200');
+ok(uiSize({}).w === 220 && uiSize({}).h === 140, '没写宽高 → 默认 220×140');
 
 // 主界面（UI）里面：按钮、标题（UI）、说明（普通）；标题里面再有个图标（UI）
 const btn = addUiNode(root, a.id, { label: '按钮', w: 100, h: 40 });

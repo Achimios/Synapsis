@@ -140,7 +140,7 @@ export function Shell({ name, Canvas }) {
     const t = setTimeout(() => api('/ai/colors').then(d => setSemCols(d.colors)).catch(() => {}), 1200); // 改大纲时别每个字都问
     return () => clearTimeout(t);
   }, [mode, aiStatus, wsData?.outline, wsData?.colorWords]);
-  const colors = useMemo(() => colorMap(graph, getMeta, wsData?.colorWords, semCols), [graph, getMeta, wsData?.colorWords, semCols]);
+  const colors = useMemo(() => colorMap(graph, getMeta, wsData?.colorWords, semCols, { scope: realScope, sel: selected }), [graph, getMeta, wsData?.colorWords, semCols, realScope, selected]); // 👤 2026-10-10 内 1 层：没选中 = 本画布；选中 = 节点里面
   const [semPats, setSemPats] = useState(null);
   useEffect(() => {
     if (mode !== 'ws' || !aiStatus?.ok || !aiStatus.cfg?.semColors) { setSemPats(null); return; }
@@ -423,7 +423,7 @@ export function Shell({ name, Canvas }) {
     const r = withNode(graph, parent, asChild ? null : s);
     pendingRename.current = r.id;
     setText(r.text);
-    if (asChild) setExpanded(x => ({ ...x, [s]: true })); else setSelected(r.id);
+    if (asChild) { if (uiId(s)) setFramed(x => ({ ...x, [s]: true })); else setExpanded(x => ({ ...x, [s]: true })); } else setSelected(r.id);
   };
   useEffect(() => {
     const id = pendingRename.current;
@@ -529,7 +529,7 @@ export function Shell({ name, Canvas }) {
     props: id => { setSelected(id); setPropsOpen(true); setPropsTab('info'); },
     rename: id => focusLabel(id),
     status: setStatus,
-    addChild: id => { setSelected(id); const r = withNode(graph, id, null); pendingRename.current = r.id; setText(r.text); setExpanded(x => ({ ...x, [id]: true })); },
+    addChild: id => { setSelected(id); const r = withNode(graph, id, null); pendingRename.current = r.id; setText(r.text); if (uiId(id)) setFramed(x => ({ ...x, [id]: true })); else setExpanded(x => ({ ...x, [id]: true })); }, // UI 框加子节点 → 展开成子图（不是子列表）
     addSibling: id => { const r = withNode(graph, graph.nodes.get(id).parent, id); pendingRename.current = r.id; setText(r.text); setSelected(r.id); },
     addUiHere: async () => { // 空白处右键 → 新建 UI 框：放在右键点的位置
       try {
@@ -537,6 +537,7 @@ export function Shell({ name, Canvas }) {
         pendingRename.current = d.id; lastSaved.current = d.report.outline; setText(d.report.outline); setWsData(d); recordSave(d.report.outline, d.report);
         const p = menu && cardActions.toFlow ? cardActions.toFlow({ x: menu.x, y: menu.y }) : null;
         if (p) move({ [d.id]: { x: Math.round(p.x), y: Math.round(p.y) } }, { silent: true });
+        setFramed(f => ({ ...f, [d.id]: true })); // 新建的 UI 框默认展开子图（里面还没东西，所以先不大）
         setSelected(d.id); setSaveState('已新建 UI 框（拖右下角调大小；双击标题钻进去里面摆小框；Ctrl+Z 撤销）');
         setTimeout(() => { const el = document.querySelector('.react-flow__node[data-id="' + CSS.escape(d.id) + '"] .uibox'), r = el?.getBoundingClientRect(); if (r && (r.right > innerWidth - 20 || r.bottom > innerHeight - 20)) cardActions.centerOn?.(d.id, true); }, 400); // 框比较大，落在屏幕边上看不全 → 移到视野里
       } catch (e) { setSaveState('❌ 新建 UI 框失败：' + e.message); }

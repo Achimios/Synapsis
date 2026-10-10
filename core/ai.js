@@ -33,7 +33,7 @@ export const TASKS = [
   { id: 'qa', name: '问答', hint: '问「怎么用」时' },
   { id: 'words', name: '生成词表', hint: '配色词表草稿' },
   { id: 'relation', name: '「?」关系说明', hint: '潜在关联里点 ? 时' },
-  { id: 'rerank', name: '潜在关联精排', hint: '高频，后台自动跑', bulk: true },
+  { id: 'rerank', name: '潜在关联精排', hint: '嵌入先召回，这一步才用对话模型打分；高频，后台自动跑', bulk: true },
   { id: 'semColors', name: '语义配色归类', hint: '高频，改节点时触发', bulk: true },
   { id: 'semPatterns', name: '语义图案归类', hint: '高频，改节点时触发', bulk: true },
 ];

@@ -54,5 +54,19 @@ ok(Math.abs(sat(satHex('#4d9bff', 50)) / sat('#4d9bff') - 0.5) < 0.03, '50% 档�
 ok(parseColor('蓝/50') === satHex(PALETTE.蓝, 50) && parseColor('#ff9636/25') === satHex('#ff9636', 25), 'parseColor 认「名/百分比」和「#hex/百分比」');
 ok(parseColor('蓝/100') === PALETTE.蓝 && parseColor('不存在/50') === null, '/100 = 原色；底色认不出 → null');
 
+// 👤 2026-10-10 「内 1 层」：没选中 = 本画布上每个节点各自一组；选中 = 它里面的子节点各自一组
+{
+  const g = parseOutline('项目\n  核心\n    决策图\n    杂项\n  界面\n    左栏\n      决策子\n    右栏\n  工具箱');
+  const at = (scope, sel, id) => colorMap(g, () => undefined, null, null, { scope, sel }).get(id);
+  ok(at('项目', null, '项目/界面') === PALETTE.青 && at('项目', null, '项目/工具箱') === PALETTE.青, '本画布：「界面」「工具箱」名字命中词表 → 青');
+  ok(at('项目', null, '项目/核心') !== PALETTE.青 && at('项目', null, '项目/核心/决策图') === at('项目', null, '项目/核心'), '本画布：「核心」没命中 → 轮色（跳过青）；它里面的子节点跟着它，不看自己的名字（决策图 ≠ 橙）');
+  ok(at('项目', null, '项目/界面/左栏/决策子') === PALETTE.青, '没选中：子孙都继承本画布那一层的色');
+  ok(at('项目', '项目/核心', '项目/核心/决策图') === PALETTE.橙, '选中「核心」→ 看它里面一层：决策图 命中 → 橙');
+  ok(at('项目', '项目/核心', '项目/核心/杂项') !== at('项目', '项目/核心', '项目/核心/决策图') && at('项目', '项目/核心', '项目/界面') === PALETTE.青, '里面的杂项另轮色；本画布别的节点（界面）不变');
+  ok(at('项目', '项目/界面', '项目/界面/左栏/决策子') === at('项目', '项目/界面', '项目/界面/左栏') && at('项目', '项目/界面', '项目/界面/左栏') !== at('项目', '项目/界面', '项目/界面/右栏'), '选中「界面」→ 左栏 / 右栏 各一组，决策子 跟左栏');
+  ok(at('项目', null, '项目/核心') === at('项目', '项目/核心', '项目/核心'), '选中「核心」自己（有子节点）→ 它还是本画布的一员，颜色不受影响');
+  ok(colorMap(g, id => id === '项目/核心/决策图' ? { color: '红' } : undefined, null, null, { scope: '项目', sel: null }).get('项目/核心/决策图') === PALETTE.红, 'color: 手写的永远优先');
+  ok(colorMap(g, () => undefined, null, null, { scope: '', sel: null }).get('项目/界面') === PALETTE.青 === false || true, '根画布也能算（不报错）');
+}
 console.log(`colors: ${pass} 过 / ${fail} 挂`);
 process.exit(fail ? 1 : 0);

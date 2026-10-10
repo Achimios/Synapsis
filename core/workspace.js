@@ -833,7 +833,7 @@ export function readProjectFile(root, rel, maxBytes = 300000) {
 }
 
 // >v<🖼️UI节点-新建-空白处右键「新建 UI 框」：带 ui: 的普通节点，宽高 w / h（可在画布上拖角调）。不带 status（是设计元素，不是待办）
-export function addUiNode(root, parent, { w = 320, h = 200, label = 'UI框' } = {}) {
+export function addUiNode(root, parent, { w = 220, h = 140, label = 'UI框' } = {}) {
   const ws = loadWorkspace(root), g = ws.graph;
   if (parent !== ROOT && !g.nodes.has(parent)) throw new Error('没有这个节点：' + parent);
   const made = withNode(g, parent, null, label);

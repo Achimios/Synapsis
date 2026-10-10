@@ -71,7 +71,7 @@ export function AiPanel({ api, status, onStatus, onClose }) {
 // >v<🤖AI辅助-按用途选模型-👤 2026-10-10：每个用途一行（继承 / 本地 / ☁在线 + 模型）。清单和 core/ai.js 的 TASKS 同一份（浏览器里不能 import 那个文件，改了要两边一起改）
 const TASK_ROWS = [
   ['agent', 'AI 指令框', '含 ⇅ 自动排序；在线 = 宽松版，本地 = 严格版'], ['qa', '问答', '问「怎么用」时（本地严格版才走）'], ['words', '生成词表', '配色词表草稿'], ['relation', '「?」关系说明', '潜在关联里点 ? 时'],
-  ['rerank', '潜在关联精排', '高频、后台自动跑', true], ['semColors', '语义配色归类', '高频，改节点时触发', true], ['semPatterns', '语义图案归类', '高频，改节点时触发', true],
+  ['rerank', '潜在关联精排', '嵌入先召回，这一步才用对话模型逐条打分；高频、后台自动跑', true], ['semColors', '语义配色归类', '高频，改节点时触发', true], ['semPatterns', '语义图案归类', '高频，改节点时触发', true],
 ];
 function TaskRows({ status, cfg, save }) {
   const tasks = cfg.tasks || {};
@@ -87,6 +87,8 @@ function TaskRows({ status, cfg, save }) {
       <span className="seg">{[['local', '本地'], ['online', '☁ 在线']].map(([v, t]) => <a key={v} className={(cfg.agentSrc || 'local') === v ? 'on' : ''} onClick={() => save({ agentSrc: v })}>{t}</a>)}</span></div>
     <div className="srcrow"><span>默认：高频后台（精排 / 语义配色 / 语义图案）<span className="hint"> （默认本地，免得悄悄花钱）</span></span>
       <span className="seg">{[['local', '本地'], ['online', '☁ 在线']].map(([v, t]) => <a key={v} className={(cfg.bulkSrc || 'local') === v ? 'on' : ''} onClick={() => save({ bulkSrc: v })}>{t}</a>)}</span></div>
+    <div className="srcrow embedrow"><span>潜在关联召回<span className="hint"> 嵌入模型，只能本地（DeepSeek 没有嵌入接口）</span></span>
+      <select value={cfg.embed || ''} onChange={e => save({ embed: e.target.value })}>{[...(cfg.embed && !(status?.embed || []).some(m => m.id === cfg.embed) ? [{ id: cfg.embed }] : []), ...(status?.embed || [])].map(m => <option key={m.id} value={m.id}>{m.id}</option>)}</select></div>
     {TASK_ROWS.map(([id, name, hint, bulk]) => {
       const own = tasks[id] || {}, dflt = cfg.offline ? 'local' : (bulk ? cfg.bulkSrc : cfg.agentSrc) === 'online' ? 'online' : 'local';
       const cur = own.src === 'local' ? 'local:' + (own.chat || '') : own.src === 'online' ? 'online:' + (own.model || '') : own.model ? 'online:' + own.model : own.chat ? 'local:' + own.chat : '';

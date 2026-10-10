@@ -901,7 +901,7 @@ for (const kind of ['reactflow']) {
   await page.mouse.click(700, 760); await sleep(200); await page.keyboard.press('Control+z'); await sleep(1800);
   ok(!/status:\s*done/.test(readFileSync(join(ws, '__synapsis', '咕噜人.md'), 'utf8')), 'Ctrl+Z 撤销 AI 的改动');
   // 问用法 → 问答模式：多行回答，标出参考了快捷键表，没有执行预览
-  await page.click('.agentbox textarea.ask'); await page.keyboard.type('怎么连线？'); await page.keyboard.press('Enter'); await sleep(1500);
+  await page.click('.agentbox textarea.ask'); await page.keyboard.type('怎么连线？'); await page.keyboard.press('Enter'); await sleep(3000); // 全量跑时机器忙，1.5 秒偶尔不够
   const lastA = await page.$$eval('.agentbox .turn', ts => { const t = ts.at(-1); return [t.querySelector('.a')?.textContent || '', t.querySelector('.know')?.textContent || '', !!t.querySelector('.a .mdlite')]; });
   ok(lastA[0].includes('按 L') && lastA[2] && /快捷键/.test(lastA[1]) && !(await page.$('.agentbox .plan')), '问「怎么连线？」→ 多行回答 + 📖 参考了快捷键，没有执行预览 ' + lastA);
   await page.click('.agentbox .bar a:has-text("日志")'); await sleep(800);
@@ -1214,14 +1214,14 @@ for (const kind of ['reactflow']) {
   await page.click('.ctx .mi:has-text("新建 UI 框")'); await sleep(1500);
   await page.keyboard.type('主界面'); await page.keyboard.press('Enter'); await sleep(1500);
   const sz = () => page.$eval('.card.uibox', e => [Math.round(e.offsetWidth), Math.round(e.offsetHeight)]);
-  ok(JSON.stringify(await sz()) === '[320,200]', '新建的 UI 框默认 320×200 ' + await sz());
+  ok(JSON.stringify(await sz()) === '[220,140]', '新建的 UI 框默认 220×140 ' + await sz());
   const md = join(ws, '__synapsis', '主界面.md');
   ok(existsSync(md) && /ui: true/.test(readFileSync(md, 'utf8')) && !/status/.test(readFileSync(md, 'utf8')), '节点 md 里写了 ui: true，没有 status');
   await page.mouse.click(60, 820); await sleep(600);
   const g = await (await page.$('.card.uibox .uigrip')).boundingBox();
   await page.mouse.move(g.x + 6, g.y + 6); await page.mouse.down(); await page.mouse.move(g.x + 106, g.y + 56, { steps: 6 }); await page.mouse.up(); await sleep(1500);
   const [w1, h1] = await sz();
-  ok(w1 > 380 && h1 > 230, '拖右下角 → 变大 ' + [w1, h1]);
+  ok(w1 > 290 && h1 > 170, '拖右下角 → 变大 ' + [w1, h1]);
   ok(new RegExp('w: ' + w1 + '\\b').test(readFileSync(md, 'utf8')) && new RegExp('h: ' + h1 + '\\b').test(readFileSync(md, 'utf8')), '新宽高存进 frontmatter（w / h）');
   await page.reload(); await sleep(2200);
   ok(JSON.stringify(await sz()) === JSON.stringify([w1, h1]), '刷新后大小还在');
@@ -1295,7 +1295,7 @@ for (const kind of ['reactflow']) {
   await page.close();
   rmSync(ws, { recursive: true, force: true });
 }
-// —— UI 框展开子级 / 子图（👤 2026-10-10）：UI 框也有 ▸ N 和 ⊞，新建出来默认都不展开；子图 = 里面的东西画在框里，框大小不变 ——
+// —— UI 框展开子级 / 子图（👤 2026-10-10）：新建的 UI 框默认展开子图（没子级时小小的）；子图里的东西以包围盒中点对准框中点；选中后滚轮缩放框内、不缩放整页 ——
 {
   console.log('== UI 框展开');
   const ws = mkdtempSync(join(tmpdir(), 'syn-uifr-ui-')); noAi(ws);
@@ -1308,19 +1308,30 @@ for (const kind of ['reactflow']) {
   await page.click('.ctx .mi:has-text("新建 UI 框")'); await sleep(1500);
   await page.keyboard.type('框'); await page.keyboard.press('Enter'); await sleep(1500);
   ok(!(await page.$('.card.uibox .kids')), '新建的 UI 框里没东西 → 没有展开按钮');
+  ok(JSON.stringify(await page.$eval('.card.uibox', e => [e.offsetWidth, e.offsetHeight])) === '[220,140]', '刚建出来小小的（220×140）');
   await page.keyboard.press('Control+Enter'); await sleep(1200);
   await page.keyboard.type('内'); await page.keyboard.press('Enter'); await sleep(1500);
-  ok(!!(await page.$('.card.uibox .kids.fr')) && !!(await page.$('.card.uibox .kidlist li:has-text("内")')) && !(await page.$('.react-flow__node-frame')), '加了个子节点（和别的卡一样原地展开子级）→ 出现 ▸ 1 和 ⊞，框里列出子级，没变成分组框');
-  await page.click('.card.uibox .kids:not(.fr)'); await sleep(500);
-  ok(!(await page.$('.card.uibox .kidlist')), '点 ▸ → 收起子级列表');
-  const sz0 = await page.$eval('.card.uibox', e => [e.offsetWidth, e.offsetHeight]);
-  await page.click('.card.uibox .kids.fr'); await sleep(900);
-  const ub = await (await page.$('.card.uibox')).boundingBox(), cb = await (await page.$('.card:has(.lab:text-is("内")):not(.uibox)')).boundingBox();
-  ok(cb.x >= ub.x && cb.y >= ub.y && cb.x + cb.width <= ub.x + ub.width && cb.y + cb.height <= ub.y + ub.height, '点 ⊞ → 子节点画在框里面 ' + JSON.stringify([ub, cb].map(b => [b.x, b.y, b.width, b.height].map(Math.round))));
-  ok(JSON.stringify(await page.$eval('.card.uibox', e => [e.offsetWidth, e.offsetHeight])) === JSON.stringify(sz0) && !(await page.$('.react-flow__node-frame')), '框的大小不变，也没有变成普通分组框');
-  await page.click('.card.uibox .kids.fr'); await sleep(900);
-  const cb2 = await (await page.$('.card:has(.lab:text-is("内")):not(.uibox)'))?.boundingBox();
-  ok(!cb2 || cb2.x + cb2.width <= ub.x || cb2.y >= ub.y + ub.height || cb2.x >= ub.x + ub.width || cb2.y + cb2.height <= ub.y, '再点 ⊟ → 子图收起（子节点不再画在框里）');
+  ok(!(await page.$('.card.uibox .kidlist')) && !!(await page.$('.card.uibox .kids.fr')) && !(await page.$('.react-flow__node-frame')), '加子节点 → 默认展开的是子图（不是子级列表），框还是 UI 框的样子');
+  const box = async () => (await (await page.$('.card.uibox')).boundingBox()), kid = async () => (await (await page.$('.card:has(.lab:text-is("内")):not(.uibox)'))?.boundingBox());
+  let ub = await box(), cb = await kid();
+  ok(!!cb && cb.x >= ub.x && cb.y >= ub.y && cb.x + cb.width <= ub.x + ub.width + 1 && cb.y + cb.height <= ub.y + ub.height + 1, '子节点画在框里面 ' + JSON.stringify([ub, cb].map(b => b && [b.x, b.y, b.width, b.height].map(Math.round))));
+  ok(Math.abs(cb.x + cb.width / 2 - (ub.x + ub.width / 2)) < 40 && Math.abs(cb.y + cb.height / 2 - (ub.y + ub.height / 2)) < 40, '子图里东西的包围盒中点对准框的中点（一个子节点 = 它在框正中）');
+  // 选中框 + 滚轮 → 缩放框内（子节点变大），页面本身的缩放不变
+  await page.mouse.click(60, 820); await sleep(200);
+  await page.click('.card.uibox .lab'); await sleep(300);
+  const vp0 = await page.$eval('.react-flow__viewport', e => e.style.transform), w0 = (await kid()).width;
+  await page.mouse.move(ub.x + ub.width / 2, ub.y + ub.height - 10); for (let i = 0; i < 4; i++) { await page.mouse.wheel(0, -120); await sleep(120); } await sleep(500);
+  const w1 = (await kid()).width;
+  ok(w1 > w0 * 1.2, '选中展开子图的框，在框上滚轮向上 → 框内子节点变大 ' + [w0, w1].map(Math.round));
+  ok((await page.$eval('.react-flow__viewport', e => e.style.transform)) === vp0, '整页的缩放 / 平移没变');
+  await page.mouse.move(480, 680); await page.mouse.wheel(0, 300); await sleep(1500);
+  ok((await page.$eval('.react-flow__viewport', e => e.style.transform)) !== vp0, '鼠标不在框上 → 滚轮照旧缩放整页');
+  // ⊟ 收起子图、▸ 展开子级列表
+  await page.click('.card.uibox .kids.fr'); await sleep(800);
+  ub = await box(); const cb2 = await kid();
+  ok(!cb2 || cb2.x + cb2.width <= ub.x || cb2.y >= ub.y + ub.height || cb2.x >= ub.x + ub.width || cb2.y + cb2.height <= ub.y, '点 ⊟ → 子图收起（子节点不再画在框里）');
+  await page.click('.card.uibox .kids:not(.fr)'); await sleep(600);
+  ok(!!(await page.$('.card.uibox .kidlist li:has-text("内")')), '点 ▸ → 列出子级');
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });

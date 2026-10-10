@@ -17,13 +17,19 @@ export const CREATE_MAX = 200;
 const bodyOf = b => { if (b == null || b === '') return ''; if (typeof b !== 'string' || b.length > 8000) throw new Error('body 要是 8000 字以内的文字'); return b; };
 const badName = s => typeof s !== 'string' || !s.trim() || /->|[,，\r\n]/.test(s) || s.trim().length > 60;
 
+// 传送门卡片（编号 p1…，id 是 @portal:目标）只能参与排版 / 选中，其余动作一律拒绝（它不是真节点）
+const PORTAL_OK = new Set(['select', 'align', 'arrange', 'tighten', 'place']);
 // ctx = { refs: Map('n1' → 真 id), graph, scope }；返回 { ok, why?, desc?, ...规范化后的参数（真 id）}
 export function validateAction(a, ctx) {
   if (!a || typeof a !== 'object') return { ok: false, why: '不是一个动作对象' };
   const V = VALIDATORS[a.do];
   if (!V) return { ok: false, do: a.do, why: `没有「${a.do}」这种动作（只能用：${Object.keys(VALIDATORS).join(' ')}）` };
-  const label = id => ctx.graph.nodes.get(id)?.label ?? id;
-  const one = r => { const id = ctx.refs.get(String(r)); if (!id) throw new Error(`不认识「${r}」（只能用本页列出的 n 编号）`); return id; };
+  const label = id => id.startsWith('@portal:') ? '传送门→' + (ctx.graph.nodes.get(id.slice(8))?.label ?? id.slice(8)) : ctx.graph.nodes.get(id)?.label ?? id;
+  const one = r => {
+    const id = ctx.refs.get(String(r)); if (!id) throw new Error(`不认识「${r}」（只能用本页列出的 n / p 编号）`);
+    if (id.startsWith('@portal:') && !PORTAL_OK.has(a.do)) throw new Error(`「${r}」是传送门卡片，只能用 ${[...PORTAL_OK].join(' / ')}`);
+    return id;
+  };
   const many = (rs, min = 1) => {
     if (!Array.isArray(rs) || rs.length < min) throw new Error(`ids 至少要 ${min} 个`);
     const ids = [...new Set(rs.map(one))];

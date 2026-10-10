@@ -12,7 +12,9 @@ function SNode({ data }) {
   return (
     <>
       <Handle type="target" position={Position.Left} />
-      {data.portal ? <PortalCard portal={data.portal} dim={data.dim} /> : data.node.ui ? <UiCard node={data.node} dim={data.dim} isSel={data.isSel} /> : <NodeCard node={data.node} img={data.img} dim={data.dim} isSel={data.isSel} />}
+      <div style={data.zoom && data.zoom !== 1 ? { zoom: data.zoom } : undefined}>{/* 框里的卡跟着框内画布缩放（滚轮，选中框时） */}
+        {data.portal ? <PortalCard portal={data.portal} dim={data.dim} /> : data.node.ui ? <UiCard node={data.node} dim={data.dim} isSel={data.isSel} /> : <NodeCard node={data.node} img={data.img} dim={data.dim} isSel={data.isSel} />}
+      </div>
       <Handle type="source" position={Position.Right} />
       <ModHandles />
     </>
@@ -172,15 +174,38 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   const isSel = id => id === selected || ms.has(id);
   cardActions.multi = multi; // 外壳的 Ctrl+C 要知道多选了哪些
   // 框里子节点：画布坐标（相对框）↔ 存的坐标（钻进分组那页的坐标）
-  const fmin = {};
-  for (const n of view.nodes) if (n.framed && n.ui) fmin[n.id] = { x: 0, y: 0 }; /* UI 框：里面的坐标原点 = 框左上角 */
-  for (const n of view.nodes) if (n.framed && !n.ui) { const ks = n.children.map(c => layout[c]).filter(Boolean); fmin[n.id] = ks.length ? { x: Math.min(...ks.map(p => p.x)), y: Math.min(...ks.map(p => p.y)) } : { x: 0, y: 0 }; }
+  // 👤 2026-10-10 框内画布：存的坐标 p → 框内位置 = z * (p - c) + o。z = 框内缩放（选中框时滚轮）；
+  //   普通框 c = 子节点最小角、o = 内边距；UI 框 c = 子节点包围盒中点（展开那一刻定下来，之后拖子节点不跟着跳）、o = 框的中点
+  const [fz, setFz] = useState({});
+  const uiAnchor = useRef({});
+  const fx = {};
+  for (const n of view.nodes) if (n.framed) {
+    const ks = n.children.map(c => layout[c]).filter(Boolean), z = fz[n.id] || 1;
+    if (n.ui) {
+      let a = uiAnchor.current[n.id];
+      if (!a || a.n !== ks.length) { a = ks.length ? { n: ks.length, x: (Math.min(...ks.map(p => p.x)) + Math.max(...ks.map(p => p.x)) + 150) / 2, y: (Math.min(...ks.map(p => p.y)) + Math.max(...ks.map(p => p.y)) + 40) / 2 } : { n: 0, x: 0, y: 0 }; uiAnchor.current[n.id] = a; }
+      fx[n.id] = { z, cx: a.x, cy: a.y, ox: n.uiW / 2, oy: n.uiH / 2 };
+    } else fx[n.id] = { z, cx: ks.length ? Math.min(...ks.map(p => p.x)) : 0, cy: ks.length ? Math.min(...ks.map(p => p.y)) : 0, ox: FP.x, oy: FP.y };
+  }
   const frameOf = new Map(view.nodes.filter(n => n.frame != null).map(n => [n.id, n.frame]));
-  const posOf = n => { const p = layout[n.id], f = frameOf.get(n.id); return f != null && p && fmin[f] ? { x: p.x - fmin[f].x + FP.x, y: p.y - fmin[f].y + FP.y } : p; };
-  const toLayout = (id, p) => { const f = frameOf.get(id); return f != null && fmin[f] ? { x: Math.round(p.x - FP.x + fmin[f].x), y: Math.round(p.y - FP.y + fmin[f].y) } : p; };
+  const posOf = n => { const p = layout[n.id], t = fx[frameOf.get(n.id)]; return t && p ? { x: t.z * (p.x - t.cx) + t.ox, y: t.z * (p.y - t.cy) + t.oy } : p; };
+  const toLayout = (id, p) => { const t = fx[frameOf.get(id)]; return t ? { x: Math.round((p.x - t.ox) / t.z + t.cx), y: Math.round((p.y - t.oy) / t.z + t.cy) } : p; };
+  const wheelLive = useRef(); wheelLive.current = { selected, view };
+  useEffect(() => { // 选中了展开子图的框（普通节点或 UI 框），鼠标在框上滚轮 = 缩放框内画布，不缩放整页
+    const onWheel = e => {
+      const { selected: sid, view: v } = wheelLive.current;
+      const n = sid && v.nodes.find(x => x.id === sid && x.framed); if (!n) return;
+      const r = document.querySelector('.react-flow__node[data-id="' + CSS.escape(n.id) + '"]')?.getBoundingClientRect();
+      if (!r || e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+      e.preventDefault(); e.stopPropagation();
+      setFz(m => ({ ...m, [n.id]: Math.max(0.3, Math.min(3, (m[n.id] || 1) * (e.deltaY < 0 ? 1.1 : 1 / 1.1))) }));
+    };
+    window.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    return () => window.removeEventListener('wheel', onWheel, true);
+  }, []);
   const build = () => [
     ...(plane ? [{ id: '@axes', type: 'axes', position: { x: -plane.S * 1.25, y: -plane.S * 1.25 }, data: plane, draggable: false, selectable: false, focusable: false, zIndex: -1, style: { pointerEvents: 'none' } }] : []),
-    ...view.nodes.map(n => ({ id: n.id, type: n.framed && !n.ui ? 'frame' : 's', position: posOf(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(n.framed && !n.ui ? { style: { width: FMIN.w, height: FMIN.h } } : {}), ...(n.ui ? { style: { width: n.uiW, height: n.uiH } } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id) }, selected: isSel(n.id) })),
+    ...view.nodes.map(n => ({ id: n.id, type: n.framed && !n.ui ? 'frame' : 's', position: posOf(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(n.framed && !n.ui ? { style: { width: FMIN.w, height: FMIN.h } } : {}), ...(n.ui ? { style: { width: n.uiW, height: n.uiH } } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id), zoom: n.frame != null ? fz[n.frame] || 1 : 1 }, selected: isSel(n.id) })),
     ...view.portals.map(p => ({ id: p.id, type: 's', position: layout[p.id], data: { portal: p, dim: nodeDim(p.id, view, selected) }, selected: isSel(p.id) })),
     ...pics.map(p => ({ id: p.id, type: 'pic', position: layout[p.id] || { x: 0, y: 0 }, data: { pic: p, isSel: isSel(p.id) }, selected: isSel(p.id) })),
   ];
@@ -192,7 +217,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
       // 坐标以外壳的 layout 为准；只有正在拖的节点用本地坐标（否则旧坐标会和自动布局打架，新节点压住老节点）
       return build().map(n => { const o = old.get(n.id); return o ? { ...o, ...n, position: o.dragging ? o.position : n.position } : n; });
     });
-  }, [view, layout, selected, images, pics, plane, multi]);
+  }, [view, layout, selected, images, pics, plane, multi, fz]);
 
   // 选中一个框：框里的节点连出去的线也算「相连」
   const near = selected && view.parentOf?.size ? new Set([selected, ...view.nodes.filter(n => { for (let f = n.frame; f != null; f = view.parentOf.get(f)) if (f === selected) return true; return false; }).map(n => n.id)]) : null;

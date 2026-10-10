@@ -2,7 +2,7 @@
 //   UI 节点 = 带 ui: 的普通节点，在所在页里是个有宽高（w / h）的线框；里面（钻进去）是正常画布，位置用里面这一页自己的坐标。
 //   输出：UI 节点带四个角（左上 / 右上 / 右下 / 左下）+ 宽高，坐标就是那一页画布上的坐标（x 向右、y 向下）；普通节点只带名字和正文，按层级缩进。
 //   选中的 UI 节点里面还有 UI 节点 → 每一级都输出。不输出 bounding box（几个区块 LLM 自己看得出）。
-export const UI_DEFAULT = { w: 320, h: 200 };
+export const UI_DEFAULT = { w: 220, h: 140 }; // 👤 2026-10-10 刚建出来里面没东西，别太大
 export const isUi = meta => !!meta && meta.ui !== undefined && meta.ui !== '' && String(meta.ui) !== 'false';
 export const uiSize = meta => ({ w: +meta?.w > 0 ? +meta.w : UI_DEFAULT.w, h: +meta?.h > 0 ? +meta.h : UI_DEFAULT.h });
 
