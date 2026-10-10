@@ -1278,7 +1278,9 @@ for (const kind of ['reactflow']) {
   await page.goto(`${BASE}/?demo`); await sleep(1800);
   await page.click('button:has-text("快捷键")'); await sleep(400);
   const all = (await page.$$('.helpgrid tr')).length;
-  ok(all > 40 && !!(await page.$('.help input.hkey')) && !!(await page.$('.help input.htext')), '快捷键页有两个搜索框，默认显示全部 ' + all);
+  ok(all > 25 && !!(await page.$('.help input.hkey')) && !!(await page.$('.help input.htext')), '快捷键页有两个搜索框，默认显示全部 ' + all);
+  const helpText = await page.textContent('.helpgrid');
+  ok(!helpText.includes('双击图片') && !helpText.includes('散图拖到卡片上') && !helpText.includes('顶栏 ☀') && !(await page.$$eval('.helpgrid h4', h => h.some(x => x.textContent.includes('图片')))), '基础操作（双击图片、散图拖到卡片上、顶栏主题按钮……）不在快捷键页里，「图片」组也没了');
   await page.click('.help input.hkey'); await page.keyboard.press('Control+z'); await sleep(300);
   const v1 = await page.$eval('.help input.hkey', e => e.value), n1 = (await page.$$('.helpgrid tr')).length;
   ok(v1 === 'Ctrl+Z' && n1 > 0 && n1 < all && (await page.$$eval('.helpgrid tr', r => r.some(x => x.textContent.includes('撤销')))), '按 Ctrl+Z → 框里记下 Ctrl+Z，只剩用到它的条目 ' + n1);

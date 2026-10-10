@@ -490,7 +490,7 @@ export function ScaffoldModal({ items, root, onCreate, onClose }) {
   );
 }
 
-const KEY_HUE = { 选择与查看: ['👆', '#4d9bff'], AI: ['🤖', '#a97cff'], 搜索: ['🔎', '#36c6c0'], 导航: ['🧭', '#5cc46a'], 编辑: ['✏️', '#ff9636'], 复制: ['📋', '#e6c440'], 移动: ['📦', '#36c6c0'], 选择: ['🎯', '#ff79c2'], 排列: ['📐', '#9a9a9a'], 图片: ['🖼️', '#ff5f5f'], 界面: ['🎛️', '#7aa2c8'] };
+const KEY_HUE = { 选择与查看: ['👆', '#4d9bff'], AI: ['🤖', '#a97cff'], 搜索: ['🔎', '#36c6c0'], 导航: ['🧭', '#5cc46a'], 编辑: ['✏️', '#ff9636'], 复制: ['📋', '#e6c440'], 移动与复制: ['📦', '#e6c440'], 移动: ['📦', '#36c6c0'], 选择: ['🎯', '#ff79c2'], 排列: ['📐', '#9a9a9a'], 图片: ['🖼️', '#ff5f5f'], 界面: ['🎛️', '#7aa2c8'] };
 export { KEYMAP };
 // >v<🔎搜索-搜索框-Ctrl+F 跳到节点 / 右键「连线到…」选目标：同一个框（↑↓ 选，Enter 确定，Esc 关）
 export function SearchModal({ title, items, exclude, onPick, onClose }) {
@@ -590,7 +590,7 @@ export function HelpModal({ onClose }) {
   };
   const onKeyUp = e => { if (pendingMod.current && pendingMod.current.mods.length) setCombo(pendingMod.current); else if (pendingMod.current) pendingMod.current = null; };
   const t = tq.trim().toLowerCase();
-  const groups = KEYMAP.map(([g, rows]) => [g, rows.filter(([k, v]) => matchKey(k, combo) && (!t || (k + ' ' + v).toLowerCase().includes(t)))]).filter(([, rows]) => rows.length);
+  const groups = KEYMAP.map(([g, rows]) => [g, rows.filter(([k, v, basic]) => !basic && matchKey(k, combo) && (!t || (k + ' ' + v).toLowerCase().includes(t)))]).filter(([, rows]) => rows.length);
   return (
     <div className="modal" onClick={onClose}>
       <div className="help" onClick={e => e.stopPropagation()}>

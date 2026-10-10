@@ -28,7 +28,7 @@ ok(matchKey('Ctrl+Z', { mods: ['Ctrl'], key: null }) && !matchKey('Alt+↑', { m
 // 真实键位表：Ctrl+Z 应该能找到「撤销」，Q 能找到「看清连线」那一条
 const rows = KEYMAP.flatMap(([, rs]) => rs);
 ok(rows.some(([k, v]) => matchKey(k, ev({ key: 'z', ctrlKey: true })) && /撤销/.test(v)), '真实表里 Ctrl+Z → 撤销');
-ok(rows.some(([k]) => matchKey(k, ev({ key: 'q' })) && /看清连线|竖栏/.test(k)), '真实表里 Q → 看清连线那条');
+ok(rows.some(([k, v]) => matchKey(k, ev({ key: 'q' })) && /看清连线/.test(v)), '真实表里 Q → 看清连线那条');
 
 console.log(`keymap: ${pass} 过 / ${fail} 挂`);
 process.exit(fail ? 1 : 0);
