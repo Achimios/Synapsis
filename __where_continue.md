@@ -29,3 +29,11 @@
 - ⚠️ 自检：假 LM Studio 用工作区 `.synapsis/ai.json`（`offline: true` = 不联网、全走本地）；假在线服务用环境变量 `SYNAPSIS_ONLINE_URL` + `DEEPSEEK_API_KEY=sk-fake`（照 `core/test/loop.test.js`）
 - 临时交接用完就丢 `_过期的/`（👤 2026-10-08 的规矩，`_工程规矩.md` §1）
 - 现状一览 `_开发进度.md`，细则 `_工程规矩.md`
+
+## 2026-10-11 交接（Sonnet → Opus，用户要压缩后让 Opus 接，**debug 请细心**）
+- 最新提交：`92c4b65`（大纲 ↑∞/↑1/↓、多列大纲整棵子树不拆列、预览展开两态 + 顶部提示条）、`6f2031e`（UI 节点也吃预览展开、`tempDeep`、真展开本页排除 UI 框内节点）、本次 keymap 补 Shift+1~4。**全部只做了编译检查，没跑自检**（用户要求不跑全量；他自己手测）。
+- 🐞 **未解决 1：Shift+1（递进预览展开子图）时，UI 框直接子级的临时子图「刚展开不裁剪，立刻又被裁剪」**。我加了 `tempDeep`（`shell.jsx` view 节点里 `sm.frame==='deep' && !framed[id]`，`main.jsx` `uiClip` 里 `n.tempDeep` 就 return {}）——读代码逻辑上应该生效，但用户实测仍被裁。没找到原因，没能复现（我的调试脚本场景太小没溢出；脚本已删）。线索：`uiClip` 靠 measured 宽度，第一帧没 measured 所以「刚展开不裁」可能只是还没量；真正的问题是 `tempDeep` 为什么在量完后是假——查 `view.nodes` 里该节点的 `tempDeep` 值、`nodes` 里 style、是否另有地方写 clipPath（`sizeFrames` 会 `{...n.style}`）、以及 `[view, layout, selected, …, fv]` 重建时 `{...o,...n}` 的覆盖。建议用 `?ws=临时目录` + playwright 造「UI 框 → 子（带孙）」，孙多几个让子图超出框，再按 Shift+Digit1 读各 `.react-flow__node` 的 `style.clipPath`。
+- 🐞 **未解决 2：「真的展开本页」（竖栏 ⋯）对 UI 框的孙级仍会生效**。用户明确要求「递进关系写法」，不要打补丁：我现在的 `expIds`（`shell.jsx`）只排除了 `uiId(n.id)` 和 `uiId(n.frame)`（UI 框自己和直接子级），孙级及更深的没排除。应改为沿 `frame` 链往上走：任一祖先是 UI 框就排除（`view.nodes` 里 `frame` 是直接父框 id，要逐级向上查）。同理看 `expChange` / 预览 `eff` 是否也该按祖先链判断。
+- 待决：框内缩放 / 平移要不要存盘（用户问「存盘会有冲突？」：我的回答是不会，只是几个数；会和外部 CLI/AI 改布局放在同一文件里。倾向存到 `view.json` 而不是 `_layout.json`，就不会冲突）。
+- 用户要求：快捷键页（`core/keymap.js`）已补；`_开发进度.md` / vault 节点还没更新到最近几批（框内画布、⛶、compact、大纲三态、托盘重启、中键平移、图案词表、预览展开两态）。
+- 托盘需重启一次：新菜单项「重启 Synapsis」和 `/ai/words` 路由才生效。
