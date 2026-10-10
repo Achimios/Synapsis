@@ -41,7 +41,7 @@ export async function lmsReload(id, ctx) {
   if (!(n >= 2048 && n <= 1048576)) throw new Error('上下文长度要在 2048 ~ 1048576 之间');
   const loaded = await lmsLoaded(), key = modelKeyOf(id, loaded);
   for (const m of loaded.filter(m => m.key === key)) await run(['unload', m.id], 60000);
-  await run(['load', key, '-c', String(n), '--identifier', key, '-y']);
+  await run(['load', key, '-c', String(n), '--identifier', key, '--ttl', '3600', '-y']); // 闲 1 小时自动卸载（同 LM Studio 自动加载的默认）：👤 要打游戏，别一直占显存
   const now = (await lmsLoaded()).find(m => m.id === key);
   return { key, ctx: now?.ctx ?? n, maxCtx: now?.maxCtx ?? null };
 }

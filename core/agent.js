@@ -66,7 +66,8 @@ export function pageContext(ws, scope, selected = [], boxes = {}, opts = {}) {
 // >v<🤖AI指令-宽松版-在线模型（聪明）用：👤 2026-10-08「被你训的太听话了…主观能动性…扁平化指挥给基层更多自由度」。
 //   能聊、能接人设、自己推理、自己算坐标；唯一硬底线 = 改页面只能用白名单动作、人确认才执行、不能删节点。
 //   整份软件知识直接放进来（7 千字左右；放在系统提示词 = 不变的前缀，在线服务的缓存能命中，几乎不花钱）
-export function loosePrompt(skills = loadSkills(), knowledge = knowledgeChunks()) {
+// me = 这次实际用的模型和短记忆设置（👤 2026-10-11 实测：提示词没说它是谁，它读到快捷键表里「本地模型 qwen3-8b」就认成了自己）。放提示词末尾，前面的大段照样命中缓存
+export function loosePrompt(skills = loadSkills(), knowledge = knowledgeChunks(), me = null) {
   return `你是 Synapsis（思维导图 / 节点图工具）里的 AI 搭档，和人一起在【当前页】上思考和整理。
 你可以聊天、讨论想法、提建议、接受人给你的人设和语气，自己判断怎么做最好；拿不准的就说出你的猜测或者反问。别把自己当成只会查手册的说明书。
 
@@ -88,7 +89,9 @@ ${skills.map(s => `## ${s.name}：${s.do}\n参数：${s.args}\n${s.body}`).join(
 【软件知识】（人问怎么用时参考。快捷键表在下面；手册只给目录——要细节就 look {"manual": "关键词"} 翻。翻过手册和快捷键表都没有的功能就是没有：可以直说，也可以建议别的办法）
 ${knowledgeText(knowledge.filter(c => c.src.startsWith('快捷键')))}
 
-【手册目录】（共 ${knowledge.filter(c => !c.src.startsWith('快捷键')).length} 段）：${[...new Set(knowledge.filter(c => !c.src.startsWith('快捷键')).map(c => c.src.replace('手册·', '')))].join('、')}`;
+【手册目录】（共 ${knowledge.filter(c => !c.src.startsWith('快捷键')).length} 段）：${[...new Set(knowledge.filter(c => !c.src.startsWith('快捷键')).map(c => c.src.replace('手册·', '')))].join('、')}${me ? `
+
+【你自己】你现在是 ${me.model}（${me.online ? '☁ 在线' : '本地 LM Studio'}）${me.ctx ? `，上下文容量 ${me.ctx} token` : ''}。你的短记忆 = 一段摘要 + 摘要之后的对话原文：原文超过 ${me.memLimit} token 时${me.autoCompact ? '，自动把旧的压成摘要、保留最近 ' + me.memKeep + ' 轮原文' : '，从最老的丢（自动压缩关着）'}；人也可以点指令框顶上的 🗜 手动压。这些数在 ⋯ → 🤖 AI 设置「通用」里改（在线、本地各一行）。` : ''}`;
 }
 
 export function systemPrompt(skills = loadSkills()) {
@@ -277,7 +280,7 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   }
   const idx = loose && opts.home ? memoryIndex(opts.home, root) : '';
   const memNote = idx && !recent.some(t => t.memNote) ? `【记忆索引】（想看全文就只回 {"read": ["名字"]}）\n${idx}` : '';
-  const sys = loose ? loosePrompt() : systemPrompt();
+  const sys = loose ? loosePrompt(undefined, undefined, { model: chatModel(cfg).replace(/^\w+:/, ''), online: true, ctx: opts.ctx || null, ...memCfg(cfg, true) }) : systemPrompt();
   const lastNote = outcomeNote(recent.at(-1));
   let user = `${ctx.text}\n\n${lastNote ? lastNote + '\n\n' : ''}人说：${String(text).trim()}${memNote ? '\n\n' + memNote : ''}`;
   const out = loose ? 3000 : 1200, temp = loose ? 0.6 : 0.1; // 宽松版：话可以长、温度高些（有个性）
