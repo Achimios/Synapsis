@@ -64,15 +64,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
   return (
     <div className="ctx" style={style}>
       <div className="mh">{node.label}</div>
-      {(() => { // 展开：子图 / 子级 / 属性 / 正文，四个小按钮一排（高频，放最上面）；亮 = 现在是展开的，灰 = 这个节点没有
-        const xs = actions.expItems(node.id);
-        return <div className="mi row expchips" onPointerDown={e => e.stopPropagation()}>
-          <span>展开</span>
-          {xs.map(x => <button key={x.k} className={x.ok ? (x.open ? 'on' : '') : 'off'} title={x.ok ? (x.open ? '点一下收起' : '点一下展开') : '这个节点没有可展开的' + x.name}
-            onClick={() => { if (!x.ok) return; onClose(); actions.expToggle(node.id, x.k); }}>{x.name}</button>)}
-        </div>;
-      })()}
-      {item('属性…', () => actions.props(node.id), { key: 'I' })}
+      {item('属性…', () => actions.props(node.id), { key: 'Ctrl+Tab' })}
       {item('重命名', () => actions.rename(node.id), { key: 'F2' })}
       {node.file && item('📎 打开引用的文件', () => actions.openProjectFile(node.file))}
       <div className="mi row" onPointerDown={e => e.stopPropagation()}>
@@ -94,7 +86,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         {actions.patternWords && <button title="打开图案词表 __synapsis/_图案.md" className="auto" onClick={() => { onClose(); actions.patternWords(); }}>图案词表…</button>}
       </div>}
       <div className="msep" />
-      {item('🔗 连线到…', () => actions.linkTo(node.id), { key: 'L' })}
+      {item('🔗 连线到…', () => actions.linkTo(node.id), { key: 'Alt+F' })}
       {actions.pinsMenu && (() => { // 📌 钉到钉子组：当前（高亮）组最好点，其余组和新组灰色小字（👤 2026-10-09）
         const h = actions.pinsMenu(node.id), many = h.n > 1 ? `（${h.n} 个）` : '';
         return <>
@@ -107,8 +99,8 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         <span>新建 / 钻进去</span><kbd>▸</kbd>
         <div className={'ctx submenu' + (style.left > innerWidth - 380 ? ' flip' : '')}>
           {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'Tab' })}
-          {item('＋ 新建同级', () => actions.addSibling(node.id), { key: 'Enter' })}
-          {item('→ 钻进去', () => actions.drill(node.id), { key: '双击' })}
+          {item('＋ 新建同级', () => actions.addSibling(node.id), { key: 'Shift+Enter' })}
+          {item('→ 钻进去', () => actions.drill(node.id), { key: 'Alt+S' })}
         </div>
       </div>
 

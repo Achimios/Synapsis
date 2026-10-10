@@ -143,7 +143,10 @@ for (const kind of ['reactflow']) {
   b = await cardBox('决策');
   await page.mouse.click(...center(b)); await sleep(300);
   await page.keyboard.press('Enter'); await sleep(400);
-  ok((await cards()).some(t => t.includes('新节点')), 'Enter 新建同级节点');
+  ok(!!(await page.$('.card input')) && !(await cards()).some(t => t.includes('新节点')), '选中了按 Enter = 重命名（不新建）');
+  await page.keyboard.press('Escape'); await sleep(200);
+  await page.keyboard.press('Shift+Enter'); await sleep(400);
+  ok((await cards()).some(t => t.includes('新节点')), 'Shift+Enter 新建同级节点');
   // 建完光标在大纲里、名字选中 → 直接打字就是改名
   // 改名在大纲树里原地出输入框（👤：点大纲不该直接进编辑；改名 = 新建后 / F2 / 双击）
   const selTxt = () => page.evaluate(() => { const a = document.activeElement; return a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' ? a.value.slice(a.selectionStart, a.selectionEnd) : '(焦点不在改名框：' + a.tagName + ')'; });
@@ -255,7 +258,7 @@ for (const kind of ['reactflow']) {
   const box = async label => { for (const l of await page.$$('.card .lab')) if ((await l.textContent()).includes(label)) return l.boundingBox(); }; // 点名字（卡片中间可能是 ▸N / ⊞ 按钮）
   let b = await box('游戏AI'); await page.mouse.dblclick(b.x + b.width / 2, b.y + b.height / 2); await sleep(800);
   b = await box('决策'); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await sleep(300);
-  await page.keyboard.press('Enter'); await sleep(1800);
+  await page.keyboard.press('Shift+Enter'); await sleep(1800);
   ok(existsSync(join(ws, '__synapsis', '游戏AI', '新节点.md')), '画布 Enter → __synapsis/游戏AI/新节点.md 写入');
   ok((await saveTxt()).includes('已保存'), '显示已保存 ' + await saveTxt());
   // 拖动 → _layout.json
@@ -710,7 +713,7 @@ for (const kind of ['reactflow']) {
   // L = 连线到…：从 敌方 连到 观察属性
   await page.click('.react-flow__controls-fitview'); await sleep(500); // 跳过去会居中放大，先看全
   await page.click('.react-flow__node[data-id="敌方"] .lab'); await sleep(300);
-  await page.keyboard.press('l'); await sleep(300);
+  await page.keyboard.press('Alt+KeyF'); await sleep(300);
   ok((await page.$eval('.finder .bar b', e => e.textContent)).includes('敌方'), 'L → 「连线到…」框');
   await page.keyboard.type('观察属性'); await page.keyboard.press('Enter'); await sleep(1800);
   ok(/观察属性/.test(md('敌方.md')), '选目标 → 连上（写进 敌方.md） ' + md('敌方.md'));
@@ -766,7 +769,7 @@ for (const kind of ['reactflow']) {
   const lay = () => JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'));
   await page.mouse.click(...mid(await (await lab('组')).boundingBox())); await sleep(300);
   await page.mouse.click(...mid(await (await lab('组')).boundingBox()), { button: 'right' }); await sleep(300);
-  ok(!!(await page.$('.ctx .expchips button:has-text("子图")')), '右键菜单最上面有「展开：子图 / 子级 / 属性 / 正文」小按钮');
+  ok(!(await page.$('.ctx .expchips')), '右键菜单里不再有展开小按钮（挪到卡片标题右边了）');
   await page.keyboard.press('Escape'); await page.mouse.click(...mid(await (await lab('组')).boundingBox())); await sleep(300);
   if (!(await page.$('.card.sel'))) await page.mouse.click(...mid(await (await lab('组')).boundingBox()));
   await page.keyboard.press('f'); await sleep(1500);
@@ -1126,24 +1129,26 @@ for (const kind of ['reactflow']) {
   ok(!(await page.$('.react-flow__node-frame')) && layoutFile() === L0, '再点两次 → 回到不接管，框没了，坐标文件还是原样');
   // 右键卡片：最上面「展开」四个小按钮；新建 / 钻进去收进悬停二级
   await page.mouse.click(...(m => [m.x + m.width / 2, m.y + m.height / 2])(await (await page.$('.card .lab')).boundingBox()), { button: 'right' }); await sleep(300);
-  ok((await page.$$eval('.ctx .expchips button', e => e.map(x => x.textContent).join())) === '子图,子级,属性,正文' && await page.$eval('.ctx > .mi:nth-child(2)', e => e.classList.contains('expchips')), '节点右键：「展开」四个小按钮在最上面（标题下第一行）');
+  ok(!(await page.$('.ctx .expchips')) && !!(await page.$('.ctx .mi.sub')), '节点右键：展开按钮已挪走，第一个二级是「新建 / 钻进去」');
   ok(!(await page.$eval('.ctx .mi.sub .submenu', e => getComputedStyle(e).display !== 'none')), '「新建 / 钻进去」二级默认不显示');
   await page.hover('.ctx .mi.sub'); await sleep(250);
   const sub2 = await page.$$eval('.ctx .submenu .mi', e => e.map(x => x.textContent));
   ok(sub2.length === 3 && sub2.some(t => t.includes('新建子节点')) && sub2.some(t => t.includes('新建同级')) && sub2.some(t => t.includes('钻进去')), '鼠标移上去 → 弹出 新建子节点 / 新建同级 / 钻进去 ' + sub2);
   await page.mouse.move(600, 300); await sleep(150);
-  await page.click('.ctx .expchips button:has-text("子级")'); await sleep(500);
-  ok((await nKids()) === 1, '点「子级」小按钮 → 展开');
+  await page.keyboard.press('Escape'); await sleep(150); await page.click('.card .kids:not(.fr)'); await sleep(500);
+  ok((await nKids()) === 1, '点卡片标题上的 ▸ → 子级展开');
   await page.mouse.click(600, 720, { button: 'right' }); await sleep(300);
   ok(!!(await page.$('.ctx .mi.sub:has-text("展开本页")')) && (await page.$$('.ctx .submenu .mi')).length === 4, '空白处右键 →「展开本页 ▸」里有 子图 / 子级 / 属性 / 正文 四项');
   await page.keyboard.press('Escape'); await sleep(200);
   // 做不了的项灰着、不隐藏：丁 没有子级，只有正文
   const c丁 = await (async () => { for (const t of await page.$$('.card .lab')) if ((await t.textContent()) === '丁') return t; })();
   const b丁 = await c丁.boundingBox(); await page.mouse.click(b丁.x + b丁.width / 2, b丁.y + b丁.height / 2, { button: 'right' }); await sleep(300);
-  const chips = await page.$$eval('.ctx .expchips button', e => e.map(x => [x.textContent, x.classList.contains('off')]));
-  ok(chips.length === 4 && chips.find(x => x[0] === '子级')[1] && chips.find(x => x[0] === '子图')[1] && !chips.find(x => x[0] === '正文')[1], '节点右键：四个按钮都在，没有的灰着（丁：子图 / 子级 灰，正文可点） ' + JSON.stringify(chips));
-  await page.click('.ctx .expchips button.off'); await sleep(200);
-  ok(!!(await page.$('.ctx')), '点灰的项没反应（菜单不关）');
+  await page.keyboard.press('Escape'); await sleep(150);
+  const badges = await page.$$eval('.card', cs => cs.map(c => [c.querySelector('.lab')?.textContent, !!c.querySelector('.kids:not(.fr)'), !!c.querySelector('.kids.fr'), !!c.querySelector('.textbadge')]));
+  ok(!!badges.find(b => b[0] === '甲' && b[1] && b[2]) && !!badges.find(b => b[0] === '丁' && !b[1] && b[3]), '卡片标题右边：有子级的有 ▸ 和 ⊞，有正文的有 📄 ' + JSON.stringify(badges));
+  const b戊 = await page.$('.card:has(.lab:text-is("戊")) .propbadge'); ok(!!b戊, '有属性的卡（戊）标题上有 ☰ 属性按钮');
+  const p0 = await nProps(); await b戊.click(); await sleep(500);
+  ok((await nProps()) === p0 - 1, '点 ☰ → 属性收起'); await b戊.click(); await sleep(500); ok((await nProps()) === p0, '再点 ☰ → 属性展开');
   await page.keyboard.press('Escape'); await sleep(200);
   // 数字键 1-4：选中了卡 = 切这张卡自己的；没选中 = 本页「看」
   { await page.mouse.click(b丁.x + b丁.width / 2, b丁.y + b丁.height / 2); await sleep(300);
@@ -1157,6 +1162,19 @@ for (const kind of ['reactflow']) {
     ok((await nText()) !== n0, '没选中按 4 → 本页「看」正文');
     await page.keyboard.press('Digit4'); await sleep(300); await page.keyboard.press('Digit4'); await sleep(500);
     ok((await nText()) === n0, '看 三态轮一圈 → 回到不接管'); }
+  // WASD 跳到最近的卡；Alt+S 钻进去
+  { const sel1 = () => page.$eval('.card.sel .lab', e => e.textContent).catch(() => '');
+    await page.keyboard.press('Escape'); await sleep(200);
+    await page.keyboard.press('KeyW'); await sleep(300);
+    ok(!!(await sel1()), '没选中按 W → 选中离中心最近的一张 ' + await sel1());
+    if ((await sel1()) !== '丁') { await page.mouse.click(b丁.x + b丁.width / 2, b丁.y + b丁.height / 2); await sleep(300); }
+    await page.keyboard.press('KeyD'); await sleep(300);
+    ok((await sel1()) === '戊', '选中丁 按 D → 戊 ' + await sel1());
+    await page.keyboard.press('KeyA'); await sleep(200); await page.keyboard.press('KeyA'); await sleep(300);
+    ok((await sel1()) === '甲', '再按 A A → 甲 ' + await sel1());
+    await page.keyboard.press('Alt+KeyS'); await sleep(800);
+    ok(/甲/.test(await page.$eval('.crumbs', e => e.innerText)), 'Alt+S 钻进选中的卡 ' + await page.$eval('.crumbs', e => e.innerText));
+    await page.keyboard.press('Alt+KeyW'); await sleep(600); }
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });
@@ -1209,7 +1227,7 @@ for (const kind of ['reactflow']) {
   // 连线到… 也能选外部文件：自动引成节点再连线
   const c甲 = await (async () => { for (const t of await page.$$('.card .lab')) if ((await t.textContent()) === '甲') return t; })();
   const b甲 = await c甲.boundingBox(); await page.mouse.click(b甲.x + b甲.width / 2, b甲.y + b甲.height / 2); await sleep(300);
-  await page.keyboard.press('l'); await sleep(800);
+  await page.keyboard.press('Alt+KeyF'); await sleep(800);
   ok(!!(await page.$('.finder')) && !!(await page.$('.finder .ftabs')) && !(await page.textContent('.finder .bar')).includes('也能选'), 'L → 连线搜索框，有「节点 / 项目文件」页签，标题不啰嗦');
   await page.fill('.finder input', '数据'); await sleep(500);
   ok(!!(await page.$('.finder .ftabs')) && (await page.textContent('.finder .ftabs a.on')).includes('节点'), '有「节点 / 项目文件」两个页签，默认在节点页');

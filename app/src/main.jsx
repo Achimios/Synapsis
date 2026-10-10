@@ -278,6 +278,25 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
       if (e.target.closest?.('textarea, input, [contenteditable="true"]')) return;
       if (e.key === 'Escape') { setMulti([]); return; }
       if (e.ctrlKey && !e.altKey && !e.shiftKey && e.code === 'KeyA') { e.preventDefault(); e.stopPropagation(); setMulti(view.nodes.map(n => n.id)); return; } // Ctrl+A = 全选本页的卡（不再选中界面文字）
+      if (!e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && ['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code) && !e.repeat) { // W A S D = 选中跳到上 / 左 / 下 / 右最近的卡
+        const dir = { KeyW: [0, -1], KeyA: [-1, 0], KeyS: [0, 1], KeyD: [1, 0] }[e.code];
+        const els = [...document.querySelectorAll('.react-flow__node')].filter(el => el.offsetParent !== null && el.dataset.id);
+        const mid = el => { const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; };
+        const from = selected ? els.find(el => el.dataset.id === selected) : null;
+        e.preventDefault(); e.stopPropagation();
+        let pick = null;
+        if (from) {
+          const [fx, fy] = mid(from); let best = Infinity;
+          for (const el of els) { if (el === from) continue; const [x, y] = mid(el), dx = x - fx, dy = y - fy, along = dx * dir[0] + dy * dir[1], across = Math.abs(dx * dir[1] - dy * dir[0]);
+            if (along <= 0 || across > along) continue; // 只要在这个方向 ±45° 锥里的；锥里选直线最近的（近的斜 45° 胜过远的正前方）
+            const d = Math.hypot(dx, dy); if (d < best) { best = d; pick = el; } }
+        } else { // 还没选中：选离窗口中心最近的那张
+          const cx = innerWidth / 2, cy = innerHeight / 2; let best = Infinity;
+          for (const el of els) { const [x, y] = mid(el), d = Math.hypot(x - cx, y - cy); if (d < best) { best = d; pick = el; } }
+        }
+        if (pick) { setMulti([]); onSelect(pick.dataset.id); const r = pick.getBoundingClientRect(); if (r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight) setTimeout(() => cardActions.centerOn(pick.dataset.id, true), 0); }
+        return;
+      }
       // Shift+A / D = 沿入线 / 出线扩一层；Alt+Shift+A / D = 扩到头
       if (e.ctrlKey || !e.shiftKey || (e.code !== 'KeyA' && e.code !== 'KeyD')) return;
       const b = base(); if (!b.length) return;

@@ -166,7 +166,7 @@ export function Shell({ name, Canvas }) {
       nodes: v.nodes.map(n => ({
         ...n, color: colOf(n.id), pattern: PATTERNS[patterns.get(n.id)] || '', dropped: isDropped(graph, n.id), sub: wsData?.nodes[n.id]?.meta?.rate || '',
         evidence: wsData?.nodes[n.id]?.meta?.evidence || '',
-        props: prpE(n.id) ? cardProps(wsData?.nodes[n.id]?.meta) : [],
+        props: prpE(n.id) ? cardProps(wsData?.nodes[n.id]?.meta) : [], propN: cardProps(wsData?.nodes[n.id]?.meta).length,
         vec: getMeta(n.id)?.vec ? parseVec(getMeta(n.id).vec) : null, vecAxes: pAxes,
         spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
         picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id], body: wsData?.nodes[n.id]?.body || '', file: wsData?.nodes[n.id]?.meta?.file || null, textOpen: txtE(n.id),
@@ -527,7 +527,6 @@ export function Shell({ name, Canvas }) {
     openProjectFile: p => openFile(p), pickFile: () => setFilePick(true),
     expAll: () => Object.entries(EXP).map(([k, E]) => ({ k, name: E.name, any: expAnyOpen(k), none: !expIds(k).length })),
     expChange: k => expChange(k),
-    expItems: id => { const n = { id, children: graph.nodes.get(id)?.children || [] }; return Object.entries(EXP).map(([k, E]) => ({ k, name: E.name, open: E.own(id), ok: E.ok(n) })); }, // 四项都给；这个节点做不了的（没子级 / 没属性 / 没正文）灰着，不隐藏
     expToggle: (id, k) => { const flip = x => { const y = { ...x }; if (y[id]) delete y[id]; else y[id] = true; return y; }; ({ kids: setExpanded, props: setPropsShut, text: setTextOpen, frame: setFramed })[k](flip); },
     hasFile: id => !!nodeFile(id),
     openMd: id => { setSelected(id); setPropsOpen(true); setPropsTab('raw'); },
@@ -780,7 +779,8 @@ export function Shell({ name, Canvas }) {
       else if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); e.stopPropagation(); setHistOpen(o => !o); } // 👤 Shift+Tab = 操作历史栏
       else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); setLeftHidden(h => !h); } // 👤 Tab = 侧栏开关
       else if ((e.key === 'Insert' || (e.key === 'Enter' && e.ctrlKey)) && sel) { e.preventDefault(); e.stopPropagation(); addNode(true); }
-      else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); addNode(false); }
+      else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@') && !e.shiftKey) focusLabel(sel); else addNode(false); } // 👤 2026-10-10 选中了 Enter = 重命名；Shift+Enter / 没选中 = 新建同级
+      else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyS') { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) drill(sel); } // Alt+S = 钻进去（没选中不管）
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyW') { e.preventDefault(); e.stopPropagation(); up(); } // 👤 2026-10-10 Alt+W/A/D = 上一层 / 后退 / 前进（单手）
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyA') { e.preventDefault(); e.stopPropagation(); back(); }
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyD') { e.preventDefault(); e.stopPropagation(); fwd(); }
@@ -796,7 +796,7 @@ export function Shell({ name, Canvas }) {
       else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); e.stopPropagation(); remove(sel); }
       else if (e.key === 'F2' && sel) { e.preventDefault(); focusLabel(sel); }
       else if (e.key === '?' || e.key === 'F1') { e.preventDefault(); setHelpOpen(h => !h); }
-      else if ((e.key === 'l' || e.key === 'L') && !e.ctrlKey && !e.altKey && sel && !sel.startsWith('@')) { e.preventDefault(); setFinder({ mode: 'link', from: sel }); }
+      else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyF' && sel && !sel.startsWith('@')) { e.preventDefault(); setFinder({ mode: 'link', from: sel }); }
     };
     // 鼠标侧键：3 = 后退，4 = 前进（拦掉浏览器自己的历史跳转）
     const onMouse = e => {
@@ -983,6 +983,7 @@ export function Shell({ name, Canvas }) {
   }, []);
   cardActions.resizeLoose = (id, w) => move({ [id]: { w: Math.round(Math.max(60, Math.min(2400, w))) } });
   cardActions.foldPics = id => setPicFold(f => ({ ...f, [id]: !f[id] }));
+  cardActions.toggleProps = id => menuActions.expToggle(id, 'props');
   cardActions.toggleText = id => setTextOpen(f => { const g = { ...f }; if (g[id]) delete g[id]; else g[id] = true; return g; });
   cardActions.resizePics = (id, w) => {
     w = Math.round(Math.max(80, Math.min(1600, w)));
@@ -1241,13 +1242,15 @@ export function NodeCard({ node, img, dim, isSel }) {
           onClick={e => { e.stopPropagation(); cardActions.foldPics(node.id); }}>🖼{img.length > 1 ? img.length : ''}</span>}
         {node.body?.trim() && <span className={'textbadge' + (node.textOpen ? ' on' : '')} title={node.textOpen ? '收起正文' : '在卡片里展开正文（md）'} onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.toggleText(node.id); }}>📄</span>}
+        {node.propN > 0 && <span className={'propbadge' + (node.props?.length ? ' on' : '')} title={node.props?.length ? '收起卡片上的属性' : '展开属性（' + node.propN + ' 条）'} onPointerDown={stop} onMouseDown={stop}
+          onClick={e => { e.stopPropagation(); cardActions.toggleProps(node.id); }}>☰</span>}
         {node.children.length > 0 && <span className="kids" title="展开/收起子级（空格）；双击卡片钻进" onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.toggle(node.id); }}>{node.open ? '▾' : '▸'} {node.children.length}</span>}
         {node.children.length > 0 && <span className="kids fr" title="展开子图（F）：子节点画在框里，线直连" onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.toggleFrame(node.id); }}>⊞</span>}</div>
       {(node.sub || node.evidence) && <div className="sub">{node.evidence && <span className={'ev ev-' + (EVIDENCE[node.evidence] || 'x')} title="证据等级（evidence:）">{node.evidence}</span>}{node.sub}</div>}
       {node.props?.length > 0 && <div className="props">{node.props.slice(0, 4).map(([k, v]) => <div key={k} title={k + ': ' + v}><span className="pk">{k}</span>{String(v)}</div>)}
-        {node.props.length > 4 && <div className="hint">… 还有 {node.props.length - 4} 条（I 看全部）</div>}</div>}
+        {node.props.length > 4 && <div className="hint">… 还有 {node.props.length - 4} 条（Ctrl+Tab 看全部）</div>}</div>}
       {node.file && <div className="sub filesub" title={'引用项目里的文件：' + node.file + '（双击打开）'}>📎 {node.file}</div>}
       {node.textOpen && node.body?.trim() && <div className="cardtext nodrag nowheel" onDoubleClick={e => e.stopPropagation()}><MdLite text={node.body} /></div>}
       {node.spaceAxes && <div className="axchips" title="空间节点：双击进去看成员的坐标投影">⊹ {node.spaceAxes.join(' · ')}</div>}

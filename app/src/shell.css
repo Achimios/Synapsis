@@ -373,7 +373,7 @@ button.aibtn.off { opacity: .7; }
 .meta.edit input.mk { color: var(--dim); }
 
 /* 卡片里展开正文（📄） */
-.card .textbadge { cursor: pointer; font-size: 11px; opacity: .45; } .card .textbadge:hover, .card .textbadge.on { opacity: 1; }
+.card .textbadge, .card .propbadge { cursor: pointer; font-size: 11px; opacity: .45; } .card .textbadge:hover, .card .textbadge.on, .card .propbadge:hover, .card .propbadge.on { opacity: 1; }
 .card .cardtext { margin-top: 4px; max-height: 360px; overflow: auto; font-size: 12px; font-weight: 400; line-height: 1.55; border-top: 1px solid color-mix(in srgb, var(--c) 35%, var(--line)); padding: 4px 2px 2px; cursor: text; user-select: text; }
 .mdlite p { margin: 3px 0; } .mdlite h4, .mdlite h5, .mdlite h6 { margin: 8px 0 3px; color: color-mix(in srgb, var(--c, var(--accent)) 40%, var(--text)); }
 .mdlite h4 { font-size: 14px; } .mdlite h5 { font-size: 13px; } .mdlite h6 { font-size: 12px; }
