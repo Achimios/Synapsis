@@ -165,6 +165,8 @@ export function Shell({ name, Canvas }) {
     const keepPortal = new Set(v.portals.filter(p => p.id === selected || v.edges.some(e => (e.from === p.id && e.to === selected) || (e.to === p.id && e.from === selected))).map(p => p.id));
     const kind = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.kind || '']));
     const colOf = id => colors.get(id.startsWith('@portal:') ? id.slice(8) : id) || PALETTE_IDLE;
+    // 子级列表一行一个；Shift+2（kids = deep）= 全递进：子孙按层缩进一路列下去（👤 2026-10-11「递进就是全递进」，同 Shift+1）
+    const kidRows = (ids, d) => ids.flatMap(c => { const k = graph.nodes.get(c), deep = sm.kids === 'deep' && k.children.length > 0; return [{ id: c, label: k.label, status: k.status, n: deep ? 0 : k.children.length, d, renaming: canvasRename === c }, ...(deep ? kidRows(k.children, d + 1) : [])]; });
     const pAxes = space ? space.axes : null; // 在空间页里，成员卡片的小横条用这一页的轴名
     // 空间 → 空间的边：源空间写了 映射→目标 就带上矩阵（画成热力图）
     const matOf = e => {
@@ -188,7 +190,7 @@ export function Shell({ name, Canvas }) {
         framed: !space && frmE(n.id) && n.children.length > 0, seeDeep: sm.frame === 'deep', // 本页开着 Shift+1 递进预览（画布据此让 UI 框里的子图超出、不裁）
         tempFrame: !space && frmE(n.id) && !framed[n.id] && n.children.length > 0, // 只是「看」临时展开的子图：不挪别的卡，也不存坐标
         frame: v.parentOf.get(n.id) ?? null,
-        kids: n.children.map(c => { const k = graph.nodes.get(c); return { id: c, label: k.label, status: k.status, n: k.children.length, renaming: canvasRename === c }; }),
+        kids: kidRows(n.children, 0),
       })),
       portals: v.portals.filter(p => pm !== 'hide' || keepPortal.has(p.id)).map(p => ({ ...p, label: '↗ ' + (graph.nodes.get(p.target)?.label || p.target), color: colOf(p.id), dropped: isDropped(graph, p.target), faded: pm === 'fade' && !keepPortal.has(p.id) })), // 淡化时，和选中节点相连的也不淡（同隐藏）
       // 线 = 出发节点的颜色；kind 是「离散」→ 虚线（聚合的边要每条都离散才虚）
@@ -1354,7 +1356,7 @@ export function NodeCard({ node, img, dim, isSel }) {
       {node.spaceAxes && <div className="axchips" title="空间节点：双击进去看成员的坐标投影">⊹ {node.spaceAxes.join(' · ')}</div>}
       {node.vec && <VecBars vec={node.vec} axes={node.vecAxes} />}
       {node.open && node.kids && <ul className="kidlist">{node.kids.map(k => (
-        <li key={k.id} data-nid={k.id} title="双击跳进去（右键 = 这个子节点的菜单）" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
+        <li key={k.id} data-nid={k.id} style={k.d ? { paddingLeft: 2 + k.d * 12 } : undefined} title="双击跳进去（右键 = 这个子节点的菜单）" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
           <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span>{k.renaming ? <RenameInput id={k.id} label={k.label} /> : <span className={k.status === 'dropped' ? 'strike' : ''}>{k.label}</span>}{k.n > 0 && <span className="kn">▸{k.n}</span>}
         </li>))}</ul>}
       {showPics && <div className={'pics n' + Math.min(img.length, 3)}>{img.map((u, i) => <img key={u} src={u} className="nodrag" draggable title="双击放大；拖到空白 = 变散图，拖到别的卡 = 换给它" onDragStart={e => { const p = new URL(u, location.href).searchParams.get('p'); e.dataTransfer.setData(DRAG_PIC, JSON.stringify({ path: p, from: node.id })); e.dataTransfer.effectAllowed = 'move'; }} onDoubleClick={e => { e.stopPropagation(); cardActions.lightbox?.(img, i); }} />)}
@@ -1438,7 +1440,7 @@ export function UiCard({ node, dim, isSel }) {
         {node.children.length > 0 && <span className="kids" title="展开子级列表（空格）；双击钻进去" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggle(node.id); }}>{node.open ? '▾' : '▸'} {node.children.length}</span>}
         {node.children.length > 0 && <span className="kids fr" title={node.framed ? '收起子图：里面的东西不画在框里' : '展开子图：里面的东西画在框里（位置 = 钻进去那一页的坐标）'} onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggleFrame(node.id); }}>{node.framed ? '⊟' : '⊞'}</span>}</div>
       {node.open && node.kids && <ul className="kidlist" style={{ margin: '2px 6px' }}>{node.kids.map(k => (
-        <li key={k.id} data-nid={k.id} title="双击跳进去" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
+        <li key={k.id} data-nid={k.id} style={k.d ? { paddingLeft: 2 + k.d * 12 } : undefined} title="双击跳进去" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
           <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span>{k.renaming ? <RenameInput id={k.id} label={k.label} /> : <span>{k.label}</span>}{k.n > 0 && <span className="kn">▸{k.n}</span>}
         </li>))}</ul>}
       {node.framed && node.children.length > 0 && <span className="uiall nodrag" title="复位视角：移到里面所有节点的中点，缩放到全部显示" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.fitFrame?.(node.id); }}>⛶</span>}
