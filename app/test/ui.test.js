@@ -15,6 +15,10 @@ const SHOTS = process.argv[2] || null;
 let pass = 0, fail = 0;
 const ok = (c, m) => { c ? pass++ : (fail++, console.log('  ✗', m)); };
 const sleep = t => new Promise(r => setTimeout(r, t));
+// 画布上一块空白（点下去是 React Flow 的底板）；新建只剩右键菜单（👤 2026-10-11 去掉了 Shift+Enter / Insert / Ctrl+Enter）
+const blankAt = page => page.evaluate(() => { const r = document.querySelector('.react-flow__pane').getBoundingClientRect(); for (let y = r.top + 120; y < r.bottom - 80; y += 40) for (let x = r.right - 260; x > r.left + 40; x -= 40) { const el = document.elementFromPoint(x, y); if (el?.classList.contains('react-flow__pane')) return [x, y]; } return null; }); // 离画布右边留出一张卡宽，新卡别落到侧栏底下
+const newHere = async page => { const p = await blankAt(page); await page.mouse.click(p[0], p[1], { button: 'right' }); await sleep(300); await page.click('.ctx .mi:has-text("在这里新建节点")'); await sleep(500); };
+const newChild = async (page, x, y) => { await page.mouse.click(x, y, { button: 'right' }); await sleep(300); await page.click('.ctx .mi:has-text("新建子节点")'); await sleep(500); };
 // 临时工作区不碰真的 LM Studio：工作区级 .synapsis/ai.json 指到一个没人听的端口（AI 那段自检另起假服务）
 const noAi = (ws, url = 'http://127.0.0.1:9/v1', extra = {}) => { mkdirSync(join(ws, '.synapsis'), { recursive: true }); writeFileSync(join(ws, '.synapsis', 'ai.json'), JSON.stringify({ url, offline: true, ...extra })); };
 
@@ -93,10 +97,12 @@ for (const kind of ['reactflow']) {
   ok(es.filter(e => !inE.includes(e) && !outE.includes(e)).every(e => e.op < 0.2), '其余边淡化');
   const dims = await page.$$eval('.card.dim', cs => cs.map(c => c.innerText.split('\n')[0]));
   ok(dims.length === 1 && dims[0].includes('记忆与人格'), '无关节点淡化 ' + JSON.stringify(dims));
-  await page.keyboard.press(' '); await sleep(400);
-  ok((await page.$$eval('.kidlist li', ls => ls.length)) === 2, '选中后空格 → 原地展开（行动有 2 个子级）');
-  await page.keyboard.press(' '); await sleep(400);
-  ok((await page.$$('.kidlist li')).length === 0, '再按空格收起');
+  await page.keyboard.press(' '); await sleep(300);
+  ok((await page.$$('.kidlist li')).length === 0, '👤 2026-10-11 空格已去掉（和 2 重复）');
+  await page.keyboard.press('2'); await sleep(400);
+  ok((await page.$$eval('.kidlist li', ls => ls.length)) === 2, '选中后 2 → 原地展开（行动有 2 个子级）');
+  await page.keyboard.press('2'); await sleep(400);
+  ok((await page.$$('.kidlist li')).length === 0, '再按 2 收起');
   // 多选（👤 2026-10-08：Ctrl+单击 曾经死循环黑屏）
   const selLabs = async () => (await page.$$eval('.card.sel .lab', ls => ls.map(l => l.textContent))).sort().join(',');
   const nErr = errs.length;
@@ -145,8 +151,10 @@ for (const kind of ['reactflow']) {
   await page.keyboard.press('Enter'); await sleep(400);
   ok(!!(await page.$('.card input')) && !(await cards()).some(t => t.includes('新节点')), '选中了按 Enter = 重命名（不新建）');
   await page.keyboard.press('Escape'); await sleep(200);
-  await page.keyboard.press('Shift+Enter'); await sleep(400);
-  ok((await cards()).some(t => t.includes('新节点')), 'Shift+Enter 新建同级节点');
+  await page.keyboard.press('Shift+Enter'); await page.keyboard.press('Insert'); await page.keyboard.press('F2'); await sleep(300);
+  ok(!(await cards()).some(t => t.includes('新节点')) && !(await page.$('.card input')), '👤 2026-10-11 Shift+Enter / Insert / F2 已去掉：不新建、不改名');
+  await newHere(page);
+  ok((await cards()).some(t => t.includes('新节点')), '右键空白 → 在这里新建节点');
   // 建完光标在大纲里、名字选中 → 直接打字就是改名
   // 改名在大纲树里原地出输入框（👤：点大纲不该直接进编辑；改名 = 新建后 / F2 / 双击）
   const selTxt = () => page.evaluate(() => { const a = document.activeElement; return a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' ? a.value.slice(a.selectionStart, a.selectionEnd) : '(焦点不在改名框：' + a.tagName + ')'; });
@@ -155,19 +163,19 @@ for (const kind of ['reactflow']) {
   await page.keyboard.type('效用表'); await page.keyboard.press('Enter'); await sleep(400);
   ok((await cards()).some(t => t.includes('效用表')), '直接打字 + 回车改名 → 画布同步');
   ok((await page.$$eval('.card.sel', cs => cs.map(c => c.innerText))).some(t => t.includes('效用表')), '改名后仍选中它');
-  // Insert = 新建子级（Tab 改给左栏开关了）
-  await page.keyboard.press('Insert'); await sleep(400);
-  ok((await selTxt()) === '新节点' && await inCard(), 'Insert 新建子级 → 父卡片展开的子级列表里就地改名 ' + await selTxt());
+  // 右键卡片 → 新建子节点
+  await newChild(page, ...center(await cardBox('效用表')));
+  ok((await selTxt()) === '新节点' && await inCard(), '右键 → 新建子节点 → 父卡片展开的子级列表里就地改名 ' + await selTxt());
   await page.keyboard.press('Escape'); await sleep(200);
   ok(!(await page.$('.card input.rename')), 'Esc 取消改名');
-  // F2 = 在卡片上改名；Delete 在改名框里只删字，不删节点
-  // 效用表 仍是选中的（Insert 不改选中）
-  await page.keyboard.press('F2'); await sleep(300);
-  ok((await selTxt()) === '效用表' && await inCard(), 'F2 → 卡片上改名框');
+  // Enter = 在卡片上改名；Delete 在改名框里只删字，不删节点
+  if (!(await page.$$eval('.card.sel .lab', ls => ls.some(l => l.textContent === '效用表')))) { await page.mouse.click(...center(await cardBox('效用表'))); await sleep(300); } // 已选中再点 = 取消选中
+  await page.keyboard.press('Enter'); await sleep(300);
+  ok((await selTxt()) === '效用表' && await inCard(), 'Enter → 卡片上改名框');
   await page.keyboard.press('Delete'); await page.keyboard.type('效用表2'); await page.keyboard.press('Enter'); await sleep(400);
-  ok((await cards()).some(t => t.includes('效用表2')), 'F2 改名 → 画布同步，Delete 没删节点');
-  await page.keyboard.press('F2'); await sleep(300); await page.keyboard.type('效用表'); await page.keyboard.press('Enter'); await sleep(400);
-  ok(/效用表\n\s+\S*\s*新节点/.test(await outline()), 'Insert 建在选中节点下面 ' + JSON.stringify((await outline()).split('\n').filter(l => l.includes('新节点') || l.includes('效用表'))));
+  ok((await cards()).some(t => t.includes('效用表2')), 'Enter 改名 → 画布同步，Delete 没删节点');
+  await page.keyboard.press('Enter'); await sleep(300); await page.keyboard.type('效用表'); await page.keyboard.press('Enter'); await sleep(400);
+  ok(/效用表\n\s+\S*\s*新节点/.test(await outline()), '新建子节点建在它下面 ' + JSON.stringify((await outline()).split('\n').filter(l => l.includes('新节点') || l.includes('效用表'))));
   // Tab = 左栏开关；鼠标侧键 = 后退 / 前进
   await page.mouse.click(1000, 780); await sleep(200);
   await page.keyboard.press('Tab'); await sleep(200);
@@ -182,7 +190,7 @@ for (const kind of ['reactflow']) {
   ok((await crumbNow()).includes('游戏AI'), '鼠标前进键 → 回到游戏AI ' + await crumbNow());
   // 快捷键页：? 弹出，Esc 关
   await page.keyboard.press('?'); await sleep(300);
-  ok((await page.$$eval('.help kbd', ks => ks.map(k => k.innerText))).includes('Tab'), '? 弹出快捷键页');
+  ok((await page.$$eval('.help kbd', ks => ks.map(k => k.innerText))).some(k => k.includes('Tab')), '? 弹出快捷键页');
   await page.keyboard.press('Escape'); await sleep(200);
   ok((await page.$('.help')) === null, 'Esc 关掉快捷键页');
   // 大纲树：点一下 = 导航 + 属性面板显示内容，不进编辑
@@ -258,8 +266,8 @@ for (const kind of ['reactflow']) {
   const box = async label => { for (const l of await page.$$('.card .lab')) if ((await l.textContent()).includes(label)) return l.boundingBox(); }; // 点名字（卡片中间可能是 ▸N / ⊞ 按钮）
   let b = await box('游戏AI'); await page.mouse.dblclick(b.x + b.width / 2, b.y + b.height / 2); await sleep(800);
   b = await box('决策'); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await sleep(300);
-  await page.keyboard.press('Shift+Enter'); await sleep(1800);
-  ok(existsSync(join(ws, '__synapsis', '游戏AI', '新节点.md')), '画布 Enter → __synapsis/游戏AI/新节点.md 写入');
+  await newHere(page); await page.keyboard.press('Enter'); await sleep(1800);
+  ok(existsSync(join(ws, '__synapsis', '游戏AI', '新节点.md')), '画布右键新建 → __synapsis/游戏AI/新节点.md 写入');
   ok((await saveTxt()).includes('已保存'), '显示已保存 ' + await saveTxt());
   // 拖动 → _layout.json
   b = await box('兜底'); await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down();
@@ -772,9 +780,9 @@ for (const kind of ['reactflow']) {
   ok(!(await page.$('.ctx .expchips')), '右键菜单里不再有展开小按钮（挪到卡片标题右边了）');
   await page.keyboard.press('Escape'); await page.mouse.click(...mid(await (await lab('组')).boundingBox())); await sleep(300);
   if (!(await page.$('.card.sel'))) await page.mouse.click(...mid(await (await lab('组')).boundingBox()));
-  await page.keyboard.press('f'); await sleep(1500);
+  await page.keyboard.press('1'); await sleep(1500);
   const fr = await page.$('.react-flow__node-frame');
-  ok(!!fr, 'F → 分组变成框');
+  ok(!!fr, '1 → 分组变成框');
   const fb = await fr.boundingBox();
   const inF = async l => { const b = await (await lab(l)).boundingBox(); return b.x >= fb.x && b.x + b.width <= fb.x + fb.width && b.y >= fb.y && b.y + b.height <= fb.y + fb.height; };
   ok(await inF('甲') && await inF('乙'), '子节点画在框里');
@@ -793,8 +801,8 @@ for (const kind of ['reactflow']) {
   await sleep(800);
   ok(JSON.parse(readFileSync(join(ws, '.synapsis', 'view.json'), 'utf8')).framed?.['组'] === true, '展开状态记进 view.json');
   await page.keyboard.press('Escape'); await page.mouse.click(...mid(await (await lab('组')).boundingBox())); await sleep(300);
-  await page.keyboard.press('f'); await sleep(800);
-  ok(!(await page.$('.react-flow__node-frame')), '再按 F 收起框');
+  await page.keyboard.press('1'); await sleep(800);
+  ok(!(await page.$('.react-flow__node-frame')), '再按 1 收起框');
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });
@@ -1120,11 +1128,9 @@ for (const kind of ['reactflow']) {
   await sleep(900); const v1 = view();
   ok(!v1.textOpen?.['丁'] && v1.seeModes && Object.values(v1.seeModes).some(m => m.text === 'on'), '看 不改节点自己的状态，只按页记 seeModes ' + JSON.stringify(v1.seeModes));
   await page.click(see); await sleep(500);
-  ok((await nText()) === 0, '再点 → 临时收起');
+  ok((await nText()) === 0, '再点 → 不接管（预览展开两态：开 / 关），回到节点自己的（收起）');
   await chg('正文'); await sleep(500);
-  ok((await nText()) === 0, '临时收起时，真改成展开也看不见（被盖着）');
-  await page.click(see); await sleep(500);
-  ok((await nText()) === 1, '第三次点 → 不接管，露出节点自己的状态（展开）');
+  ok((await nText()) === 1, '不接管时，真改成展开就看得见');
   await chg('正文'); await sleep(400);
   // 看 · 子图：临时展开不挪别的卡、不写坐标（👤 2026-10-10「看」不能影响节点位置）
   const layoutFile = () => readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8');
@@ -1135,8 +1141,8 @@ for (const kind of ['reactflow']) {
   await sleep(900);
   ok(layoutFile() === L0, '看 · 子图 → _layout.json 一个字都没变（不存坐标）');
   ok((await posOf('丁')) === dp0, '看 · 子图 → 旁边的卡没被挪走 ' + dp0 + ' / ' + (await posOf('丁')));
-  await page.click(row('子图')); await page.click(row('子图')); await sleep(900);
-  ok(!(await page.$('.react-flow__node-frame')) && layoutFile() === L0, '再点两次 → 回到不接管，框没了，坐标文件还是原样');
+  await page.click(row('子图')); await sleep(900);
+  ok(!(await page.$('.react-flow__node-frame')) && layoutFile() === L0, '再点一次 → 回到不接管，框没了，坐标文件还是原样');
   // 右键卡片：最上面「展开」四个小按钮；新建 / 钻进去收进悬停二级
   await page.mouse.click(...(m => [m.x + m.width / 2, m.y + m.height / 2])(await (await page.$('.card .lab')).boundingBox()), { button: 'right' }); await sleep(300);
   ok(!(await page.$('.ctx .expchips')), '节点右键：展开按钮已挪走');
@@ -1266,9 +1272,9 @@ for (const kind of ['reactflow']) {
   await page.keyboard.press('Digit4'); await sleep(700);
   const w = await page.$eval('.card:has(.lab:text-is("子甲"))', e => e.offsetWidth);
   ok(w > 0 && w < 300, '正文都是短行 → 卡片不撑到 420 宽 ' + w);
-  // Shift+Enter 仍然新建同级
-  await page.keyboard.press('Shift+Enter'); await sleep(900);
-  ok((await page.$$('.card')).length === 3, '选中后 Shift+Enter 新建同级');
+  // 右键空白新建（Shift+Enter 已去掉）
+  await newHere(page); await page.keyboard.press('Enter'); await sleep(900);
+  ok((await page.$$('.card')).length === 3, '右键空白新建');
   await page.keyboard.press('Escape'); await sleep(300);
   // UI 框选中 Enter = 改名
   await page.mouse.click(900, 600, { button: 'right' }); await sleep(300);
@@ -1310,7 +1316,7 @@ for (const kind of ['reactflow']) {
   await page.keyboard.type('框'); await page.keyboard.press('Enter'); await sleep(1500);
   ok(!(await page.$('.card.uibox .kids')), '新建的 UI 框里没东西 → 没有展开按钮');
   ok(JSON.stringify(await page.$eval('.card.uibox', e => [e.offsetWidth, e.offsetHeight])) === '[220,140]', '刚建出来小小的（220×140）');
-  await page.keyboard.press('Control+Enter'); await sleep(1200);
+  { const tb = await (await page.$('.card.uibox .title')).boundingBox(); await newChild(page, tb.x + 20, tb.y + tb.height / 2); }
   await page.keyboard.type('内'); await page.keyboard.press('Enter'); await sleep(1500);
   ok(!(await page.$('.card.uibox .kidlist')) && !!(await page.$('.card.uibox .kids.fr')) && !(await page.$('.react-flow__node-frame')), '加子节点 → 默认展开的是子图（不是子级列表），框还是 UI 框的样子');
   const box = async () => (await (await page.$('.card.uibox')).boundingBox()), kid = async () => (await (await page.$('.card:has(.lab:text-is("内")):not(.uibox)'))?.boundingBox());
@@ -1620,7 +1626,7 @@ for (const kind of ['reactflow']) {
   ok(hk().groups.length === 2 && hk().groups[1].name === '翻NPC', '撤销删组 → 组回来');
   // 画布上改名 甲 → 甲改：钉子跟着走，窗口里不显示「找不到」
   await page.mouse.click(...mid(await (await lab('甲')).boundingBox())); await sleep(300);
-  await page.keyboard.press('F2'); await sleep(300);
+  await page.keyboard.press('Enter'); await sleep(300);
   await page.keyboard.press('Control+a'); await page.keyboard.type('甲改'); await page.keyboard.press('Enter'); await sleep(2500);
   ok(hk().groups[0].items.some(i => i.node === '甲改') && !hk().groups[0].items.some(i => i.node === '甲'), '改名 甲→甲改：pins.json 里钉子跟着改 ' + names());
   ok(!/找不到/.test(await page.$eval('.pinbox', e => e.innerText)) && (await page.$eval('.pinbox', e => e.innerText)).includes('甲改'), '窗口里也跟着，没有「找不到」');
@@ -1737,7 +1743,7 @@ for (const kind of ['reactflow']) {
   ok(!(await page.$('.pinbox .pinask')), '点「都不是」收起');
   // 6) 节点改名：md 文件跟着搬，行钉子按节点找到新路径
   // 甲 已经被上一步的跳转选中了（再点一下卡片反而会取消选中）
-  await page.keyboard.press('F2'); await sleep(300); await page.keyboard.press('Control+a'); await page.keyboard.type('甲改'); await page.keyboard.press('Enter'); await sleep(2500);
+  await page.keyboard.press('Enter'); await sleep(300); await page.keyboard.press('Control+a'); await page.keyboard.type('甲改'); await page.keyboard.press('Enter'); await sleep(2500);
   ok(items()[1].node === '甲改', '节点改名 甲→甲改：行钉子的 node 跟着改 ' + items()[1].node);
   await page.dblclick('.pinbox li:nth-child(2) .hlab'); await sleep(1300);
   ok((await page.$eval('pre.raw .ln.hl', e => e.textContent).catch(() => '')).startsWith('结尾一行'), '改名之后双击行钉子：还是找到那一行（按节点取新路径）');

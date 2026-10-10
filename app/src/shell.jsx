@@ -80,7 +80,7 @@ export function Shell({ name, Canvas }) {
   // 导航历史：像浏览器一样 Alt+← / Alt+→
   const hist = useRef({ back: [], fwd: [] });
   const taRef = useRef(null), findRef = useRef(null);
-  // >v<🔭视图投影-原地展开-不钻进去也能看子级：卡片里列出子节点（▸N 点一下 / 空格），双击子项跳进去并选中
+  // >v<🔭视图投影-原地展开-不钻进去也能看子级：卡片里列出子节点（▸N 点一下 / 2），双击子项跳进去并选中
   const [expanded, setExpanded] = useState(() => DEMO ? load('syn.exp', {}) : {});
   // >v<🎨画布-分组展开成框-分组变半透明底框，子节点画在框里、线直连（👤 2026-10-08「这个好！值得做！」）；框里的坐标 = 钻进分组那一页的坐标
   const [framed, setFramed] = useState(() => DEMO ? load('syn.frm', {}) : {});
@@ -496,7 +496,7 @@ export function Shell({ name, Canvas }) {
   };
   const [scaffold, setScaffold] = useState(null); // 项目文档对话框：检测结果
   const [leftTab, setLeftTab] = useState('outline'); // outline（树，导航用）| text（原始大纲文本）| files
-  // >v<🌳大纲模型-大纲树-点一下 = 画布跳到那一页并选中、右侧显示内容；双击/F2 = 改名；钻进用 ▸
+  // >v<🌳大纲模型-大纲树-点一下 = 画布跳到那一页并选中、右侧显示内容；双击 / Enter = 改名；钻进用 ▸
   const pick = id => {
     const n = graph.nodes.get(id); if (!n) return;
     setMultiIds([]);
@@ -562,7 +562,7 @@ export function Shell({ name, Canvas }) {
       if (p) move({ [r.id]: { x: Math.round(p.x), y: Math.round(p.y) } }, { silent: true });
     },
     toggle: id => toggle(id), drill: id => drill(id), remove, frame: id => toggleFrame(id), isFramed: id => !!framed[id],
-    // 右键「展开 ▸」二级菜单：这个节点能展开的几种，及各自现在是展开还是收起（点一下 = 翻转它自己的状态，和空格 / 点卡片 ▸N 一样不进历史）
+    // 右键「展开 ▸」二级菜单：这个节点能展开的几种，及各自现在是展开还是收起（点一下 = 翻转它自己的状态，和 2 / 点卡片 ▸N 一样不进历史）
     openProjectFile: p => openFile(p), pickFile: () => setFinder({ mode: 'import' }), gotoRef: id => { const t = String(wsData?.nodes[id]?.meta?.ref || ''); if (graph.nodes.has(t)) { go(graph.nodes.get(t).parent); setSelected(t); } },
     expAll: () => Object.entries(EXP).map(([k, E]) => ({ k, name: E.name, any: expAnyOpen(k), none: !expIds(k).length })),
     expChange: k => expChange(k),
@@ -840,11 +840,10 @@ export function Shell({ name, Canvas }) {
   // 看：不接管 → 展开 → 收起 → 不接管。只改本页的临时覆盖，不进历史
   const expSee = (k, deep) => setSeeModes(m => { const cur = m[realScope] || {}, want = deep ? 'deep' : 'on', nx = cur[k] === want ? undefined : want; const o = { ...cur }; if (nx) o[k] = nx; else delete o[k]; const r = { ...m }; if (Object.keys(o).length) r[realScope] = o; else delete r[realScope]; return r; });
 
-  // >v<🧭导航-快捷键-Enter 同级 / Insert·Ctrl+Enter 子级 / Tab 左栏开关 / Esc / Alt+W/A/D / 鼠标侧键 上一层后退前进
+  // >v<🧭导航-快捷键-Enter 改名 / Tab 左栏开关 / Esc / Alt+W/A/D / 鼠标侧键 上一层后退前进
   // 画布快捷键（焦点在输入框里时不触发）
   useEffect(() => {
     const onKey = e => {
-      if (e.ctrlKey && !e.altKey && (e.key === 'j' || e.key === 'J')) { e.preventDefault(); e.stopPropagation(); if (mode === 'ws') setAgentOpen(o => !o); return; } // AI 指令框旧键（输入框里也能用）
       if (e.ctrlKey && !e.altKey && !e.shiftKey && e.code === 'KeyH' && mode === 'ws') { e.preventDefault(); e.stopPropagation(); if (repl) setRepl(null); else { const m = cardActions.getMulti?.() || []; setRepl({ find: '', to: '', ids: m.length > 1 ? m : null, idx: 0, note: '' }); } return; } // 👤 2026-10-10 Ctrl+H = 替换节点名
       if (e.ctrlKey && !e.altKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); e.stopPropagation(); if (e.target === taRef.current || e.target === findRef.current) { findRef.current?.focus(); findRef.current?.select(); return; } setFinder({ mode: 'go' }); return; } // 在输入框里也能用；在「文本」页 = 文本查找
       const inText = e.target.closest && e.target.closest('textarea, input, [contenteditable="true"]');
@@ -858,13 +857,12 @@ export function Shell({ name, Canvas }) {
       if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); e.stopPropagation(); setPropsOpen(o => !o); } // 👤 2026-10-10 Shift+Tab = 右栏（属性）开关
       else if (e.code === 'Backquote' && e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); e.stopPropagation(); setHistOpen(o => !o); } // 👤 Shift+` = 操作历史栏（和 ` 钉子窗口统一）
       else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); setLeftHidden(h => !h); } // 👤 Tab = 侧栏开关
-      else if ((e.key === 'Insert' || (e.key === 'Enter' && e.ctrlKey)) && sel) { e.preventDefault(); e.stopPropagation(); addNode(true); }
-      else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); if (e.shiftKey) addNode(false); else if (sel && !sel.startsWith('@')) focusLabel(sel); } // 👤 2026-10-10 选中了 Enter = 重命名；Shift+Enter = 新建同级；没选中 Enter 什么都不做（常误触）
+      else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) focusLabel(sel); } // 👤 2026-10-10 选中了 Enter = 重命名；没选中什么都不做（常误触）。👤 2026-10-11 键盘新建（Shift+Enter / Insert / Ctrl+Enter）和 F2 都去掉：新建走鼠标（右键），改名只留 Enter
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyS') { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) drill(sel); } // Alt+S = 钻进去（没选中不管）
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyW') { e.preventDefault(); e.stopPropagation(); up(); } // 👤 2026-10-10 Alt+W/A/D = 上一层 / 后退 / 前进（单手）
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyA') { e.preventDefault(); e.stopPropagation(); back(); }
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyD') { e.preventDefault(); e.stopPropagation(); fwd(); }
-      else if (/^Digit[1-4]$/.test(e.code) && !e.ctrlKey && !e.altKey && !e.metaKey && mode === 'ws' && !e.repeat) { // 👤 2026-10-10 1 2 3 4 = 子图 / 子级 / 属性 / 正文：选中了就切这张卡自己的，没选中 = 本页预览展开（只本页）；Shift+数字 = 预览展开并递进到子孙
+      else if (/^Digit[1-4]$/.test(e.code) && !e.ctrlKey && !e.altKey && !e.metaKey && !e.repeat) { // 样例模式也能用（空格 / F 去掉后靠它）。👤 2026-10-10 1 2 3 4 = 子图 / 子级 / 属性 / 正文：选中了就切这张卡自己的，没选中 = 本页预览展开（只本页）；Shift+数字 = 预览展开并递进到子孙
         e.preventDefault(); e.stopPropagation();
         const k = ['frame', 'kids', 'props', 'text'][+e.code.slice(5) - 1];
         if (e.shiftKey) expSee(k, true);
@@ -872,10 +870,7 @@ export function Shell({ name, Canvas }) {
         else expSee(k);
       }
       else if (e.key === 'Escape') setSelected(null);
-      else if (e.key === ' ' && sel && !sel.startsWith('@')) { e.preventDefault(); e.stopPropagation(); toggle(sel); }
-      else if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.altKey && sel && graph.nodes.get(sel)?.children.length) { e.preventDefault(); toggleFrame(sel); }
-      else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); e.stopPropagation(); remove(sel); }
-      else if (e.key === 'F2' && sel) { e.preventDefault(); focusLabel(sel); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); e.stopPropagation(); remove(sel); } // 👤 2026-10-11 空格 / F 和 2 / 1 重复，去掉
       else if (e.key === '?' || e.key === 'F1') { e.preventDefault(); setHelpOpen(h => !h); }
     };
     // 鼠标侧键：3 = 后退，4 = 前进（拦掉浏览器自己的历史跳转）
@@ -1132,7 +1127,7 @@ export function Shell({ name, Canvas }) {
       <aside className={'outline' + (leftCols > 1 ? ' cols cols' + leftCols : '')} style={leftHidden ? { display: 'none' } : undefined}>
         <div className="bar tabs">
           {mode === 'ws' && <a className="gear" title="设置（init 生成哪些、以后的快捷键自定义…）" onClick={() => setSettingsOpen(true)}>⚙</a>}
-          <a className={leftTab === 'outline' ? 'on' : ''} onClick={() => setLeftTab('outline')} title="点一下 = 画布跳过去并显示内容；双击 / F2 = 改名">大纲</a>
+          <a className={leftTab === 'outline' ? 'on' : ''} onClick={() => setLeftTab('outline')} title="点一下 = 画布跳过去并显示内容；双击 / Enter = 改名">大纲</a>
           <a className={leftTab === 'text' ? 'on' : ''} onClick={() => setLeftTab('text')} title="原始大纲文本：成片打字、批量改结构">文本</a>
           <a className={leftTab === 'files' ? 'on' : ''} onClick={() => setLeftTab('files')} title="项目根目录的文件（只读预览；点 __synapsis 里的节点 md → 画布跳过去）">文件</a>
           <span className="hint" title={leftTab === 'text' ? '缩进 = 子级\n-> 名称 = 连线\n✅ ◐ ○ = 状态，❌ = 弃用' : ''}>{leftTab === 'text' ? '?' : leftTab === 'files' && mode !== 'ws' ? '样例模式没有项目文件' : ''}</span>
@@ -1343,7 +1338,7 @@ export function NodeCard({ node, img, dim, isSel }) {
           onClick={e => { e.stopPropagation(); cardActions.toggleText(node.id); }}>📄</span>}
         {node.propN > 0 && <span className={'propbadge' + (node.props?.length ? ' on' : '')} title={node.props?.length ? '收起卡片上的属性' : '展开属性（' + node.propN + ' 条）'} onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.toggleProps(node.id); }}>☰</span>}
-        {node.children.length > 0 && <span className="kids" title="展开/收起子级（空格）；双击卡片钻进" onPointerDown={stop} onMouseDown={stop}
+        {node.children.length > 0 && <span className="kids" title="展开/收起子级（2）；双击卡片钻进" onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.toggle(node.id); }}>{node.open ? '▾' : '▸'} {node.children.length}</span>}
         {node.children.length > 0 && <span className="kids fr" title="展开子图（F）：子节点画在框里，线直连" onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.toggleFrame(node.id); }}>⊞</span>}</div>
@@ -1437,7 +1432,7 @@ export function UiCard({ node, dim, isSel }) {
     <div className={'card uibox' + (compact ? ' compact' : '') + (dim ? ' dim' : '') + (isSel ? ' sel' : '')} style={{ ...(compact ? {} : { width: node.uiW, height: node.uiH }), ...(node.color ? { '--c': node.color } : {}) }}>
       <div className="title">{node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
         <span className="uidim" title="宽 × 高（右下角拖着改）">{Math.round(node.uiW)}×{Math.round(node.uiH)}</span>
-        {node.children.length > 0 && <span className="kids" title="展开子级列表（空格）；双击钻进去" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggle(node.id); }}>{node.open ? '▾' : '▸'} {node.children.length}</span>}
+        {node.children.length > 0 && <span className="kids" title="展开子级列表（2）；双击钻进去" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggle(node.id); }}>{node.open ? '▾' : '▸'} {node.children.length}</span>}
         {node.children.length > 0 && <span className="kids fr" title={node.framed ? '收起子图：里面的东西不画在框里' : '展开子图：里面的东西画在框里（位置 = 钻进去那一页的坐标）'} onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggleFrame(node.id); }}>{node.framed ? '⊟' : '⊞'}</span>}</div>
       {node.open && node.kids && <ul className="kidlist" style={{ margin: '2px 6px' }}>{node.kids.map(k => (
         <li key={k.id} data-nid={k.id} style={k.d ? { paddingLeft: 2 + k.d * 12 } : undefined} title="双击跳进去" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>

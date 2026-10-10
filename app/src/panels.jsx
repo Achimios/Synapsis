@@ -59,7 +59,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
     <div className="ctx" style={style}>
       <div className="mh">{node.label}</div>
       {item('属性…', () => actions.props(node.id), { key: 'Shift+Tab' })}
-      {item('重命名', () => actions.rename(node.id), { key: 'F2' })}
+      {item('重命名', () => actions.rename(node.id), { key: 'Enter' })}
       {node.file && item('📎 打开引用的文件', () => actions.openProjectFile(node.file))}
       {node.ref && item('↗ 跳到它指的节点', () => actions.gotoRef(node.id))}
       {node.ui && item('▭ 复制 UI 布局', () => actions.copyUiLayout(node.id))}
@@ -102,7 +102,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
           {h.cur && item('＋ 钉到新组', () => h.pin('new'), { quiet: true })}
         </>;
       })()}
-      {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'Ctrl+Enter' })}
+      {item('＋ 新建子节点', () => actions.addChild(node.id))}
 
       <div className="msep" />
       {actions.hasFile(node.id) && item('看 md 原文', () => actions.openMd(node.id))}
@@ -394,7 +394,7 @@ export function FilePanel({ file, onClose, hl, onSelMenu }) {
   );
 }
 
-// >v<🌳大纲模型-大纲树-左栏默认页：点一下 = 导航 + 看内容（不进编辑）；双击 / F2 = 原地改名；▸ 折叠；→ 钻进；↑↓←→ 键盘走
+// >v<🌳大纲模型-大纲树-左栏默认页：点一下 = 导航 + 看内容（不进编辑）；双击 / Enter = 原地改名；▸ 折叠；→ 钻进；↑↓←→ 键盘走
 // >v<🌳左栏-大纲树拖动-拖一行到另一行上 = 放进它里面；拖到树下面的空白 = 挪到根；拖到画布的卡片上也行（👤 2026-10-08 第 9 条）
 export const DRAG_NODE = 'application/x-synapsis-node';
 export function OutlineTree({ graph, rootId = '', selected, scope, renaming, status, onPick, onDrill, onRename, onCommit, onCancel, onMove, onReorder, colors, multiIds = [], onSelectSet, frozen = null, grouped = false }) {

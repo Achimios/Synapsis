@@ -18,8 +18,8 @@
 }
 /* >v<🎨外观-白色主题（👤 2026-10-08）：顶栏 ☀ / 🌙 切换，记在本机（localStorage syn.theme），不跟项目走 */
 :root[data-theme="light"] {
-  --bg: #fdfdfc; --panel: #ffffff; --panel2: #ffffff; --hover: #efefef;
-  --line: #dedede; --line2: #c6c6c6; --text: #222; --dim: #6b6b6b; --faint: #a9a9a9;
+  --bg: #f5f5f4; --panel: #fafaf9; --panel2: #ffffff; --hover: #eaeae8; /* 👤 2026-10-11 亮色：画布、侧栏灰一丢丢，卡片（panel2）保持白；卡片边框（line2）加深，框才立得住 */
+  --line: #d6d6d6; --line2: #a9a9a9; --text: #222; --dim: #6b6b6b; --faint: #a9a9a9;
   --accent: #2f7be0; --in: #2b6fe0; --out: #e07612; --ok: #2e9a44; --bad: #d9473a; --sel: #333;
   --selbg: #cfe2ff; --chip: #ececec; --chip2: #dcdcdc; --strong: #000; --scroll: #c9c9c9;
 }
@@ -341,7 +341,7 @@ button.aibtn.off { opacity: .7; }
 .reldock .llm.l3 { color: var(--ok); } .reldock .llm.l2 { color: var(--accent); }
 .reldock .why.short { color: var(--dim); background: none; padding: 0 6px; }
 
-/* AI 指令框（Ctrl+J） */
+/* AI 指令框（Shift+F） */
 .agentbox { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(680px, 94vw); max-height: 62vh; z-index: 900; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; box-shadow: 0 8px 28px rgba(0,0,0,.5); overflow: hidden; }
 .agentbox .bar { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); cursor: move; user-select: none; }
 .agentbox { resize: both; min-width: 360px; min-height: 160px; } /* 右下角拖大小（位置和大小记在本机，ai.jsx useBoxGeometry） */

@@ -35,10 +35,17 @@ export async function lmsEstimate(id, ctx) {
   return { key, ctx, gpu: gib(/GPU Memory:\s*([\d.]+)\s*GiB/i), total: gib(/Total Memory:\s*([\d.]+)\s*GiB/i), ok: !/not be loaded|exceed|insufficient/i.test(out), text: out.trim() };
 }
 
+// 👤 2026-10-11 模型加载了但 HTTP 服务没开（lms server status = not running）→ Synapsis 连不上（ECONNREFUSED）。没开就开（已开着 = 什么都不做）
+export async function lmsServerStart() {
+  const st = await run(['server', 'status'], 20000).catch(e => e.message);
+  if (/not running/i.test(st)) await run(['server', 'start'], 60000);
+}
+
 // 卸掉这个模型的所有实例，按新长度重新加载（identifier = 模型 key，之后按 key 调用就是它）
 export async function lmsReload(id, ctx) {
   const n = Number(ctx);
   if (!(n >= 2048 && n <= 1048576)) throw new Error('上下文长度要在 2048 ~ 1048576 之间');
+  await lmsServerStart();
   const loaded = await lmsLoaded(), key = modelKeyOf(id, loaded);
   for (const m of loaded.filter(m => m.key === key)) await run(['unload', m.id], 60000);
   await run(['load', key, '-c', String(n), '--identifier', key, '--ttl', '3600', '-y']); // 闲 1 小时自动卸载（同 LM Studio 自动加载的默认）：👤 要打游戏，别一直占显存
