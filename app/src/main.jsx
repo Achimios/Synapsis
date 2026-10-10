@@ -240,12 +240,12 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
       setFv(m => ({ ...m, [pan.id]: { z: pan.cur.z, tx: pan.cur.tx + dx, ty: pan.cur.ty + dy } }));
     };
     const up = () => { pan = null; };
-    window.addEventListener('pointerup', up, true); window.addEventListener('pointercancel', up, true); window.addEventListener('blur', up);
+    window.addEventListener('blur', up);
     const aux = e => { if (e.button === 1 && hit(e)) { e.preventDefault(); e.stopPropagation(); } };
     window.addEventListener('wheel', onWheel, { capture: true, passive: false });
-    window.addEventListener('mousedown', down, true); window.addEventListener('pointerdown', down, true);
+    window.addEventListener('mousedown', down, true); // 只听 mousedown：对 pointerdown 调 preventDefault 会让浏览器不再发 mousedown / mouseup，中键变成「按一下切换」，还会触发 Windows 的自动滚动
     window.addEventListener('mousemove', move, true); window.addEventListener('mouseup', up, true); window.addEventListener('auxclick', aux, true);
-    return () => { window.removeEventListener('wheel', onWheel, true); window.removeEventListener('mousedown', down, true); window.removeEventListener('pointerdown', down, true); window.removeEventListener('mousemove', move, true); window.removeEventListener('mouseup', up, true); window.removeEventListener('auxclick', aux, true); window.removeEventListener('pointerup', up, true); window.removeEventListener('pointercancel', up, true); window.removeEventListener('blur', up); };
+    return () => { window.removeEventListener('wheel', onWheel, true); window.removeEventListener('mousedown', down, true); window.removeEventListener('mousemove', move, true); window.removeEventListener('mouseup', up, true); window.removeEventListener('auxclick', aux, true); window.removeEventListener('blur', up); };
   }, []);
   // UI 框里的东西被平移 / 缩放到框外的部分裁掉（子节点是画布上的独立节点，不在框的 DOM 里，用 clip-path 按框的范围裁）
   const uiClip = n => {

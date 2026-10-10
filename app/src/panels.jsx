@@ -415,7 +415,9 @@ export function OutlineTree({ graph, rootId = '', selected, scope, renaming, sta
   const box = useRef(null);
   // 默认：前两层展开；当前页和选中节点的祖先一律展开（大纲里永远看得到「我在哪」）
   const focus = new Set();
-  for (const f of frozen ? [frozen.scope, frozen.selected] : [scope, selected]) for (let c = f; c && graph.nodes.has(c); c = graph.nodes.get(c).parent) focus.add(c);
+  // 临时展开只跟「现在的焦点」：选中了节点 = 它的祖先链；没选中 = 当前页的祖先链。Alt+W 退回上一级 → 深的临时展开自动收回；选了别的节点 → 之前那条也不管了（自己点开的 open[] 不受影响）
+  const f0 = frozen ? (frozen.selected && graph.nodes.has(frozen.selected) ? frozen.selected : frozen.scope) : selected && graph.nodes.has(selected) ? selected : scope;
+  for (let c = f0; c && graph.nodes.has(c); c = graph.nodes.get(c).parent) focus.add(c);
   const isOpen = (id, depth) => flt ? true : open[id] ?? (depth < 2 || focus.has(id));
   const rows = [];
   const walk = (id, depth, top = null) => { for (const c of graph.nodes.get(id).children) { if (flt && !flt.keep.has(c)) continue; const n = graph.nodes.get(c); rows.push({ n, depth, top: top ?? c }); if (n.children.length && isOpen(c, depth)) walk(c, depth + 1, top ?? c); } };

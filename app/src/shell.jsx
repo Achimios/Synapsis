@@ -70,7 +70,7 @@ export function Shell({ name, Canvas }) {
   const [viewports, setViewports] = useState(() => DEMO ? load('syn.vp.' + name, {}) : {});
   const [outlineGroup, setOutlineGroup] = useState(false); // 大纲分组视图（按连线分组，组内按流向排）
   const [agentPreset, setAgentPreset] = useState(null);
-  const [outlineHere, setOutlineHere] = useState(false); // 大纲只显示当前进入的节点里的子节点
+  const [outlineHere, setOutlineHere] = useState(0); // 大纲范围三态：0 完整 / 1 本节点和它上一层 / 2 只本节点里面（旧版存的 true = 2）
   const [multiIds, setMultiIds] = useState([]); // 多选（画布和大纲共用一组；≥2 个才算）
   const [outlineLock, setOutlineLock] = useState(null); // 🔒 大纲锁：{root, scope, selected}，锁住时列表不跟着导航换页 / 展开 / 滚动
   const [leftCols, setLeftCols] = useState(1); // 左栏内容（大纲树 / 文件树）排成 1 / 2 / 3 列；宽度自己拖
@@ -118,6 +118,8 @@ export function Shell({ name, Canvas }) {
 
   const graph = useMemo(() => parseOutline(text), [text]);
   const realScope = graph.nodes.has(scope) ? scope : ROOT;
+  const hereMode = outlineHere === true ? 2 : +outlineHere || 0; // 大纲范围：0 完整 / 1 上一层 + 本节点 / 2 本节点
+  const hereRoot = sc => hereMode === 2 ? sc : hereMode === 1 ? (graph.nodes.get(sc)?.parent ?? '') : '';
   useEffect(() => setMultiIds(m => { const k = m.filter(id => !id.startsWith('@')); return k.length === m.length ? m : k.length > 1 ? k : []; }), [realScope]); // 换页：传送门 / 散图的选择不跟过去（真节点的可以，大纲锁着时要从别的页拖过来）
   // >v<📐空间-界面-当前页是空间节点（有 axes:）→ 成员按 vec 投影到两根方向上（轴或成员方向 = 换基），拖动 = 改坐标
   const [spaceAxes, setSpaceAxes] = useState({}); // scope -> [x方向, y方向]（'#0' = 第 0 根轴，或成员 id）
@@ -218,7 +220,7 @@ export function Shell({ name, Canvas }) {
       // 撤销记录优先从服务进程的暂存取（关 vault 再从托盘打开也还在，退出托盘才没）；取不到再用 sessionStorage（刷新页面）
       const sv = stash?.[HIST_KEY] || (() => { try { return JSON.parse(sessionStorage.getItem(HIST_KEY)); } catch { return null; } })();
       if (sv?.committed?.text === d.outline) { hist2.current.undo = sv.undo || []; hist2.current.redo = sv.redo || []; }
-      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); setPropsShut(v.propsShut || {}); setLeftCols(+v.leftCols || 1); setOutlineHere(!!v.outlineHere); setOutlineGroup(!!v.outlineGroup); setSeeModes(v.seeModes || {}); setSeeLines(!!v.seeLines); if (v.histOpen) setHistOpen(true); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
+      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); setPropsShut(v.propsShut || {}); setLeftCols(+v.leftCols || 1); setOutlineHere(v.outlineHere === true ? 2 : +v.outlineHere || 0); setOutlineGroup(!!v.outlineGroup); setSeeModes(v.seeModes || {}); setSeeLines(!!v.seeLines); if (v.histOpen) setHistOpen(true); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
       setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
       // .junk/ = 删除的临时去处，正常关窗口会清空；还有东西 = 上次没正常关闭（或 CLI / AI 删过东西）→ 问要不要清
       if (d.graveyard) setTimeout(() => {
@@ -1109,13 +1111,13 @@ export function Shell({ name, Canvas }) {
           {leftTab === 'outline' && <a className={'groupbtn' + (outlineGroup ? ' on' : '')} onClick={() => setOutlineGroup(v => !v)} title={outlineGroup ? '分组视图：按连线连在一起的分组，组内按流向排（上游在前）。点一下回到正常次序' : '按连线分组：连在一起的一组，组内按流向排，没有连线的放最后一组'}>⛓</a>}
           {leftTab === 'outline' && mode === 'ws' && <a className="sortbtn" onClick={() => { setAgentPreset({ text: '把「' + (realScope === ROOT ? '根' : graph.nodes.get(realScope)?.label) + '」这一层的节点在大纲里按合理的先后顺序排好（只调次序，不改层级、不改连线）', n: Date.now() }); setAgentOpen(true); }} title="让 AI 把这一层按合理的先后排序：打开 AI 指令框并写好一句话，你改改再 Enter；执行后 Ctrl+Z 能撤">⇅</a>}
           {leftTab === 'outline' && <a className={'lockbtn' + (outlineLock ? ' on' : '')} onClick={() => setOutlineLock(l => l ? null : { root: realScope, scope: realScope, selected })} title={outlineLock ? '大纲已锁住：导航到别的页，列表不动，可以拖里面的节点过来。点一下解锁' : '锁住大纲：之后导航到别的页，列表还停在这里，可以拖里面的节点到别的页'}>{outlineLock ? '🔒' : '🔓'}</a>}
-          {leftTab === 'outline' && <a className={'herebtn' + (outlineHere ? ' on' : '')} onClick={() => setOutlineHere(v => !v)} title={outlineHere ? '现在只显示当前进入的节点里的子节点；点一下显示完整大纲' : '现在显示完整大纲；点一下只显示当前进入的节点里的子节点'}>◎</a>}
+          {leftTab === 'outline' && <a className={'herebtn' + (hereMode ? ' on' : '')} onClick={() => setOutlineHere((hereMode + 1) % 3)} title={['现在显示完整大纲；点一下 → 只显示本节点和它的上一层', '现在显示本节点和它的上一层（同级的也在）；点一下 → 只显示本节点里面', '现在只显示当前进入的节点里的子节点；点一下 → 回到完整大纲'][hereMode]}>{['◎', '◎²', '◎¹'][hereMode]}</a>}
           {leftTab !== 'text' && <a className={'colsbtn' + (leftCols > 1 ? ' on' : '')} onClick={() => setLeftCols(v => v % 3 + 1)} title={`内容排成 ${leftCols} 列（点一下切到 ${leftCols % 3 + 1} 列；宽度自己拖）`}>▥{leftCols > 1 ? leftCols : ''}</a>}
         </div>
         <TextFind active={leftTab === 'text'} taRef={taRef} text={text} inputRef={findRef}>
           <textarea ref={taRef} value={text} spellCheck={false} onChange={e => setText(e.target.value)} onKeyDown={onTaKey} />
         </TextFind>
-        {leftTab === 'outline' && <OutlineTree graph={graph} grouped={outlineGroup} rootId={outlineLock ? (outlineHere ? outlineLock.root : '') : outlineHere ? realScope : ''} frozen={outlineLock} multiIds={multiIds} onSelectSet={(ids, focus) => { const u = [...new Set(ids)].sort(); setMultiIds(u.length > 1 ? u : []); setSelected(focus ?? u.at(-1) ?? null); }} selected={selected} scope={realScope} renaming={renaming} status={STATUS_ICON} colors={colors} onMove={mode === 'ws' ? () => {} : null} onReorder={(ids, target, where) => { const r = withReordered(graph, ids, target, where); if (r.error) setSaveState('⚠ ' + r.error); else setText(r.text); }}
+        {leftTab === 'outline' && <OutlineTree graph={graph} grouped={outlineGroup} rootId={hereRoot(outlineLock ? outlineLock.root : realScope)} frozen={outlineLock} multiIds={multiIds} onSelectSet={(ids, focus) => { const u = [...new Set(ids)].sort(); setMultiIds(u.length > 1 ? u : []); setSelected(focus ?? u.at(-1) ?? null); }} selected={selected} scope={realScope} renaming={renaming} status={STATUS_ICON} colors={colors} onMove={mode === 'ws' ? () => {} : null} onReorder={(ids, target, where) => { const r = withReordered(graph, ids, target, where); if (r.error) setSaveState('⚠ ' + r.error); else setText(r.text); }}
           onPick={pick} onDrill={id => { go(id); setSelected(null); }} onRename={id => setRenaming(id)} onCommit={commitRename} onCancel={() => setRenaming(null)} />}
         {leftTab === 'files' && mode === 'ws' && <FileTree tree={tree} onOpen={onTreeOpen} current={fileView?.path} api={api} />}
         {leftTab !== 'files' && graph.errors.length > 0 && <div className="errs">{graph.errors.map((er, i) => <div key={i}>第 {er.line} 行：{er.msg}</div>)}</div>}
