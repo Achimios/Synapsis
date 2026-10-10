@@ -1390,6 +1390,7 @@ export function PicCard({ pic, isSel }) {
 // 展开成框的分组：半透明底框 + 标题栏（⊟ 收起；双击标题 = 钻进去）。大小由 main.jsx 按子节点算好传进来
 // >v<🖼️UI节点-卡片-线框：宽高 = meta w / h（右下角拖着改，存进节点 frontmatter）；里面（双击标题钻进去）是正常画布，位置用里面那一页自己的坐标
 export function UiCard({ node, dim, isSel }) {
+  const compact = !node.framed && node.children.length > 0; // 有子节点又收起子图 = 缩成一条标题（不然收起没意义）；没子节点的空框保持线框大小
   const startResize = e => {
     e.stopPropagation(); e.preventDefault();
     const box = e.currentTarget.closest('.uibox');
@@ -1400,7 +1401,7 @@ export function UiCard({ node, dim, isSel }) {
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
   };
   return (
-    <div className={'card uibox' + (dim ? ' dim' : '') + (isSel ? ' sel' : '')} style={{ width: node.uiW, height: node.uiH, ...(node.color ? { '--c': node.color } : {}) }}>
+    <div className={'card uibox' + (compact ? ' compact' : '') + (dim ? ' dim' : '') + (isSel ? ' sel' : '')} style={{ ...(compact ? {} : { width: node.uiW, height: node.uiH }), ...(node.color ? { '--c': node.color } : {}) }}>
       <div className="title">{node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
         <span className="uidim" title="宽 × 高（右下角拖着改）">{Math.round(node.uiW)}×{Math.round(node.uiH)}</span>
         {node.children.length > 0 && <span className="kids" title="展开子级列表（空格）；双击钻进去" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggle(node.id); }}>{node.open ? '▾' : '▸'} {node.children.length}</span>}
@@ -1409,8 +1410,8 @@ export function UiCard({ node, dim, isSel }) {
         <li key={k.id} data-nid={k.id} title="双击跳进去" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
           <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span>{k.renaming ? <RenameInput id={k.id} label={k.label} /> : <span>{k.label}</span>}{k.n > 0 && <span className="kn">▸{k.n}</span>}
         </li>))}</ul>}
-      {node.framed && node.children.length > 0 && <span className="uiall nodrag" title="复位视角：移到里面所有节点的中点，缩放到全部显示" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.fitFrame?.(node.id); }}>all</span>}
-      <span className="uigrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} onClick={stop} />
+      {node.framed && node.children.length > 0 && <span className="uiall nodrag" title="复位视角：移到里面所有节点的中点，缩放到全部显示" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.fitFrame?.(node.id); }}>⛶</span>}
+      {!compact && <span className="uigrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} onClick={stop} />}
     </div>
   );
 }
@@ -1420,7 +1421,7 @@ export function FrameCard({ node, dim, isSel }) {
       <div className="fhead" onDoubleClick={e => { e.stopPropagation(); cardActions.drill(node.id); }} title="双击钻进去">
         {node.status && <span className="st">{STATUS_ICON[node.status]}</span>}
         {node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
-        <span className="frall" title="缩放回 100%" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.fitFrame?.(node.id); }}>all</span>
+        <span className="frall" title="缩放回 100%" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.fitFrame?.(node.id); }}>⛶</span>
         <span className="kids" title="收起子图（F）" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggleFrame(node.id); }}>⊟</span>
       </div>
     </div>

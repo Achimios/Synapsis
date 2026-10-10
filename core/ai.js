@@ -8,7 +8,7 @@ import { join, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { loadWorkspace, listTree, DIR } from './workspace.js';
 import { PALETTE, WORDS_FILE, DEFAULT_WORDS, parseColorWords, wordColor } from './colors.js';
-import { PATTERN_HINT, DEFAULT_PATTERN_WORDS, parsePatternWords, wordPattern } from './patterns.js';
+import { PATTERNS, PATTERN_HINT, PATTERN_FILE, DEFAULT_PATTERN_WORDS, parsePatternWords, wordPattern } from './patterns.js';
 import { isDropped } from './outline.js';
 
 // agentSrc = AI 指令框 / 问答 / 生成词表 / 「?」关系说明 用本地还是在线；bulkSrc = 高频后台（潜在关联重排、语义配色归类），默认本地（👤「高频调用的默认不用在线」）
@@ -341,6 +341,31 @@ export async function suggestWords(root, cfg) {
   const text = head + '\n\n' + lines.join('\n') + '\n';
   const { rules, bad } = parseColorWords(text);
   return { text, rules: rules.length, bad, raw };
+}
+// >v<🤖AI辅助-生成图案词表-👤 2026-10-10「生成词表没生成图案」：和配色词表一起起草（按「性质」把节点名里的词分到 网格 / 点阵 / 斜纹 / 横纹 / 波纹），只返回草稿，点了才写
+export async function suggestPatternWords(root, cfg) {
+  const ws = loadWorkspace(root), g = ws.graph;
+  const labels = [...g.nodes.keys()].filter(x => x && !isDropped(g, x)).map(x => g.nodes.get(x).label).slice(0, 300);
+  const sys = `你在帮人给一个项目的思维导图标注「性质」底纹（不是主题，是这个东西是什么性质）。图案只有这些：${Object.keys(PATTERNS).map(k => `${k}（${PATTERN_HINT[k]}）`).join('、')}。
+按节点名把节点名里的「关键词」分到这些图案：每个图案列 3~10 个短词（2~4 个字，节点名里会出现的那种词，不要整句节点名）；某个图案没有合适的词可以不写这一行。
+只输出词表行，每行格式严格是：- 图案: 词, 词, 词
+不要输出任何别的文字。`;
+  const cur = (ws.patternWords ?? DEFAULT_PATTERN_WORDS).split(/\r?\n/).filter(l => /^\s*[-*]/.test(l)).join('\n');
+  const raw = await chat(cfg, sys, `现有词表（可以参考、改进）：\n${cur}\n\n节点名：\n${labels.join('、')}`, 800, { kind: '生成图案词表', task: 'words' });
+  const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => /^[-*]\s*[^:：]+[:：]/.test(l));
+  const head = DEFAULT_PATTERN_WORDS.split('\n- ')[0].trimEnd();
+  const text = head + '\n\n' + lines.join('\n') + '\n';
+  const { rules, bad } = parsePatternWords(text);
+  return { text, rules: rules.length, bad, raw };
+}
+export function applyPatternWords(root, text) {
+  const f = join(root, DIR, PATTERN_FILE);
+  if (existsSync(f)) {
+    const g = join(root, DIR, '_过期的', `_图案_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.md`);
+    mkdirSync(dirname(g), { recursive: true }); copyFileSync(f, g);
+  }
+  writeFileSync(f, text);
+  return f;
 }
 // 写入新词表：旧的先备份进 __synapsis/_过期的/（不直接覆盖人改过的文件）
 export function applyWords(root, text) {

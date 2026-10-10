@@ -223,20 +223,22 @@ export function RelatedDock({ api, id, label, onJump, onOpenFile, onLink }) {
 // >v<🤖AI辅助-生成词表-按这个工作区的节点让对话模型起草 _配色.md（看过、可手改，再写入；旧的进 _过期的/）。
 //   👤 2026-10-08「这种操作不该丢 AI 配置页面…丢指令页面」→ 指令框的一页
 function WordsTab({ api, onWordsApplied }) {
-  const [draft, setDraft] = useState(null), [busy, setBusy] = useState('');
+  const [draft, setDraft] = useState(null), [pdraft, setPDraft] = useState(null), [busy, setBusy] = useState('');
   const gen = () => {
-    setBusy('生成中…');
-    api('/ai/words', { method: 'POST' }).then(d => { setDraft(d.text); setBusy(d.bad.length ? `有 ${d.bad.length} 行认不出，写入前可以手改` : `${d.rules} 行，看过可以手改再写入`); }).catch(e => setBusy('❌ ' + e.message));
+    setBusy('生成中…（颜色 + 图案两份）');
+    api('/ai/words', { method: 'POST' }).then(d => { setDraft(d.text); setPDraft(d.pattern?.text ?? null); const bad = d.bad.length + (d.pattern?.bad.length || 0); setBusy(bad ? `有 ${bad} 行认不出，写入前可以手改` : `颜色 ${d.rules} 行 + 图案 ${d.pattern?.rules ?? 0} 行，看过可以手改再写入`); }).catch(e => setBusy('❌ ' + e.message));
   };
-  const apply = () => api('/ai/words/apply', { method: 'POST', body: JSON.stringify({ text: draft }) })
-    .then(d => { onWordsApplied?.(d); setDraft(null); setBusy('已写入 ' + d.file + '（旧的备份在 __synapsis/_过期的/）'); }).catch(e => setBusy('❌ ' + e.message));
+  const apply = () => api('/ai/words/apply', { method: 'POST', body: JSON.stringify({ text: draft, patternText: pdraft }) })
+    .then(d => { onWordsApplied?.(d); setDraft(null); setPDraft(null); setBusy('已写入 ' + d.file + '（旧的备份在 __synapsis/_过期的/）'); }).catch(e => setBusy('❌ ' + e.message));
   return (
     <div className="wordstab">
-      <div className="hint">配色词表 = __synapsis/_配色.md：节点名里有某行的词，就用那行的颜色。这里让 AI 按这个工作区现有的节点起草一份。</div>
-      <div className="row"><button onClick={gen}>✨ 按这个工作区的节点生成词表…</button><span className="hint">{busy}</span></div>
+      <div className="hint">配色词表 = __synapsis/_配色.md（名字里有某行的词，就用那行的颜色）；图案词表 = _图案.md（词 → 网格 / 点阵 / 斜纹 / 横纹 / 波纹）。这里让 AI 按这个工作区现有的节点一起起草两份。</div>
+      <div className="row"><button onClick={gen}>✨ 按这个工作区的节点生成词表（颜色 + 图案）…</button><span className="hint">{busy}</span></div>
       {draft != null && <>
-        <textarea className="mono" value={draft} onChange={e => setDraft(e.target.value)} rows={14} />
-        <div className="row"><button onClick={apply}>写入 _配色.md</button><button onClick={() => setDraft(null)}>不要</button></div>
+        <div className="hint">🎨 颜色词表 → _配色.md</div>
+        <textarea className="mono" value={draft} onChange={e => setDraft(e.target.value)} rows={10} />
+        {pdraft != null && <><div className="hint">▦ 图案词表 → _图案.md</div><textarea className="mono" value={pdraft} onChange={e => setPDraft(e.target.value)} rows={8} /></>}
+        <div className="row"><button onClick={apply}>写入{pdraft != null ? '（_配色.md + _图案.md）' : ' _配色.md'}</button><button onClick={() => { setDraft(null); setPDraft(null); }}>不要</button></div>
       </>}
     </div>
   );

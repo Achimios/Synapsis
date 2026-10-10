@@ -8,7 +8,7 @@ import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, en
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 
 import { workspaceRoot, manualText } from '../core/cli.js';
-import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, readAiLog, readUsage } from '../core/ai.js';
+import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, suggestPatternWords, applyPatternWords, readAiLog, readUsage } from '../core/ai.js';
 import { lmsEstimate, lmsReload } from '../core/lmstudio.js';
 import { runAgent, applyPlan, loadChat, clearChat, estimateContext, isLoose } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
@@ -154,8 +154,8 @@ function workspaceApi() {
               if (url.pathname === '/ai/explain' && req.method === 'POST') { const b = await body(req); return send(200, { text: await explainRelation(root, b.id, b.other, cfg) }); }
               if (url.pathname === '/ai/patterns') return send(200, { patterns: cfg.semColors ? await semPatterns(root, cfg) : {} });
               if (url.pathname === '/ai/colors') return send(200, { colors: cfg.semColors ? await semColors(root, cfg) : {} });
-              if (url.pathname === '/ai/words' && req.method === 'POST') return send(200, await suggestWords(root, cfg));
-              if (url.pathname === '/ai/words/apply' && req.method === 'POST') { const f = applyWords(root, (await body(req)).text); return send(200, { file: relative(root, f).split('\\').join('/'), ...payload(root) }); }
+              if (url.pathname === '/ai/words' && req.method === 'POST') { const [c, p] = await Promise.all([suggestWords(root, cfg), suggestPatternWords(root, cfg)]); return send(200, { ...c, pattern: p }); } // 颜色词表 + 图案词表一起起草
+              if (url.pathname === '/ai/words/apply' && req.method === 'POST') { const b = await body(req), fs = []; if (typeof b.text === 'string') fs.push(applyWords(root, b.text)); if (typeof b.patternText === 'string') fs.push(applyPatternWords(root, b.patternText)); return send(200, { file: fs.map(f => relative(root, f).split('\\').join('/')).join('、'), ...payload(root) }); }
             } catch (e) { return send(503, { error: e.cause?.code === 'ECONNREFUSED' ? 'LM Studio 没开本机服务（' + cfg.url + '）' : e.message }); }
           }
           if (url.pathname === '/tree' && req.method === 'GET') return send(200, listTree(root));

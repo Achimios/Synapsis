@@ -255,7 +255,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   };
   const build = () => [
     ...(plane ? [{ id: '@axes', type: 'axes', position: { x: -plane.S * 1.25, y: -plane.S * 1.25 }, data: plane, draggable: false, selectable: false, focusable: false, zIndex: -1, style: { pointerEvents: 'none' } }] : []),
-    ...view.nodes.map(n => ({ id: n.id, type: n.framed && !n.ui ? 'frame' : 's', position: posOf(n), ...uiClip(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(n.framed && !n.ui ? { style: { width: FMIN.w, height: FMIN.h } } : {}), ...(n.ui ? { style: { width: n.uiW, height: n.uiH } } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id), zoom: n.frame != null ? fx[n.frame]?.z || 1 : 1 }, selected: isSel(n.id) })),
+    ...view.nodes.map(n => ({ id: n.id, type: n.framed && !n.ui ? 'frame' : 's', position: posOf(n), ...uiClip(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(n.framed && !n.ui ? { style: { width: FMIN.w, height: FMIN.h } } : {}), ...(n.ui && (n.framed || !n.children.length) ? { style: { width: n.uiW, height: n.uiH } } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id), zoom: n.frame != null ? fx[n.frame]?.z || 1 : 1 }, selected: isSel(n.id) })),
     ...view.portals.map(p => ({ id: p.id, type: 's', position: layout[p.id], data: { portal: p, dim: nodeDim(p.id, view, selected) }, selected: isSel(p.id) })),
     ...pics.map(p => ({ id: p.id, type: 'pic', position: layout[p.id] || { x: 0, y: 0 }, data: { pic: p, isSel: isSel(p.id) }, selected: isSel(p.id) })),
   ];
