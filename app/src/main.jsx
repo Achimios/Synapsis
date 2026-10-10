@@ -320,7 +320,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
       className={alt ? 'altdown' : ''}
       onNodeDoubleClick={(ev, n) => { // 只有双击标题行（节点名一带）才钻进去；标题上的小图标（▸ ⊞ 📄 ☰ 🖼）不算
         const t = ev.target; if (t.closest?.('.kids, .textbadge, .propbadge, .picbadge')) return;
-        const root = t.closest?.('.react-flow__node'); if (root?.querySelector('.title') && !t.closest('.title')) return;
+        const root = t.closest?.('.react-flow__node'); if (root?.querySelector('.title') && !t.closest('.title') && !t.closest('.uibox')) return; // UI 框是大框，框里任何地方双击都能进
         onDrill(n.id); }}
       onNodeDragStart={(_, n, dragged) => { dragStart.current = { pos: Object.fromEntries((dragged || [n]).map(d => [d.id, { ...d.position }])) }; }}
       onNodeDrag={(e, n, dragged) => setDropAt(e, (dragged || [n]).map(d => d.id))}

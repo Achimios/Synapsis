@@ -1,7 +1,7 @@
 // >v<✅自检-AI指令-说明书 ↔ 校验器一一对应、动作校验、排版坐标、解析模型输出、执行（临时工作区）、问模型（假服务：重试 / 短记忆 / 日志）
 // node core/test/agent.test.js —— 不碰真的 LM Studio
 import { createServer } from 'node:http';
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadSkills, pageContext, parseReply, applyPlan, runAgent, loadChat, clearChat, systemPrompt, loosePrompt, isLoose, isQuestion, isFollowup, estimateContext, estTokens } from '../agent.js';
@@ -116,6 +116,30 @@ try {
   const G4 = loadWorkspace(root).graph;
   ok(G4.nodes.get('小队/队长')?.meta.rate === '2 Hz' && G4.nodes.has('小队/队长/口令') && G4.nodes.has('别处/队长'), '执行：队长（带属性、子节点）进了小队，别处的同名队长不受影响');
   ok(G4.nodes.has('小队/侦察兵') && !G4.nodes.has('斥候'), '同一批里先移动再改名也对');
+
+  // 👤 2026-10-10 新建带正文 + 一次建一棵小树；查看项目文件 / 翻手册
+  saveOutline(root, '设计\n别处');
+  const w5 = loadWorkspace(root), c5 = pageContext(w5, '', []), G5 = parseOutline(workspaceOutline(w5));
+  const VC = a => validateAction(a, { refs: c5.refs, graph: G5, scope: '' });
+  const tree = VC({ do: 'create', label: '战斗', parent: 'n1', body: '# 战斗\n总述', children: [{ label: '近战', body: '挥刀' }, { label: '远程', children: [{ label: '弓', body: '拉满' }] }] });
+  ok(tree.ok && /带正文/.test(tree.desc) && /含 3 个子节点/.test(tree.desc), '新建：带正文 + 子树校验通过 ' + (tree.why || tree.desc));
+  ok(!VC({ do: 'create', label: 'X', children: [{ label: '甲' }, { label: '甲' }] }).ok, '新建：children 里重名 → 拒绝');
+  ok(!VC({ do: 'create', label: 'X', children: Array.from({ length: 200 }, (_, i) => ({ label: 'c' + i })) }).ok && VC({ do: 'create', label: 'X', children: Array.from({ length: 199 }, (_, i) => ({ label: 'c' + i })) }).ok, '新建：整棵最多 200 个（含自己）');
+  ok(!VC({ do: 'create', label: 'X', body: 5 }).ok && !VC({ do: 'create', label: 'X', body: 'a'.repeat(8001) }).ok, '新建：body 不是文字 / 太长 → 拒绝');
+  const deep = n => n ? { label: 'd' + n, children: [deep(n - 1)] } : undefined;
+  ok(!VC({ do: 'create', label: 'X', children: [deep(5)] }).ok, '新建：children 嵌到第 5 层 → 拒绝');
+  applyPlan(root, [tree]);
+  const G6 = loadWorkspace(root).graph;
+  ok(G6.nodes.has('设计/战斗/远程/弓') && G6.nodes.get('设计/战斗/近战').body.trim() === '挥刀' && G6.nodes.get('设计/战斗/远程/弓').body.trim() === '拉满' && G6.nodes.get('设计/战斗').body.includes('总述'), '执行：整棵子树建好，每个节点的正文都在');
+  ok(G6.nodes.get('设计/战斗').children.join() === '设计/战斗/近战,设计/战斗/远程', '子节点顺序 = 给的顺序');
+  ok(parseReply(JSON.stringify({ say: '', actions: Array.from({ length: 80 }, () => ({ do: 'select' })) })).actions.length === 60, '一次最多收 60 个动作');
+  const { lookAt } = await import('../agent.js');
+  writeFileSync(join(root, '设计说明.md'), '# 说明\n我是项目里的文档');
+  const lk = lookAt(root, c5, [{ file: '设计说明.md' }, { file: '../外面.md' }, { file: '.synapsis/ai.json' }, { file: '没有.md' }, { manual: '怎么连线' }]);
+  ok(lk.text.includes('我是项目里的文档') && lk.said.includes('读文件 设计说明.md'), '查看：读项目里的 md');
+  ok((lk.text.match(/不能读/g) || []).length === 2 && lk.text.includes('没有这个文件'), '查看：项目外 / .synapsis / 不存在的文件读不了');
+  ok(lk.text.includes('【手册·怎么连线】') && !lk.text.includes('（手册里没有相关的段落）'), '查看：翻手册能找到连线那段');
+  ok(lp.includes('【手册目录】') && lp.length < loosePrompt([], []).length + 9000, '宽松版提示词：快捷键表 + 手册目录，手册正文不整份塞');
 
   // 问模型（假服务）：第一次回废话 → 重试；带短记忆；写日志
   let calls = 0, lastMsgs = null;

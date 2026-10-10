@@ -268,6 +268,8 @@ export function Shell({ name, Canvas }) {
     if (Object.keys(missing).length) move(missing, { silent: true });
   }, [layout]);
   const sel = selected && (view.nodes.some(n => n.id === selected) || view.portals.some(p => p.id === selected) || loosePics.some(p => p.id === selected)) ? selected : null;
+  // 👤 2026-10-10 属性栏：选中了看它；空白处（没选中）看当前进入的节点（根没有属性，不管）
+  const propId = sel ? (!sel.startsWith('@') && graph.nodes.has(sel) ? sel : null) : (realScope !== ROOT ? realScope : null);
 
   useEffect(() => { if (local) save('syn.text', text); }, [text, local]);
   useEffect(() => { if (local) save('syn.pos.' + name, positions); }, [positions, name, local]);
@@ -833,7 +835,7 @@ export function Shell({ name, Canvas }) {
       else if (e.code === 'Backquote' && e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); e.stopPropagation(); setHistOpen(o => !o); } // 👤 Shift+` = 操作历史栏（和 ` 钉子窗口统一）
       else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); setLeftHidden(h => !h); } // 👤 Tab = 侧栏开关
       else if ((e.key === 'Insert' || (e.key === 'Enter' && e.ctrlKey)) && sel) { e.preventDefault(); e.stopPropagation(); addNode(true); }
-      else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@') && !e.shiftKey) focusLabel(sel); else addNode(false); } // 👤 2026-10-10 选中了 Enter = 重命名；Shift+Enter / 没选中 = 新建同级
+      else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); if (e.shiftKey) addNode(false); else if (sel && !sel.startsWith('@')) focusLabel(sel); } // 👤 2026-10-10 选中了 Enter = 重命名；Shift+Enter = 新建同级；没选中 Enter 什么都不做（常误触）
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyS') { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) drill(sel); } // Alt+S = 钻进去（没选中不管）
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyW') { e.preventDefault(); e.stopPropagation(); up(); } // 👤 2026-10-10 Alt+W/A/D = 上一层 / 后退 / 前进（单手）
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyA') { e.preventDefault(); e.stopPropagation(); back(); }
@@ -1180,13 +1182,13 @@ export function Shell({ name, Canvas }) {
         </div>
       </main>
       {propsOpen && <div className="resizer right" title="拖动调宽度" onPointerDown={e => dragPanel(e, 'right')} />}
-      {propsOpen && sel && !sel.startsWith('@') && graph.nodes.has(sel) && (
-        <PropsPanel id={sel} graph={graph} wsNode={wsData?.nodes[sel]} edges={mode === 'ws' ? (wsData?.edges || []) : graph.edges}
-          editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} onMeta={saveMeta} metaHints={mode === 'ws' ? metaHints(sel) : []} file={nodeFile(sel)} tab={propsTab} onTab={setPropsTab} raw={rawText} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)}
-          onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} onEdgeRemove={(from, to) => removeEdges([[from, to]])} color={colors.get(sel)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} onColorWords={menuActions.colorWords} pattern={patterns.get(sel)} onPattern={menuActions.pattern} onPatternWords={menuActions.patternWords}
-          hl={rawHl && rawHl.file === nodeFile(sel) ? rawHl : null} onSelMenu={mode === 'ws' ? (e, s) => setMenu({ x: e.clientX, y: e.clientY, sel: s }) : null} />
+      {propsOpen && propId && (
+        <PropsPanel id={propId} graph={graph} wsNode={wsData?.nodes[propId]} edges={mode === 'ws' ? (wsData?.edges || []) : graph.edges}
+          editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} onMeta={saveMeta} metaHints={mode === 'ws' ? metaHints(propId) : []} file={nodeFile(propId)} tab={propsTab} onTab={setPropsTab} raw={rawText} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)}
+          onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} onEdgeRemove={(from, to) => removeEdges([[from, to]])} color={colors.get(propId)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} onColorWords={menuActions.colorWords} pattern={patterns.get(propId)} onPattern={menuActions.pattern} onPatternWords={menuActions.patternWords}
+          hl={rawHl && rawHl.file === nodeFile(propId) ? rawHl : null} onSelMenu={mode === 'ws' ? (e, s) => setMenu({ x: e.clientX, y: e.clientY, sel: s }) : null} />
       )}
-      {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（Shift+Tab 开关）</div></aside>}
+      {propsOpen && !propId && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（Shift+Tab 开关）</div></aside>}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
       {settingsOpen && mode === 'ws' && <SettingsModal api={api} onClose={() => setSettingsOpen(false)} onHelp={() => setHelpOpen(true)} />}
       {lightbox && <div className="lightbox" onClick={() => setLightbox(null)}>
@@ -1298,7 +1300,7 @@ export function NodeCard({ node, img, dim, isSel }) {
   };
   return (
     <div className={'card' + (node.ref ? ' refcard' : '') + (node.pattern ? ' pat-' + node.pattern : '') + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (showPics ? ' hasimg' : '') + (node.status ? ' s-' + node.status : '') + (node.dropped ? ' dropped' : '')}
-      style={{ ...(node.color ? { '--c': node.color } : {}), ...(showPics && node.picw ? { width: node.picw, maxWidth: 'none' } : node.textOpen && node.body?.trim() ? { width: 420, maxWidth: 'none' } : {}) }}>
+      style={{ ...(node.color ? { '--c': node.color } : {}), ...(showPics && node.picw ? { width: node.picw, maxWidth: 'none' } : node.textOpen && node.body?.trim() ? { width: 'max-content', maxWidth: 420 } : {}) }}>
       <div className="title">{node.status && <span className="st">{STATUS_ICON[node.status]}</span>}{node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
         {pics && <span className="picbadge" title={node.foldPics ? '显示图片' : '收起图片'} onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.foldPics(node.id); }}>🖼{img.length > 1 ? img.length : ''}</span>}
@@ -1323,7 +1325,7 @@ export function NodeCard({ node, img, dim, isSel }) {
           <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span>{k.renaming ? <RenameInput id={k.id} label={k.label} /> : <span className={k.status === 'dropped' ? 'strike' : ''}>{k.label}</span>}{k.n > 0 && <span className="kn">▸{k.n}</span>}
         </li>))}</ul>}
       {showPics && <div className={'pics n' + Math.min(img.length, 3)}>{img.map((u, i) => <img key={u} src={u} className="nodrag" draggable title="双击放大；拖到空白 = 变散图，拖到别的卡 = 换给它" onDragStart={e => { const p = new URL(u, location.href).searchParams.get('p'); e.dataTransfer.setData(DRAG_PIC, JSON.stringify({ path: p, from: node.id })); e.dataTransfer.effectAllowed = 'move'; }} onDoubleClick={e => { e.stopPropagation(); cardActions.lightbox?.(img, i); }} />)}
-        <span className="picgrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} /></div>}
+        <span className="picgrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} onClick={stop} /></div>}
     </div>
   );
 }
@@ -1379,7 +1381,7 @@ export function PicCard({ pic, isSel }) {
   return (
     <div className={'loosepic' + (isSel ? ' sel' : '')} style={{ width: pic.w || 240 }} title={pic.path || ''}>
       <img src={pic.url} draggable={false} title="双击放大" onDoubleClick={e => { e.stopPropagation(); cardActions.lightbox?.([pic.url], 0); }} />
-      <span className="picgrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} />
+      <span className="picgrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} onClick={stop} />
     </div>
   );
 }
@@ -1400,7 +1402,7 @@ export function UiCard({ node, dim, isSel }) {
       <div className="title">{node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
         <span className="uidim" title="宽 × 高（右下角拖着改）">{Math.round(node.uiW)}×{Math.round(node.uiH)}</span>
         {node.children.length > 0 && <span className="kids" title="里面有 UI 框 / 节点（双击标题钻进去）">▸ {node.children.length}</span>}</div>
-      <span className="uigrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} />
+      <span className="uigrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} onClick={stop} />
     </div>
   );
 }

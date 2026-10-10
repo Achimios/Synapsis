@@ -13,6 +13,8 @@ export const SHAPES = ['row', 'column', 'grid'];
 const EDGE_ZH = { left: '左边', right: '右边', top: '上边', bottom: '下边', hcenter: '水平居中', vcenter: '垂直居中' };
 const SHAPE_ZH = { row: '横排', column: '竖排', grid: '网格' };
 const STATUS_ZH = { done: '✅ 完成', partial: '◐ 进行中', todo: '○ 待做', dropped: '❌ 弃用', none: '清除状态' };
+export const CREATE_MAX = 200;
+const bodyOf = b => { if (b == null || b === '') return ''; if (typeof b !== 'string' || b.length > 8000) throw new Error('body 要是 8000 字以内的文字'); return b; };
 const badName = s => typeof s !== 'string' || !s.trim() || /->|[,，\r\n]/.test(s) || s.trim().length > 60;
 
 // ctx = { refs: Map('n1' → 真 id), graph, scope }；返回 { ok, why?, desc?, ...规范化后的参数（真 id）}
@@ -111,7 +113,25 @@ export const VALIDATORS = {
     const name = a.label.trim();
     if (graph.nodes.get(parent).children.some(c => graph.nodes.get(c).label === name)) throw new Error(`「${name}」同级已经有了`);
     const from = a.from == null ? null : one(a.from), to = a.to == null ? null : one(a.to);
-    return { parent, label: name, from, to, desc: `新建「${name}」${parent === scope ? '' : '（在 ' + label(parent) + ' 下）'}${from ? '，' + label(from) + ' → 它' : ''}${to ? '，它 → ' + label(to) : ''}` };
+    // 👤 2026-10-10 带正文 + 一次建一棵小树：body = 正文（md）；children = [{label, body?, children?}]，最多 4 层、整棵最多 CREATE_MAX 个
+    const body = bodyOf(a.body);
+    let count = 1;
+    const tree = (kids, depth) => {
+      if (kids == null) return [];
+      if (!Array.isArray(kids)) throw new Error('children 要是数组');
+      if (depth > 4) throw new Error('children 最多嵌 4 层');
+      const seen = new Set();
+      return kids.map(k => {
+        if (!k || badName(k.label)) throw new Error('children 里每项要有 60 字以内、不含 -> 和逗号的 label');
+        const nm = k.label.trim();
+        if (seen.has(nm)) throw new Error(`children 里「${nm}」重名了`);
+        seen.add(nm);
+        if (++count > CREATE_MAX) throw new Error(`一个新建动作最多 ${CREATE_MAX} 个节点（含子节点）`);
+        return { label: nm, body: bodyOf(k.body), children: tree(k.children, depth + 1) };
+      });
+    };
+    const children = tree(a.children, 1);
+    return { parent, label: name, from, to, body, children, desc: `新建「${name}」${parent === scope ? '' : '（在 ' + label(parent) + ' 下）'}${from ? '，' + label(from) + ' → 它' : ''}${to ? '，它 → ' + label(to) : ''}${body ? '，带正文' : ''}${count > 1 ? `，含 ${count - 1} 个子节点` : ''}` };
   },
   move: (a, { many, one, label, graph }) => {
     const ids = many(a.ids);

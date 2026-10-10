@@ -3,9 +3,9 @@
 //   技能说明书 = core/skills/*.md（frontmatter: do / args；正文 = 什么时候用 + 例子），整份喂进系统提示词。
 //   短记忆 = 工作区 .synapsis/ai_chat.json（最近 30 轮，喂最近 8 轮）；日志 = .synapsis/ai_log.jsonl（core/ai.js aiLog）。
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadWorkspace, workspaceOutline, saveOutline, setNodeMeta, setEdgeLabel, parseFrontmatter, findNodes, grepProject } from './workspace.js';
+import { loadWorkspace, workspaceOutline, saveOutline, setNodeMeta, setNodeBody, setEdgeLabel, parseFrontmatter, findNodes, grepProject } from './workspace.js';
 import { overlaps } from './arrange.js';
 import { parseOutline, withStatus, withEdge, withoutEdge, withNode, withLabel, withMoved, toOutline, ROOT } from './outline.js';
 import { validateAction, planMoves, VALIDATORS } from './plan.js';
@@ -57,15 +57,17 @@ export function loosePrompt(skills = loadSkills(), knowledge = knowledgeChunks()
 - 动作是 {"do": 动作名, …参数}，动作名只能是：${skills.map(s => s.do).join('、')}。
 - 节点只能用本页列出的编号（n1、n2…）。「这几个 / 选中的」= 标了 ★选中 的。
 - 长期记忆：有时消息里会附【记忆索引】（每份一行：名字 + 一句描述）。觉得哪份和这次有关、想看全文，就只输出 {"read": ["名字", …]}（这一次不要 say 和 actions），全文会发给你，你再正常回答。用不上就别读。值得以后记住的，用 remember 提议。
-- 查看：【当前页】只列了名字和位置。需要更多信息（某张卡的正文、某个节点里面有什么、项目里哪里提到某个词）时，只输出 {"look": [{"node": "n3"}, {"page": "n5"}, {"search": "词"}]}（这一次不要 say 和 actions），结果会发给你，你再继续。{"node": 编号} = 正文和属性；{"page": 编号} = 那个节点里面有什么（子节点和连线；里面的东西没有编号，只能读，不能动手）；{"search": 词} = 搜节点名字 / 正文 / 项目文件（结果没有编号）。查看只读，不改任何东西；最多连续查看 3 次，能直接答就别查。
+- 查看：【当前页】只列了名字和位置。需要更多信息（某张卡的正文、某个节点里面有什么、项目里哪里提到某个词、某份文档、软件怎么用）时，只输出 {"look": [{"node": "n3"}, {"page": "n5"}, {"search": "词"}, {"file": "路径.md"}, {"manual": "关键词"}]}（这一次不要 say 和 actions），结果会发给你，你再继续。{"node": 编号} = 正文和属性；{"page": 编号} = 那个节点里面有什么（子节点和连线；里面的东西没有编号，只能读，不能动手）；{"search": 词} = 搜节点名字 / 正文 / 项目文件（结果没有编号）；{"file": 项目里的相对路径} = 读一份文本文件（md / txt / 代码…）；{"manual": 关键词} = 翻软件手册。查看只读，不改任何东西；最多连续查看 3 次，能直接答就别查。
 - 【上一轮结果】：消息里可能有这一行，告诉你上次提议的动作人执行了没有、执行后检查出了什么问题（比如卡片重叠了）。以它为准，别凭印象说「已经做完了」；有问题就这一轮顺手修好。
 - 坐标：@(x,y) 是卡片左上角，x 向右、y 向下，后面是宽×高。用 place 挪位置时自己算好，别和别的卡重叠（留 20 以上的空隙）。
 
 动作（说明书）：
 ${skills.map(s => `## ${s.name}：${s.do}\n参数：${s.args}\n${s.body}`).join('\n\n')}
 
-【软件知识】（人问怎么用时参考。这里没写的功能就是没有：可以直说，也可以建议别的办法）
-${knowledgeText(knowledge)}`;
+【软件知识】（人问怎么用时参考。快捷键表在下面；手册只给目录——要细节就 look {"manual": "关键词"} 翻。翻过手册和快捷键表都没有的功能就是没有：可以直说，也可以建议别的办法）
+${knowledgeText(knowledge.filter(c => c.src.startsWith('快捷键')))}
+
+【手册目录】（共 ${knowledge.filter(c => !c.src.startsWith('快捷键')).length} 段）：${[...new Set(knowledge.filter(c => !c.src.startsWith('快捷键')).map(c => c.src.replace('手册·', '')))].join('、')}`;
 }
 
 export function systemPrompt(skills = loadSkills()) {
@@ -95,7 +97,7 @@ export function parseReply(raw, max = 1200) {
   if (a < 0 || b <= a) throw new Error('输出里没有 JSON 对象');
   const j = JSON.parse(s.slice(a, b + 1));
   if (typeof j !== 'object' || Array.isArray(j)) throw new Error('不是 JSON 对象');
-  return { say: typeof j.say === 'string' ? j.say.slice(0, max) : '', actions: Array.isArray(j.actions) ? j.actions.slice(0, 30) : [], read: Array.isArray(j.read) ? j.read.slice(0, 6).map(String) : [], look: Array.isArray(j.look) ? j.look.slice(0, 6).filter(x => x && typeof x === 'object' && !Array.isArray(x)) : [] };
+  return { say: typeof j.say === 'string' ? j.say.slice(0, max) : '', actions: Array.isArray(j.actions) ? j.actions.slice(0, 60) : [], read: Array.isArray(j.read) ? j.read.slice(0, 6).map(String) : [], look: Array.isArray(j.look) ? j.look.slice(0, 6).filter(x => x && typeof x === 'object' && !Array.isArray(x)) : [] };
 }
 
 // —— 短记忆 ——
@@ -163,13 +165,23 @@ export function lookAt(root, ctx, items) {
       if (!n) { out.push(`【${ref}】本页没有这个编号（只能用【当前页】列出的编号）`); continue; }
       if (it.node != null) {
         said.push(`${ref}「${n.label}」正文`);
-        out.push(`【${ref}「${n.label}」正文】\n${clip(n.body?.trim() || '（没有正文）', 2000)}${props(n) ? '\n属性：' + clip(props(n), 400) : ''}`);
+        out.push(`【${ref}「${n.label}」正文】\n${clip(n.body?.trim() || '（没有正文）', 6000)}${props(n) ? '\n属性：' + clip(props(n), 400) : ''}`);
       } else {
         said.push(`${ref}「${n.label}」里面`);
         const kids = n.children.slice(0, 40).map(c => { const k = g.nodes.get(c); return `- ${k.label}${k.status ? ' ' + ST[k.status] : ''}${k.children.length ? `（${k.children.length} 个子节点）` : ''}`; });
         const inner = new Set(n.children), edges = g.edges.filter(e => inner.has(e.from) && inner.has(e.to)).slice(0, 40).map(e => `${lab(e.from)} -> ${lab(e.to)}${e.kind ? '（' + e.kind + '）' : ''}${e.label ? '「' + e.label + '」' : ''}`);
         out.push(`【${ref}「${n.label}」里面】（这里面的节点没有编号，只能读）\n${kids.join('\n') || '（空）'}${edges.length ? '\n连线：\n' + edges.join('\n') : ''}`);
       }
+    } else if (typeof it.file === 'string' && it.file.trim()) {
+      const rel = it.file.trim().replace(/^[\\/]+/, ''), abs = resolve(root, rel), back = relative(root, abs);
+      said.push(`读文件 ${rel}`);
+      if (!rel || back.startsWith('..') || isAbsolute(back) || /(^|[\\/])(\.synapsis|\.git|node_modules)([\\/]|$)/.test(back) || !/\.(md|txt|json|js|jsx|ts|css|html|csv|yaml|yml)$/i.test(back)) { out.push(`【文件 ${rel}】不能读（只读项目里的文本文件：md / txt / json / 代码…，不含 .synapsis / .git）`); continue; }
+      let t; try { t = readFileSync(abs, 'utf8'); } catch { out.push(`【文件 ${rel}】没有这个文件`); continue; }
+      out.push(`【文件 ${rel}】\n${clip(t, 8000)}`);
+    } else if (typeof it.manual === 'string' && it.manual.trim()) {
+      const q = it.manual.trim().slice(0, 80); said.push(`翻手册「${q}」`);
+      const picks = pickKnowledge(q, { budget: 3500 });
+      out.push(`【手册·${q}】\n${picks.length ? knowledgeText(picks) : '（手册里没有相关的段落）'}`);
     } else if (typeof it.search === 'string' && it.search.trim()) {
       const q = it.search.trim().slice(0, 60); said.push(`搜「${q}」`);
       const nodes = findNodes(ws, q).slice(0, 10).map(h => `- 「${lab(h.id)}」${g.nodes.get(h.id).parent !== ROOT ? `（在「${lab(g.nodes.get(h.id).parent)}」下）` : ''} ${h.where}：${h.snippet}`);
@@ -250,13 +262,16 @@ export function applyPlan(root, actions, boxes = {}, opts = {}) {
   const ren = new Map(); // 旧 id → 新 id（改名会改子孙的 id）
   const fix = id => { for (const [o, n] of ren) { if (id === o) return n; if (id.startsWith(o + '/')) return n + id.slice(o.length); } return id; };
   const step = t => { if (t) g = parseOutline(t); };
-  const kinds = [], colors = [], moved = new Set();
+  const kinds = [], colors = [], moved = new Set(), bodies = []; // bodies = 新建时带的正文 [id, 文字]（存盘后才有文件，再写）
   for (const a of actions) {
     if (a.do === 'status') for (const id of a.ids) step(withStatus(g, fix(id), a.status === 'none' ? null : a.status));
     else if (a.do === 'link') { if (!a.exists) step(withEdge(g, fix(a.from), fix(a.to))); if (a.kind || a.label || a.exists) kinds.push(a); }
     else if (a.do === 'unlink') step(withoutEdge(g, fix(a.from), fix(a.to)));
     else if (a.do === 'create') {
       const r = withNode(g, fix(a.parent), null, a.label); step(r.text);
+      if (a.body) bodies.push([r.id, a.body]);
+      const addKids = (pid, kids) => { for (const k of kids || []) { const rr = withNode(g, pid, null, k.label); step(rr.text); if (k.body) bodies.push([rr.id, k.body]); addKids(rr.id, k.children); } };
+      addKids(r.id, a.children);
       if (a.from) step(withEdge(g, fix(a.from), r.id));
       if (a.to) step(withEdge(g, r.id, fix(a.to)));
     } else if (a.do === 'order') {
@@ -277,6 +292,7 @@ export function applyPlan(root, actions, boxes = {}, opts = {}) {
   const orig = new Map(); for (const [o] of ren) if (moved.has(o) || [...moved].some(m => o.startsWith(m + '/'))) orig.set(fix(o), o);
   const report = saveOutline(root, toOutline(g), orig.size ? orig : null);
   if (!report.ok) throw new Error('执行失败：' + JSON.stringify(report.errors));
+  for (const [id, b] of bodies) setNodeBody(root, fix(id), b);
   for (const a of kinds) setEdgeLabel(root, fix(a.from), fix(a.to), a.label, a.kind);
   for (const a of colors) for (const id of a.ids) setNodeMeta(root, fix(id), { color: a.color === 'auto' ? null : a.color });
   const fixedBoxes = Object.fromEntries(Object.entries(boxes).map(([id, b]) => [fix(id), b]));

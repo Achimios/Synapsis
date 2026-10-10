@@ -1224,6 +1224,61 @@ for (const kind of ['reactflow']) {
   await page.close();
   rmSync(ws, { recursive: true, force: true });
 }
+// —— 空白处看父属性 + Enter（👤 2026-10-10）：没选中时右栏 = 当前进入的节点（根不算）；Enter 没选中不新建；UI 框选中 Enter = 改名；正文展开宽度跟最长一行 ——
+{
+  console.log('== 空白处属性与 Enter');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-blank-ui-')); noAi(ws);
+  saveOutline(ws, '父\n  子甲\n  子乙');
+  setNodeBody(ws, '父/子甲', '短行\n短二');
+  writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 父: { x: 0, y: 0 } }));
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
+  await page.mouse.click(700, 700); await sleep(300);
+  ok(/选中一个节点看它的属性/.test(await page.$eval('aside.side', e => e.innerText)), '根里没选中 → 还是「选中一个节点看它的属性」');
+  await page.keyboard.press('Enter'); await sleep(800);
+  ok((await page.$$('.card')).length === 1, '根里没选中按 Enter → 不新建节点');
+  await page.dblclick('.card .lab:text-is("父")'); await sleep(1200);
+  await page.mouse.click(700, 700); await sleep(500);
+  ok((await page.$$('.card.sel')).length === 0, '进入「父」后点空白 → 没有选中的卡');
+  ok((await page.$eval('aside.side', e => e.innerText)).includes('父'), '空白处右栏显示当前进入的节点「父」的属性 ' + (await page.$eval('aside.side', e => e.innerText)).slice(0, 40));
+  await page.keyboard.press('Enter'); await sleep(800);
+  ok((await page.$$('.card')).length === 2, '进入后没选中按 Enter → 也不新建 ' + (await page.$$('.card')).length);
+  // 正文展开：宽度 = 最长一行，最多 420
+  await page.click('.card .lab:text-is("子甲")'); await sleep(300);
+  await page.keyboard.press('Digit4'); await sleep(700);
+  const w = await page.$eval('.card:has(.lab:text-is("子甲"))', e => e.offsetWidth);
+  ok(w > 0 && w < 300, '正文都是短行 → 卡片不撑到 420 宽 ' + w);
+  // Shift+Enter 仍然新建同级
+  await page.keyboard.press('Shift+Enter'); await sleep(900);
+  ok((await page.$$('.card')).length === 3, '选中后 Shift+Enter 新建同级');
+  await page.keyboard.press('Escape'); await sleep(300);
+  // UI 框选中 Enter = 改名
+  await page.mouse.click(900, 600, { button: 'right' }); await sleep(300);
+  await page.click('.ctx .mi:has-text("新建 UI 框")'); await sleep(1500);
+  await page.keyboard.type('框框'); await page.keyboard.press('Enter'); await sleep(1500);
+  ok(!!(await page.$('.card.uibox.sel')), '新建 UI 框（改完名）后它还是选中的');
+  await page.keyboard.press('Enter'); await sleep(600);
+  ok(!!(await page.$('.card.uibox input.rename')), '刚建完的 UI 框直接按 Enter → 出改名输入框');
+  await page.keyboard.press('Escape'); await sleep(400);
+  await page.mouse.click(60, 820); await sleep(300);
+  const rc = await page.$eval('.card.uibox', e => { const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+  await page.keyboard.press('Escape'); await sleep(300);
+  await page.mouse.click(rc[0], rc[1]); await sleep(400);
+  ok(!!(await page.$('.card.uibox.sel')), '点 UI 框里面 → 选中它');
+  const gb = await (await page.$('.card.uibox .uigrip')).boundingBox();
+  await page.mouse.move(gb.x + 6, gb.y + 6); await page.mouse.down(); await page.mouse.move(gb.x + 26, gb.y + 16, { steps: 4 }); await page.mouse.up(); await sleep(1200);
+  ok(!!(await page.$('.card.uibox.sel')), '拖右下角改大小后，UI 框还是选中的（之前会被当成再点一下 → 取消选中）');
+  await page.keyboard.press('Enter'); await sleep(600);
+  ok(!!(await page.$('.card.uibox input.rename')), 'UI 框选中按 Enter → 出改名输入框');
+  await page.keyboard.press('Escape'); await sleep(300);
+  const rc2 = await page.$eval('.card.uibox', e => { const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+  await page.mouse.dblclick(rc2[0], rc2[1]); await sleep(1200);
+  ok((await page.$eval('.crumbs', e => e.innerText.replace(/\s+/g, ''))).includes('框框'), '双击 UI 框中间（不是标题）→ 进到框里面');
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
 // —— ↗ 传送门卡片（👤 2026-10-10）：右键空白「引入…」→ 节点页签选一个别处的节点 → 这一页放一张指向它的卡；双击跳过去；本页的节点不列 ——
 {
   console.log('== 传送门卡片');
