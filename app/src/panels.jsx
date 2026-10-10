@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, Children } from 
 import { PALETTE } from './colors.js';
 import { PATTERNS, PATTERN_HINT } from './patterns.js';
 import { searchNodes, filterTree } from './search.js';
+import { groupSiblings } from './outline.js';
 import { KEYMAP, comboFromKeyEvent, comboText, matchKey } from './keymap.js';
 const STATUS = [['done', '✅'], ['partial', '◐'], ['todo', '○'], ['dropped', '❌']];
 
@@ -64,7 +65,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
   return (
     <div className="ctx" style={style}>
       <div className="mh">{node.label}</div>
-      {item('属性…', () => actions.props(node.id), { key: 'Ctrl+Tab' })}
+      {item('属性…', () => actions.props(node.id), { key: 'Shift+Tab' })}
       {item('重命名', () => actions.rename(node.id), { key: 'F2' })}
       {node.file && item('📎 打开引用的文件', () => actions.openProjectFile(node.file))}
       <div className="mi row" onPointerDown={e => e.stopPropagation()}>
@@ -357,7 +358,7 @@ export function TextFind({ active, taRef, text, inputRef, children }) {
   </>;
 }
 
-// >v<🧭导航-操作历史栏-大纲栏右边的竖栏（Shift+Tab 开关，👤 2026-10-08）：撤销栈的每一步一句人话，最新的在上面。
+// >v<🧭导航-操作历史栏-大纲栏右边的竖栏（Shift+` 开关，👤 2026-10-08）：撤销栈的每一步一句人话，最新的在上面。
 //   点一行 = 回到「做完这一步」的样子（连续撤销 / 重做到那里）；灰的 = 撤销掉、还能重做的。刷新页面不丢，关窗口才清
 const ago = t => { if (!t) return ''; const s = Math.round((Date.now() - t) / 1000); return s < 60 ? s + ' 秒前' : s < 3600 ? Math.round(s / 60) + ' 分前' : new Date(t).toLocaleTimeString().slice(0, 5); };
 export function HistoryPanel({ hist, busy, onJump, onClose }) {
@@ -393,25 +394,35 @@ export function FilePanel({ file, onClose, hl, onSelMenu }) {
 // >v<🌳大纲模型-大纲树-左栏默认页：点一下 = 导航 + 看内容（不进编辑）；双击 / F2 = 原地改名；▸ 折叠；→ 钻进；↑↓←→ 键盘走
 // >v<🌳左栏-大纲树拖动-拖一行到另一行上 = 放进它里面；拖到树下面的空白 = 挪到根；拖到画布的卡片上也行（👤 2026-10-08 第 9 条）
 export const DRAG_NODE = 'application/x-synapsis-node';
-export function OutlineTree({ graph, selected, scope, renaming, status, onPick, onDrill, onRename, onCommit, onCancel, onMove, colors }) {
-  const [over, setOver] = useState(null); // 拖动时悬停的行（'' = 根 / 空白）
+export function OutlineTree({ graph, rootId = '', selected, scope, renaming, status, onPick, onDrill, onRename, onCommit, onCancel, onMove, onReorder, colors, multiIds = [], onSelectSet, frozen = null, grouped = false }) {
+  const multiSet = new Set(multiIds);
+  const [over, setOver] = useState(null); // 拖动时悬停的位置 {id, where:'before'|'after'}：大纲里拖动只调同一层的次序
+  const dragFrom = useRef(null); // 正在拖的行（dragover 里读不到 dataTransfer 的内容）
   const [open, setOpen] = useState({});
   const [q, setQ] = useState(''); // 过滤：只留名字命中的和它们的祖先（全部展开）
   const flt = useMemo(() => filterTree(graph, q), [graph, q]);
   const box = useRef(null);
   // 默认：前两层展开；当前页和选中节点的祖先一律展开（大纲里永远看得到「我在哪」）
   const focus = new Set();
-  for (const f of [scope, selected]) for (let c = f; c && graph.nodes.has(c); c = graph.nodes.get(c).parent) focus.add(c);
+  for (const f of frozen ? [frozen.scope, frozen.selected] : [scope, selected]) for (let c = f; c && graph.nodes.has(c); c = graph.nodes.get(c).parent) focus.add(c);
   const isOpen = (id, depth) => flt ? true : open[id] ?? (depth < 2 || focus.has(id));
   const rows = [];
   const walk = (id, depth, top = null) => { for (const c of graph.nodes.get(id).children) { if (flt && !flt.keep.has(c)) continue; const n = graph.nodes.get(c); rows.push({ n, depth, top: top ?? c }); if (n.children.length && isOpen(c, depth)) walk(c, depth + 1, top ?? c); } };
-  walk('', 0);
+  const rootEff = graph.nodes.has(rootId) ? rootId : '';
+  const blocks = []; // 分组视图：同一层按「连在一起」分组，组内按流向排（core groupSiblings）；不同组各自一块
+  if (grouped) {
+    groupSiblings(graph, rootEff).forEach((g, gi) => {
+      const from = rows.length;
+      for (const c of g.ids) { if (flt && !flt.keep.has(c)) continue; const n = graph.nodes.get(c); rows.push({ n, depth: 0, top: c }); if (n.children.length && isOpen(c, 0)) walk(c, 1, c); }
+      if (rows.length > from) blocks.push({ gi, from, to: rows.length, n: g.ids.length, loose: g.loose, info: g.info });
+    });
+  } else walk(rootEff, 0); // rootId = 只显示当前进入的这个节点里的子节点（左栏 ◎ 开关）
   // 选中节点 → 大纲里把它滚到正中间（👤 2026-10-08：以前 nearest，从下面选上来就贴在最底下）。只滚大纲这个盒子，不带动外层；
   //   人自己在大纲里点的那一下不滚（点哪行哪行不动，不然列表会在手底下跳）；键盘上下走、画布上选、面包屑 / ↑ 都居中
   const byClick = useRef(false);
   useEffect(() => {
     const b = box.current, el = b?.querySelector('.orow.sel');
-    if (!b || !el) return;
+    if (!b || !el || frozen) return;
     if (byClick.current) { byClick.current = false; return; }
     const bb = b.getBoundingClientRect(), er = el.getBoundingClientRect();
     b.scrollTop += er.top - bb.top - (bb.height - er.height) / 2;
@@ -423,26 +434,24 @@ export function OutlineTree({ graph, selected, scope, renaming, status, onPick, 
     else if (e.key === 'ArrowRight' && r?.n.children.length) { e.preventDefault(); setOpen(o => ({ ...o, [r.n.id]: true })); }
     else if (e.key === 'ArrowLeft' && r) { e.preventDefault(); if (r.n.children.length && isOpen(r.n.id, r.depth)) setOpen(o => ({ ...o, [r.n.id]: false })); else if (r.n.parent) onPick(r.n.parent); }
   };
-  return (
-    <>
-    <div className="otools">
-    <input className="ofilter" value={q} placeholder="过滤…（名字）" onChange={e => setQ(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') setQ(''); else if (e.key === 'Enter' && flt?.hits.size) onPick([...flt.hits][0]); }} />
-    <button className="ghost" title="全部展开" onClick={() => setOpen(Object.fromEntries([...graph.nodes.values()].filter(n => n.children.length).map(n => [n.id, true])))}>⊞</button>
-    <button className="ghost" title="全部折叠（只留第一层）" onClick={() => setOpen(Object.fromEntries([...graph.nodes.values()].filter(n => n.children.length).map(n => [n.id, false])))}>⊟</button>
-    </div>
-    <div className={'otree' + (over === '' ? ' dropr' : '')} ref={box} tabIndex={0} onKeyDown={onKey}
-      onPointerDown={() => { byClick.current = true; setTimeout(() => { byClick.current = false; }, 300); }}
-      onDragOver={e => { if (onMove && e.dataTransfer.types.includes(DRAG_NODE)) { e.preventDefault(); if (e.target === box.current) setOver(''); } }}
-      onDragLeave={e => { if (e.target === box.current) setOver(null); }}
-      onDrop={e => { const id = e.dataTransfer.getData(DRAG_NODE); if (id && e.target === box.current) { e.preventDefault(); setOver(null); onMove(id, ''); } }}>
-      {flt && !rows.length && <div className="hint" style={{ padding: 6 }}>没有名字含「{q}」的节点（Ctrl+F 可以搜属性和正文）</div>}
-      {rows.map(({ n, depth, top }) => (
-        <div key={n.id} className={'orow' + (n.id === selected ? ' sel' : '') + (n.id === scope && scope ? ' scope' : '') + (flt?.hits.has(n.id) ? ' hit' : '') + (over === n.id ? ' dropin' : '') + (depth === 0 ? ' top' : n.children.length ? ' grp' : '')} style={{ paddingLeft: 4 + depth * 14, '--d': depth, '--g': colors?.get(top) || 'var(--line2)' }}
-          draggable={!!onMove && renaming !== n.id} onDragStart={e => { e.dataTransfer.setData(DRAG_NODE, n.id); e.dataTransfer.effectAllowed = 'move'; }}
-          onDragOver={e => { if (onMove && e.dataTransfer.types.includes(DRAG_NODE)) { e.preventDefault(); e.stopPropagation(); setOver(n.id); } }}
-          onDragLeave={() => setOver(o => o === n.id ? null : o)} onDragEnd={() => setOver(null)}
-          onDrop={e => { const id = e.dataTransfer.getData(DRAG_NODE); e.stopPropagation(); setOver(null); if (id && id !== n.id) { e.preventDefault(); onMove(id, n.id); } }}
-          onClick={() => { if (renaming !== n.id) onPick(n.id); }} onDoubleClick={() => onRename(n.id)} title={n.id}>
+  const renderRow = ({ n, depth, top }, info = null) => (
+        <div key={n.id} className={'orow' + (n.id === selected || multiSet.has(n.id) ? ' sel' : '') + (n.id === scope && scope ? ' scope' : '') + (flt?.hits.has(n.id) ? ' hit' : '') + (over?.id === n.id ? ' drop-' + over.where : '') + (depth === 0 ? ' top' : n.children.length ? ' grp' : '')} style={{ paddingLeft: 4 + depth * 14, '--d': depth, '--g': colors?.get(top) || 'var(--line2)' }}
+          draggable={!!onMove && renaming !== n.id} onDragStart={e => { const ids = multiSet.has(n.id) ? multiIds : [n.id]; dragFrom.current = ids; e.dataTransfer.setData(DRAG_NODE, JSON.stringify(ids)); e.dataTransfer.effectAllowed = 'copyMove'; }}
+          onDragOver={e => { const d = dragFrom.current; if (!onReorder || grouped || !d || d.includes(n.id) || d.some(x => graph.nodes.get(x)?.parent !== n.parent)) return; e.preventDefault(); e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(), where = e.clientY < r.top + r.height / 2 ? 'before' : 'after'; setOver(o => o?.id === n.id && o.where === where ? o : { id: n.id, where }); }}
+          onDragLeave={() => setOver(o => o?.id === n.id ? null : o)} onDragEnd={() => { dragFrom.current = null; setOver(null); }}
+          onDrop={e => { const d = dragFrom.current, o = over; dragFrom.current = null; setOver(null); if (o?.id === n.id && d && !d.includes(n.id)) { e.preventDefault(); e.stopPropagation(); onReorder(d, n.id, o.where); } }}
+          onClick={e => {
+            if (renaming === n.id) return;
+            if ((e.ctrlKey || e.metaKey) && onSelectSet) { // Ctrl+点击：加入 / 移出选择（和画布共用一组），不导航
+              const cur = new Set(multiIds.length ? multiIds : selected ? [selected] : []); cur.has(n.id) ? cur.delete(n.id) : cur.add(n.id);
+              onSelectSet([...cur], cur.has(n.id) ? n.id : null); return;
+            }
+            if (e.shiftKey && onSelectSet && selected) { // Shift+点击：选中它和已选的那一行之间所有可见的行（像 Windows）
+              const a = rows.findIndex(r => r.n.id === selected), b = rows.findIndex(r => r.n.id === n.id);
+              if (a >= 0 && b >= 0) { onSelectSet(rows.slice(Math.min(a, b), Math.max(a, b) + 1).map(r => r.n.id), n.id); return; }
+            }
+            onPick(n.id);
+          }} onDoubleClick={() => onRename(n.id)} title={n.id}>
           <span className="ocaret" onClick={e => { e.stopPropagation(); if (n.children.length) setOpen(o => ({ ...o, [n.id]: !isOpen(n.id, depth) })); }}>{n.children.length ? (isOpen(n.id, depth) ? '▾' : '▸') : ''}</span>
           <span className="ost">{n.status ? status[n.status] : '·'}</span>
           {renaming === n.id
@@ -450,9 +459,23 @@ export function OutlineTree({ graph, selected, scope, renaming, status, onPick, 
                 onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') { e.target.dataset.done = 1; onCommit(n.id, e.target.value); } else if (e.key === 'Escape') { e.target.dataset.done = 1; onCancel(); } }}
                 onBlur={e => { if (!e.target.dataset.done) onCommit(n.id, e.target.value); }} />
             : <span className={'olab' + (n.status === 'dropped' ? ' strike' : '')}>{n.label}</span>}
+          {info?.[n.id]?.up > 0 && depth === 0 && <span className="oup" title={`上游共 ${info[n.id].up} 个节点（直接入线 ${info[n.id].direct} 条）`}>←{info[n.id].up}</span>}
           {n.children.length > 0 && renaming !== n.id && <span className="odrill" title="钻进这一层（画布显示它的子节点）" onClick={e => { e.stopPropagation(); onDrill(n.id); }}>→</span>}
         </div>
-      ))}
+  );
+  return (
+    <>
+    <div className="otools">
+    <input className="ofilter" value={q} placeholder="过滤…（名字）" onChange={e => setQ(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') setQ(''); else if (e.key === 'Enter' && flt?.hits.size) onPick([...flt.hits][0]); }} />
+    <button className="ghost" title="全部展开" onClick={() => setOpen(Object.fromEntries([...graph.nodes.values()].filter(n => n.children.length).map(n => [n.id, true])))}>⊞</button>
+    <button className="ghost" title="全部折叠（只留第一层）" onClick={() => setOpen(Object.fromEntries([...graph.nodes.values()].filter(n => n.children.length).map(n => [n.id, false])))}>⊟</button>
+    </div>
+    {grouped && blocks.length > 0 && <div className="ogchips"><span>{blocks.filter(b => !b.loose).length} 组</span>{blocks.map(b => <a key={b.gi} title={b.loose ? '没有连线的节点' : '连在一起的一组'} onClick={() => box.current?.querySelector(`[data-g="${b.gi}"]`)?.scrollIntoView({ block: 'start' })}>{b.loose ? '无' : b.gi + 1}<i>{b.n}</i></a>)}</div>}
+    <div className="otree" ref={box} tabIndex={0} onKeyDown={onKey}
+      onPointerDown={() => { byClick.current = true; setTimeout(() => { byClick.current = false; }, 300); }}
+>
+      {flt && !rows.length && <div className="hint" style={{ padding: 6 }}>没有名字含「{q}」的节点（Ctrl+F 可以搜属性和正文）</div>}
+      {grouped ? blocks.map(b => <div key={'g' + b.gi} className="ogroup" data-g={b.gi}><div className="ogh">{b.loose ? '无连线' : '组 ' + (b.gi + 1)} · {b.n}</div>{rows.slice(b.from, b.to).map(r => renderRow(r, b.info))}</div>) : rows.map(r => renderRow(r))}
     </div>
     </>
   );
@@ -498,6 +521,11 @@ export function SearchModal({ title, items, exclude, onPick, onClose }) {
   useEffect(() => setI(0), [q, tab]);
   const pick = r => r && (onClose(), onPick(r.id));
   const flip = () => setTab(t => t === 'node' ? 'file' : 'node');
+  const inRef = useRef(null);
+  useEffect(() => { // Tab 在弹窗里不管焦点在哪都是切页签（焦点不在输入框时不能漏给外面的「Tab 开关左栏」）
+    const h = e => { if (e.key !== 'Tab' || e.ctrlKey || e.altKey) return; e.preventDefault(); e.stopPropagation(); if (hasFiles) flip(); inRef.current?.focus(); };
+    window.addEventListener('keydown', h, true); return () => window.removeEventListener('keydown', h, true);
+  });
   return (
     <div className="modal" onPointerDown={onClose}>
       <div className="finder" onPointerDown={e => e.stopPropagation()}>
@@ -506,8 +534,8 @@ export function SearchModal({ title, items, exclude, onPick, onClose }) {
           <a className={tab === 'node' ? 'on' : ''} onClick={() => setTab('node')}>节点{q.trim() ? ' ' + resN.length : ''}</a>
           <a className={(tab === 'file' ? 'on' : '') + (hasFiles ? '' : ' off')} onClick={() => hasFiles && setTab('file')}>📎 项目文件{q.trim() && hasFiles ? ' ' + resF.length : ''}</a>
         </div>
-        <input autoFocus value={q} placeholder={tab === 'file' ? '搜项目文件…' : '搜索节点…'} onChange={e => setQ(e.target.value)}
-          onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') onClose(); else if (e.key === 'Tab') { e.preventDefault(); if (hasFiles) flip(); } else if (e.key === 'ArrowDown') { e.preventDefault(); setI(x => Math.min(res.length - 1, x + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setI(x => Math.max(0, x - 1)); } else if (e.key === 'Enter') pick(res[i]); }} />
+        <input autoFocus ref={inRef} value={q} placeholder={tab === 'file' ? '搜项目文件…' : '搜索节点…'} onChange={e => setQ(e.target.value)}
+          onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') onClose(); else if (e.key === 'ArrowDown') { e.preventDefault(); setI(x => Math.min(res.length - 1, x + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setI(x => Math.max(0, x - 1)); } else if (e.key === 'Enter') pick(res[i]); }} />
         <ul>{res.map((r, k) => (
           <li key={r.id} className={k === i ? 'on' : ''} onMouseEnter={() => setI(k)} onClick={() => pick(r)}>
             <b>{r.label}</b><span className="fp">{r.path.split('/').slice(0, -1).join(' / ')}</span>{r.where !== '名字' && <span className="fw">{r.where}</span>}
@@ -625,6 +653,26 @@ export function OverflowBar({ children }) {
         <button className="morebtn" title={'还有 ' + (items.length - n) + ' 个按钮'} onClick={() => setOpen(o => !o)}>⋯</button>
         {open && <div className="moremenu" onClick={() => setOpen(false)}>{items.slice(n)}</div>}
       </span>}
+    </div>
+  );
+}
+
+// >v<🎨画布-替换节点名-Ctrl+H（👤 2026-10-10）：只改本页（或选中几张）节点名里的文本；属性 / 正文别处改
+export function ReplaceBar({ r, setR, total, cur, skip, scopeText, onStep, onOne, onAll, onClose }) {
+  const set = p => setR(x => ({ ...x, ...p, note: '' }));
+  return (
+    <div className="replbar" onPointerDown={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+      <input className="rfind" autoFocus placeholder="查找节点名里的…" value={r.find} onChange={e => set({ find: e.target.value, idx: 0 })}
+        onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') onClose(); else if (e.key === 'Enter') { e.preventDefault(); onStep(e.shiftKey ? -1 : 1); } }} />
+      <span className="rcount">{r.find ? (total ? `${cur + 1} / ${total}` : '没有') : ''}</span>
+      <button title="上一个（Shift+Enter）" onClick={() => onStep(-1)} disabled={!total}>‹</button>
+      <button title="下一个（Enter）" onClick={() => onStep(1)} disabled={!total}>›</button>
+      <input className="rto" placeholder="替换为…" value={r.to} onChange={e => set({ to: e.target.value })}
+        onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') onClose(); else if (e.key === 'Enter') { e.preventDefault(); onOne(); } }} />
+      <button onClick={onOne} disabled={!total} title="只替换当前这个（Enter），然后跳到下一个">替换</button>
+      <button onClick={onAll} disabled={!total} title="把范围里匹配的都换了；一次 Ctrl+Z 整批撤回">全部替换</button>
+      <span className="rhint">{r.note || (skip ? `${skip} 个会因重名等跳过 · ` : '') + scopeText}</span>
+      <button className="rx" title="关闭（Esc）" onClick={onClose}>✕</button>
     </div>
   );
 }

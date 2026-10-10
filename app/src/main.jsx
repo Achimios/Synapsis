@@ -110,7 +110,7 @@ function FlowBridge() {
 }
 
 // >v<🎨画布-ReactFlow-显示 view + 回报选择/拖动/连线/视图
-function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], plane, seeLines, onSelect, onDrill, onConnect, onMove, onContextMenu, onEdgeMenu, onRewire, onRemoveEdges, viewport, onViewport }) {
+function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], plane, seeLines, multiSel = [], onMultiSel, onSelect, onDrill, onConnect, onMove, onContextMenu, onEdgeMenu, onRewire, onRemoveEdges, viewport, onViewport }) {
   // >v<🎨画布-改接连线-按住 Alt 在连线身上任意处按下 = 拿起离鼠标近的那一端（👤 2026-10-08：端点处常叠着好几条线，只能从线身上挑）
   //   放到别的节点 = 改接（标签 / 类型跟过去），放到画布空白 = 删除，拖着时右键 / Esc = 取消，放到画布外（面板上）= 取消
   const [alt, setAlt] = useState(false);
@@ -165,8 +165,9 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   // >v<🎨画布-多选-选择由这里自己管（不用 React Flow 的 Ctrl 多选：两边各管一份会互相触发 → 死循环黑屏，👤 2026-10-08）：
   // 单击 = 只选它；Ctrl+单击 = 加入 / 移出；Shift+单击 = 加上它和当前选中之间路径上的节点；Shift+拖空白 = 框选；
   // Shift+A / D = 沿入线 / 出线扩一层，Alt+Shift+A / D = 扩到头，Ctrl+A = 全选（core/select.js）
-  const [multi, setMultiRaw] = useState([]); // 多选（≥2 张）；单选仍由外壳的 selected 管
-  const setMulti = ids => { const next = ids.length > 1 ? [...new Set(ids)].sort() : []; setMultiRaw(m => m.join('|') === next.join('|') ? m : next); };
+  // 多选（≥2 张）由外壳管（大纲里 Ctrl / Shift 点选也进同一组）；这里只看得到本页上有的；单选仍由外壳的 selected 管
+  const multi = useMemo(() => { const ids = new Set(view.nodes.map(n => n.id)); return multiSel.filter(id => id.startsWith('@') || ids.has(id)); }, [multiSel, view]); // @ 开头的（传送门 / 散图 / 坐标轴）不在 view.nodes 里，但都是本页的 // 引用要稳定：下面的 effect 依赖它
+  const setMulti = ids => { const next = ids.length > 1 ? [...new Set(ids)].sort() : []; onMultiSel?.(m => m.join('|') === next.join('|') ? m : next); };
   const ms = new Set(multi);
   const isSel = id => id === selected || ms.has(id);
   cardActions.multi = multi; // 外壳的 Ctrl+C 要知道多选了哪些
@@ -263,6 +264,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   // 框选结束：读 React Flow 选中的（传送门也算：它们的坐标同样存在 _layout.json）
   const onSelectionEnd = () => setTimeout(() => setMulti(nodesRef.current.filter(n => n.selected && n.id !== '@axes').map(n => n.id)), 0);
   const base = () => multi.length ? multi : selected ? [selected] : [];
+  cardActions.getMulti = () => multi; // Ctrl+H 替换节点名用：选中了几张就只在这几张里换
   const click = (e, n) => {
     if (e.ctrlKey || e.metaKey) {
       const cur = new Set(base());
@@ -316,7 +318,10 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
       onEdgeContextMenu={(e, edge) => { e.preventDefault(); onEdgeMenu?.(edge.id, e.clientX, e.clientY); }}
       onEdgeClick={() => {}} /* 有点击回调连线才接收鼠标（右键菜单、Alt 拖都要用） */
       className={alt ? 'altdown' : ''}
-      onNodeDoubleClick={(_, n) => onDrill(n.id)}
+      onNodeDoubleClick={(ev, n) => { // 只有双击标题行（节点名一带）才钻进去；标题上的小图标（▸ ⊞ 📄 ☰ 🖼）不算
+        const t = ev.target; if (t.closest?.('.kids, .textbadge, .propbadge, .picbadge')) return;
+        const root = t.closest?.('.react-flow__node'); if (root?.querySelector('.title') && !t.closest('.title')) return;
+        onDrill(n.id); }}
       onNodeDragStart={(_, n, dragged) => { dragStart.current = { pos: Object.fromEntries((dragged || [n]).map(d => [d.id, { ...d.position }])) }; }}
       onNodeDrag={(e, n, dragged) => setDropAt(e, (dragged || [n]).map(d => d.id))}
       onNodeDragStop={(e, n, dragged) => { dragStart.current = null;

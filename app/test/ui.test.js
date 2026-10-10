@@ -483,7 +483,7 @@ for (const kind of ['reactflow']) {
   if (SHOTS) await page.screenshot({ path: SHOTS + '/space_drag.png' });
   ok(sat(e1.stroke) < sat(e0.stroke) * 0.6, '拖远后颜色也变灰（饱和度降低） ' + e0.stroke + ' → ' + e1.stroke);
   await page.click('.react-flow__controls-fitview'); await sleep(600); // 拖到边上会自动平移，先看全
-  await page.mouse.dblclick(...mid(await (await card('情绪空间')).boundingBox())); await sleep(1000);
+  await page.mouse.dblclick(...mid(await (await (await card('情绪空间')).$('.lab')).boundingBox())); await sleep(1000);
   ok(!!(await page.$('.planebar')) && (await page.$eval('.planebar', e => e.innerText)).includes('夹角 90°'), '钻进空间 → 投影工具条，轴夹角 90°');
   // 坐标核对：卡片中心相对坐标轴原点 / 单位长度 = (愉悦, 唤醒)
   const ax = await (await page.$('svg.axes')).boundingBox(), o = mid(ax), unit = ax.width / 2.5;
@@ -557,9 +557,9 @@ for (const kind of ['reactflow']) {
   await page.reload(); await sleep(1800);
   await page.mouse.click(700, 700); await page.keyboard.press('Control+z'); await sleep(1800);
   ok(existsSync(join(ws, '__synapsis', '丙.md')) && !!(await card('丙')), '删除 → 刷新页面 → Ctrl+Z 仍能撤回 ' + await save());
-  // 操作历史栏（Shift+Tab）：每一步一句人话；点一行 = 回到做完那一步
-  await page.mouse.click(700, 700); await page.keyboard.press('Shift+Tab'); await sleep(300);
-  ok(!!(await page.$('.histcol')), 'Shift+Tab → 操作历史栏（大纲栏右边）');
+  // 操作历史栏（Shift+`）：每一步一句人话；点一行 = 回到做完那一步
+  await page.mouse.click(700, 700); await page.keyboard.press('Shift+Backquote'); await sleep(300);
+  ok(!!(await page.$('.histcol')), 'Shift+` → 操作历史栏（大纲栏右边）');
   const hrows = () => page.$$eval('.histcol .hrow', rs => rs.map(r => r.className.replace('hrow', '').trim() + ':' + r.querySelector('.ht').textContent));
   let hr = await hrows();
   ok(hr.length === 1 && hr[0] === 'future:删除 丙', '历史里写着「删除 丙」，撤销掉了 → 灰的（还能重做）；删甲那几步在撤销后又删丙时被新分支替掉 ' + hr);
@@ -644,7 +644,7 @@ for (const kind of ['reactflow']) {
   await page.keyboard.press('Escape');
   saveOutline(ws, '组\n  里面 -> 外一, 外二\n外一\n外二');
   await page.reload(); await sleep(1800);
-  await page.mouse.dblclick(...mid(await (await card('组')).boundingBox())); await sleep(1000);
+  await page.mouse.dblclick(...mid(await (await (await card('组')).$('.lab')).boundingBox())); await sleep(1000);
   const pb = await Promise.all((await page.$$('.card.portal')).map(c => c.boundingBox()));
   ok(pb.length === 2, '组里有 2 个传送门');
   const pl = Math.min(...pb.map(b => b.x)) - 15, pt = Math.min(...pb.map(b => b.y)) - 15;
@@ -825,7 +825,7 @@ for (const kind of ['reactflow']) {
     });
   });
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
-  const ws = mkdtempSync(join(tmpdir(), 'syn-ai-ui-')); noAi(ws, `http://127.0.0.1:${srv.address().port}/v1`, { chat: 'chat-x', embed: 'emb-x' });
+  const ws = mkdtempSync(join(tmpdir(), 'syn-ai-ui-')); noAi(ws, `http://127.0.0.1:${srv.address().port}/v1`, { chat: 'chat-x', embed: 'emb-x', semColors: true }); // 显式打开：别受真实设置影响（项目根 .synapsis/ai.json 的 semColors 可能被人关了）
   saveOutline(ws, '惊慌失措\n情绪恐惧\n情绪反应\n传感器\n咕噜人\n吓坏了');
   writeFileSync(join(ws, '__synapsis', '_配色.md'), words);
   setNodeBody(ws, '传感器', '# 读数\n\n| 名 | 值 |\n|---|---|\n| 视野 | **90** |\n\n- 第一条\n- 第二条');
@@ -930,7 +930,7 @@ for (const kind of ['reactflow']) {
   // 卡片上显示人加的属性
   await page.mouse.click(700, 760); await sleep(200); // AI 预览时已选中它，再点一下会取消
   await page.mouse.click(...mid(await (await lab('咕噜人')).boundingBox())); await sleep(300);
-  if (!(await page.$('.addrow'))) { await page.keyboard.press('Control+Tab'); await sleep(500); }
+  if (!(await page.$('.addrow'))) { await page.keyboard.press('Shift+Tab'); await sleep(500); }
   const gmd = () => readFileSync(join(ws, '__synapsis', '咕噜人.md'), 'utf8');
   const cardP = () => page.$$eval('.card', cs => cs.find(c => c.querySelector('.lab')?.textContent === '咕噜人')?.querySelector('.props')?.textContent || '');
   // 属性表：失焦也能加（不用回车）、改名、清空值不删、✕ 删
@@ -1011,13 +1011,14 @@ for (const kind of ['reactflow']) {
   await page.keyboard.press('Alt+KeyW'); await sleep(1200);
   await page.mouse.move(700, 650); await page.keyboard.press('Control+v'); await sleep(2000);
   ok(existsSync(join(ws, '__synapsis', '咕噜人.md')) && /血量: 120/.test(readFileSync(join(ws, '__synapsis', '咕噜人.md'), 'utf8')) && !existsSync(join(ws, '__synapsis', '情绪反应', '咕噜人.md')), 'Ctrl+X → 回到根 Ctrl+V = 剪出来（属性还在）');
-  // 大纲树拖动：行 → 行 = 放进去；行 → 树下空白 = 挪到根；行 → 画布卡片 = 放进那张卡
+  // 大纲树拖动（👤 2026-10-10）：只调同一层的次序，拖到别的行上不再「放进去」；行 → 画布卡片 = 放进那张卡
   const F = p => join(ws, '__synapsis', ...p.split('/')) + '.md';
-  await page.dragAndDrop('.orow:has(.olab:text-is("吓坏了"))', '.orow:has(.olab:text-is("传感器"))'); await sleep(2000);
-  ok(existsSync(F('传感器/吓坏了')) && !existsSync(F('吓坏了')), '大纲树：把「吓坏了」拖到「传感器」上 → 放进去');
-  const tb2 = await (await page.$('.otree')).boundingBox();
-  await page.dragAndDrop('.orow:has(.olab:text-is("吓坏了"))', '.otree', { targetPosition: { x: 40, y: tb2.height - 20 } }); await sleep(2000);
-  ok(existsSync(F('吓坏了')) && !existsSync(F('传感器/吓坏了')), '拖到树下面的空白 → 挪回根');
+  const orows = () => page.$$eval('.orow .olab', es => es.map(e => e.textContent));
+  await page.dragAndDrop('.orow:has(.olab:text-is("吓坏了"))', '.orow:has(.olab:text-is("传感器"))', { targetPosition: { x: 40, y: 3 } }); await sleep(1800);
+  ok(!existsSync(F('传感器/吓坏了')) && existsSync(F('吓坏了')), '大纲树：拖到另一行上 → 只调次序，不放进去');
+  const first = (await orows())[0];
+  await page.dragAndDrop('.orow:has(.olab:text-is("吓坏了"))', `.orow:has(.olab:text-is("${first}"))`, { targetPosition: { x: 40, y: 3 } }); await sleep(1800);
+  ok((await orows())[0] === '吓坏了', '拖到第一行的上半 → 排到最前面 ' + (await orows()).slice(0, 3));
   await page.dragAndDrop('.orow:has(.olab:text-is("吓坏了"))', '.react-flow__node[data-id="惊慌失措"]'); await sleep(2000);
   ok(existsSync(F('惊慌失措/吓坏了')), '从大纲树拖到画布的卡片上 → 放进那张卡');
   // 右键空白「在这里新建」→ 新卡片在鼠标处
@@ -1399,9 +1400,9 @@ for (const kind of ['reactflow']) {
   ok(names() === '组 1:甲+乙 | 组 2:丙', 'Ctrl+Z → 撤销钉 丁 ' + names());
   await page.keyboard.press('Control+Shift+z'); await sleep(900);
   ok(names() === '组 1:甲+乙+丙/丁 | 组 2:丙', 'Ctrl+Shift+Z → 重做 ' + names());
-  await page.keyboard.press('Shift+Tab'); await sleep(500);
+  await page.keyboard.press('Shift+Backquote'); await sleep(500);
   ok((await page.$$eval('.histcol .hrow', ls => ls.map(l => l.innerText)).catch(() => [])).some(t => t.includes('钉到「组 1」')), '操作历史栏里记着「钉到「组 1」…」');
-  await page.keyboard.press('Shift+Tab'); await sleep(300);
+  await page.keyboard.press('Shift+Backquote'); await sleep(300);
   // 清空 → 组留着；撤销 → 钉子回来
   await page.click('.pinbox .hgroup:nth-child(1) .hghead a:has-text("清空")'); await sleep(800);
   ok(hk().groups.length === 2 && hk().groups[0].items.length === 0, '清空 → 钉子没了，组还在');
@@ -1563,6 +1564,44 @@ for (const kind of ['reactflow']) {
   await page.dblclick('.pinbox li:nth-child(3) .hlab'); await sleep(1000);
   ok(/找不到文件/.test(await page.$eval('.save', e => e.textContent).catch(() => '')), '文件被删 → 状态栏说找不到文件');
   await page.mouse.click(700, 800);
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
+// —— 🔁 Ctrl+H 替换节点名 + 双击只在标题行钻进去（👤 2026-10-10）——
+{
+  console.log('== 替换节点名');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-repl-ui-')); noAi(ws);
+  saveOutline(ws, '敌人A\n敌人B\n友军\n  敌人C');
+  writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 敌人A: { x: 0, y: 0 }, 敌人B: { x: 300, y: 0 }, 友军: { x: 600, y: 0 } }));
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
+  const labs = () => page.$$eval('.card .lab', e => e.map(x => x.textContent).sort().join(','));
+  const crumb = () => page.$eval('.crumbs', e => e.innerText.replace(/\s+/g, ''));
+  // 双击标题上的小图标不进入，双击节点名才进入
+  await page.dblclick('.card .kids:not(.fr)'); await sleep(700);
+  ok((await crumb()) === '根', '双击 ▸ 小图标 → 不钻进去 ' + await crumb());
+  const l友 = await (async () => { for (const t of await page.$$('.card .lab')) if ((await t.textContent()) === '友军') return t; })();
+  await l友.dblclick(); await sleep(900);
+  ok((await crumb()).includes('友军'), '双击节点名 → 钻进去 ' + await crumb());
+  await page.keyboard.press('Alt+KeyW'); await sleep(800);
+  // Ctrl+H
+  await page.mouse.click(700, 700); await page.keyboard.press('Control+KeyH'); await sleep(300);
+  ok(!!(await page.$('.replbar')), 'Ctrl+H → 出现替换条');
+  await page.fill('.replbar .rfind', '敌人'); await sleep(400);
+  ok((await page.$eval('.replbar .rcount', e => e.textContent)) === '1 / 2', '本页两个匹配（子页的敌人C 不算） ' + await page.$eval('.replbar .rcount', e => e.textContent));
+  await page.fill('.replbar .rto', '怪物');
+  await page.click('.replbar button:text-is("替换")'); await sleep(1800);
+  ok((await labs()).includes('怪物A') && (await labs()).includes('敌人B'), '替换 = 只改当前这个 ' + await labs());
+  ok(/1 \/ 1/.test(await page.$eval('.replbar .rcount', e => e.textContent)), '替换完剩 1 个 ' + await page.$eval('.replbar .rcount', e => e.textContent));
+  await page.fill('.replbar .rfind', '敌人'); await page.fill('.replbar .rto', '兵'); await sleep(300);
+  await page.click('.replbar button:text-is("全部替换")'); await sleep(1800);
+  ok((await labs()) === '兵B,友军,怪物A', '全部替换（剩下的敌人B） ' + await labs());
+  await page.click('.replbar .rx'); await sleep(300);
+  ok(!(await page.$('.replbar')), '✕ 关掉替换条');
+  await page.mouse.click(700, 700); await page.keyboard.press('Control+z'); await sleep(1800);
+  ok((await labs()) === '友军,怪物A,敌人B', 'Ctrl+Z → 全部替换一步撤回 ' + await labs());
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });

@@ -352,3 +352,86 @@ export function withLabel(g, id, label) {
   h.nodes.get(id).label = label;
   return toOutline(h); // toOutline 按 label 输出，id 在重新解析时自然变成新路径
 }
+
+// >v<🌳大纲模型-批量改名-Ctrl+H 替换节点名里的文本（👤 2026-10-10）：只改名字，不碰正文 / 属性 / 引用
+// ids = 要查的节点；only = 只改这一个；caseSens 默认不区分大小写。
+// 改完同级重名 / 空名 / 含 -> 或逗号的，那几个跳过（skipped），其余照改；返回 {text, changed:[{id,to,from,label}], skipped:[{id,label,why}]}
+export function replaceLabels(g, ids, find, repl, { only = null, caseSens = false } = {}) {
+  const none = { text: null, changed: [], skipped: [] };
+  if (!find) return none;
+  const re = new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), caseSens ? 'g' : 'gi');
+  const want = new Map(); // id → 新名
+  for (const id of ids) {
+    if (only && id !== only) continue;
+    const n = g.nodes.get(id); if (!n) continue;
+    re.lastIndex = 0;
+    const to = n.label.replace(re, () => repl).trim();
+    if (to !== n.label) want.set(id, to);
+  }
+  const skipped = [], drop = (id, why) => { skipped.push({ id, label: g.nodes.get(id).label, why }); want.delete(id); };
+  for (const [id, to] of [...want]) if (!to) drop(id, '名字会变空'); else if (/->|[,，]/.test(to)) drop(id, '名字里不能有 -> 或逗号');
+  for (let again = true; again;) { // 同级重名：撞上谁（包括没改的兄弟、也在改名的兄弟）就跳过谁，直到稳定
+    again = false;
+    const seen = new Map(); // 父|名 → id
+    for (const [id, n] of g.nodes) {
+      if (id === ROOT) continue;
+      const key = n.parent + '\u0000' + (want.get(id) ?? n.label);
+      if (!seen.has(key)) { seen.set(key, id); continue; }
+      const other = seen.get(key), loser = want.has(id) ? id : want.has(other) ? other : null;
+      if (loser) { drop(loser, '同级已有同名'); again = true; break; }
+    }
+  }
+  if (!want.size) return { ...none, skipped };
+  const h = cloneGraph(g);
+  for (const [id, to] of want) h.nodes.get(id).label = to;
+  const newId = id => { const n = g.nodes.get(id); let p = n.parent, path = [want.get(id) ?? n.label]; while (p !== ROOT) { const pn = g.nodes.get(p); path.unshift(want.get(p) ?? pn.label); p = pn.parent; } return path.join('/'); };
+  return { text: toOutline(h), changed: [...want].map(([id, to]) => ({ id, to: newId(id), from: g.nodes.get(id).label, label: to })), skipped };
+}
+
+// >v<🌳大纲模型-调次序-大纲里拖一行到另一行的上 / 下（👤 2026-10-10：大纲里拖动只调次序，不再「拖进别的节点」）
+//   ids 和 target 必须是同一个父节点的兄弟；ids 按它们原来的先后挪到 target 前 / 后。返回 {text} 或 {error}
+export function withReordered(g, ids, target, where = 'before') {
+  const t = g.nodes.get(target);
+  if (!t || target === ROOT) return { error: '目标不存在' };
+  const set = ids.filter(id => g.nodes.has(id) && id !== target);
+  if (!set.length) return { error: '没有要挪的' };
+  if (set.some(id => g.nodes.get(id).parent !== t.parent)) return { error: '大纲里拖动只能调同一层的次序（要换层请在画布上拖，或用剪切粘贴）' };
+  const kids = g.nodes.get(t.parent).children, moving = kids.filter(c => set.includes(c));
+  const rest = kids.filter(c => !set.includes(c)), at = rest.indexOf(target) + (where === 'after' ? 1 : 0);
+  const next = [...rest.slice(0, at), ...moving, ...rest.slice(at)];
+  if (next.every((c, i) => c === kids[i])) return { error: '次序没变' };
+  const h = cloneGraph(g);
+  h.nodes.get(t.parent).children = next;
+  return { text: toOutline(h) };
+}
+
+// >v<🌳大纲模型-分组排序-同一层的节点按「连在一起」分组，组内按流向排（👤 2026-10-10）
+//   连线「提」到这一层：A 里的子节点连到 B 里的子节点，A、B 算同一组（以后细调多半是子节点连子节点）；没有任何连线的并成最后一组（loose）。
+//   组内次序：从没有入线的节点（环里没有就取原顺序里第一个）顺着线走一遍（深度优先、按原顺序），走回当前路径上的线 = 回环线，忽略；
+//   然后数每个节点「不重复的上游节点」个数，少的在前、同数保持原顺序。下游的上游一定比它的上游多 → 永远是先后顺序；出线多少不管。
+export function groupSiblings(g, parent = ROOT) {
+  const kids = g.nodes.get(parent)?.children || [], idx = new Map(kids.map((k, i) => [k, i]));
+  const top = new Map();
+  for (const k of kids) { const st = [k]; while (st.length) { const x = st.pop(); top.set(x, k); st.push(...g.nodes.get(x).children); } }
+  const outs = new Map(kids.map(k => [k, new Set()])), ins = new Map(kids.map(k => [k, new Set()]));
+  for (const e of g.edges) { const a = top.get(e.from), b = top.get(e.to); if (a && b && a !== b) { outs.get(a).add(b); ins.get(b).add(a); } }
+  const uf = new Map(kids.map(k => [k, k])), find = x => { while (uf.get(x) !== x) { uf.set(x, uf.get(uf.get(x))); x = uf.get(x); } return x; };
+  for (const [a, s] of outs) for (const b of s) uf.set(find(a), find(b));
+  const comp = new Map();
+  for (const k of kids) { const r = find(k); (comp.get(r) || comp.set(r, []).get(r)).push(k); }
+  const groups = [], loose = [];
+  for (const members of comp.values()) {
+    if (members.length === 1 && !outs.get(members[0]).size && !ins.get(members[0]).size) { loose.push(members[0]); continue; }
+    const state = new Map(), dagIn = new Map(members.map(m => [m, []])), post = [];
+    const dfs = u => { state.set(u, 1); for (const v of [...outs.get(u)].sort((a, b) => idx.get(a) - idx.get(b))) { if (state.get(v) === 1) continue; dagIn.get(v).push(u); if (!state.has(v)) dfs(v); } state.set(u, 2); post.push(u); };
+    const entries = members.filter(m => !ins.get(m).size);
+    for (const m of [...(entries.length ? entries : [members[0]]), ...members]) if (!state.has(m)) dfs(m);
+    const anc = new Map();
+    for (const u of post.reverse()) { const s = new Set(); for (const p of dagIn.get(u)) { s.add(p); for (const x of anc.get(p)) s.add(x); } anc.set(u, s); }
+    const ids = [...members].sort((a, b) => anc.get(a).size - anc.get(b).size || idx.get(a) - idx.get(b));
+    groups.push({ ids, loose: false, info: Object.fromEntries(ids.map(i => [i, { up: anc.get(i).size, direct: ins.get(i).size }])) }); // up = 不重复的上游节点数（排序用），direct = 直接入线条数
+  }
+  groups.sort((a, b) => Math.min(...a.ids.map(i => idx.get(i))) - Math.min(...b.ids.map(i => idx.get(i))));
+  if (loose.length) groups.push({ ids: loose, loose: true, info: Object.fromEntries(loose.map(i => [i, { up: 0, direct: 0 }])) });
+  return groups;
+}

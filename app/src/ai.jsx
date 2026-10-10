@@ -242,12 +242,13 @@ export function useBoxGeometry(storeKey = GEO_KEY) { // 钉子窗口也用（pin
   return { ref, drag, reset: () => keep(null), style: c ? { left: c.left, top: c.top, width: c.width, height: c.height, bottom: 'auto', transform: 'none', maxHeight: 'none' } : undefined };
 }
 
-export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, onClose, onWordsApplied }) {
+export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, onClose, onWordsApplied, preset = null }) {
   // 关掉框 / 关窗口不丢（托盘重启才清，见 stash.js）：没发出的话、在哪一页、待确认的动作
   const [tab, setTab] = useStash('agent.tab', 'chat');
   const [turns, setTurns] = useState([]);
   const [text, setText] = useStash('agent.text', '');
   const [busy, setBusy] = useState('');
+  useEffect(() => { if (preset) { setTab('chat'); setText(preset.text); } }, [preset?.n]); // 外面的按钮（大纲 ⇅ 自动排序）预先写好一句话，人改改再 Enter
   const [plan, setPlan] = useStash('plan', null); // {say, actions}；服务端在 AI 回话时也会记一份
   // 打开时 AI 还在想（上次没等它回就关了框）→ 等它想完，把结果接回来
   useEffect(() => {
@@ -255,7 +256,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
     const poll = () => api('/ui/stash').then(s => {
       if (stop) return;
       if (s.thinking) { setBusy('🧠 还在想：「' + s.thinking + '」…'); setTimeout(poll, 1000); }
-      else { setBusy(b => b.startsWith('🧠') ? '' : b); if (s.plan) setPlan(s.plan); if (!('agent.text' in s)) setText(''); api('/ai/chat').then(d => setTurns(d.turns)).catch(() => {}); }
+      else { setBusy(b => b.startsWith('🧠') ? '' : b); if (s.plan) setPlan(s.plan); if (!('agent.text' in s) && !preset) setText(''); api('/ai/chat').then(d => setTurns(d.turns)).catch(() => {}); }
     }).catch(() => {});
     poll();
     return () => { stop = true; };
@@ -308,7 +309,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
         <span style={{ flex: 1 }} />
         <CtxMeter ctx={ctx} usage={usage} />
         {tab === 'chat' && <button title="清空短记忆（换个话题）" onClick={() => api('/ai/chat', { method: 'DELETE' }).then(d => { setTurns(d.turns); setPlan(null); setUsage(null); })}>🧹 清空记忆</button>}
-        <button title="关闭（Esc）" onClick={onClose}>✕</button>
+        <button title="关闭（Esc / Shift+F）" onClick={onClose} style={{ marginLeft: 'auto' }}>✕</button>
       </div>
       {tab === 'chat' ? <>
         <div className="turns" ref={list}>

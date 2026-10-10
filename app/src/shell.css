@@ -341,7 +341,7 @@ button.aibtn.off { opacity: .7; }
 
 /* AI 指令框（Ctrl+J） */
 .agentbox { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(680px, 94vw); max-height: 62vh; z-index: 900; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; box-shadow: 0 8px 28px rgba(0,0,0,.5); overflow: hidden; }
-.agentbox .bar { display: flex; gap: 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); cursor: move; user-select: none; }
+.agentbox .bar { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); cursor: move; user-select: none; }
 .agentbox { resize: both; min-width: 360px; min-height: 160px; } /* 右下角拖大小（位置和大小记在本机，ai.jsx useBoxGeometry） */
 .agentbox .bar a, .agentbox .bar button { cursor: pointer; }
 .agentbox .bar a { cursor: pointer; color: var(--dim); } .agentbox .bar a.on { color: var(--text); border-bottom: 2px solid var(--accent); }
@@ -412,8 +412,8 @@ button.patsw.on { outline: 2px solid var(--accent); } button.patsw.auto-on { out
 .card.portal.faded { opacity: .35; } .card.portal.faded:hover { opacity: .9; }
 
 /* 大纲树拖动：放进这一行 / 挪到根 */
-.orow.dropin { outline: 1px dashed var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
-.otree.dropr { box-shadow: inset 0 0 0 1px var(--accent); }
+.orow.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.orow.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
 
 /* 图片灯箱 */
 .lightbox { position: fixed; inset: 0; z-index: 1100; background: rgba(0,0,0,.82); display: flex; align-items: center; justify-content: center; cursor: zoom-out; }
@@ -567,3 +567,43 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 .ctx .mi.expchips { gap: 4px; }
 .ctx .mi.expchips button.on { background: var(--selbg); border-color: var(--accent); }
 .ctx .mi.expchips button.off { opacity: .4; cursor: default; }
+
+/* Ctrl+H 替换节点名 */
+.replbar { position: fixed; top: 52px; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; box-shadow: 0 4px 18px rgba(0,0,0,.35); max-width: calc(100vw - 24px); flex-wrap: wrap; }
+.replbar input { width: 150px; padding: 4px 8px; font: 13px system-ui, "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); border: 1px solid var(--line2); border-radius: 3px; outline: none; }
+.replbar input:focus { border-color: var(--accent); }
+.replbar button { padding: 3px 9px; font: 12px system-ui, "Microsoft YaHei", sans-serif; background: var(--panel2); color: var(--text); border: 1px solid var(--line2); border-radius: 3px; cursor: pointer; }
+.replbar button:hover:not(:disabled) { border-color: var(--accent); }
+.replbar button:disabled { opacity: .4; cursor: default; }
+.replbar .rcount { min-width: 44px; text-align: center; color: var(--dim); font-size: 12px; }
+.replbar .rhint { color: var(--dim); font-size: 11px; }
+.replbar .rx { border: none; background: none; color: var(--dim); }
+
+/* 左栏内容排成两列（大纲树 / 文件树）：aside 自己竖向滚，树按高度平分成两列，行不被切开 */
+.outline .colsbtn { margin-left: auto; cursor: pointer; color: var(--dim); } .outline .colsbtn.on, .outline .colsbtn:hover { color: var(--accent); }
+.outline.cols { overflow-y: auto; }
+.outline.cols .bar.tabs { position: sticky; top: 0; z-index: 2; background: var(--panel); }
+.outline.cols .otree, .outline.cols .files { flex: none; overflow: visible; column-gap: 6px; }
+.outline.cols2 .otree, .outline.cols2 .files { column-count: 2; } .outline.cols3 .otree, .outline.cols3 .files { column-count: 3; }
+.outline.cols .orow, .outline.cols .fi { break-inside: avoid; }
+.outline.cols .files .ftools { column-span: all; }
+.outline .herebtn { margin-left: auto; cursor: pointer; color: var(--dim); } .outline .herebtn.on, .outline .herebtn:hover { color: var(--accent); }
+.outline .herebtn + .colsbtn { margin-left: 8px; }
+.outline .lockbtn { margin-left: auto; cursor: pointer; font-size: 12px; opacity: .6; } .outline .lockbtn.on, .outline .lockbtn:hover { opacity: 1; }
+.outline .lockbtn + .herebtn { margin-left: 8px; }
+
+/* 大纲：分组视图 / 自动排序按钮 */
+.outline .groupbtn, .outline .sortbtn { cursor: pointer; color: var(--dim); font-size: 13px; margin-left: 8px; } .outline .groupbtn.on, .outline .groupbtn:hover, .outline .sortbtn:hover { color: var(--accent); }
+.outline .groupbtn:first-of-type { margin-left: auto; }
+.outline .lockbtn { margin-left: 8px; } .outline .lockbtn + .herebtn { margin-left: 8px; }
+.ogchips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 3px 8px; font-size: 11px; color: var(--dim); }
+.ogchips a { cursor: pointer; padding: 0 6px; border: 1px solid var(--line2); border-radius: 9px; color: var(--text); } .ogchips a:hover { border-color: var(--accent); }
+.ogchips a i { font-style: normal; color: var(--dim); margin-left: 3px; }
+.ogh { font-size: 11px; color: var(--dim); padding: 4px 8px 1px; border-top: 1px solid var(--line); margin-top: 4px; }
+.ogroup:first-child .ogh { border-top: 0; margin-top: 0; }
+.outline.cols .ogroup .ogh { column-span: all; }
+.outline.cols2 .otree:has(.ogroup), .outline.cols3 .otree:has(.ogroup) { column-count: 1; }
+.outline.cols2 .ogroup { column-count: 2; column-gap: 6px; } .outline.cols3 .ogroup { column-count: 3; column-gap: 6px; }
+.outline .bar.tabs .hint { flex: 1; }
+.outline .colsbtn, .outline .herebtn, .outline .lockbtn, .outline .groupbtn, .outline .sortbtn { margin-left: 8px; }
+.orow .oup { margin-left: auto; padding: 0 5px; font-size: 10px; color: var(--dim); border: 1px solid var(--line2); border-radius: 8px; flex: none; } .orow .oup + .odrill { margin-left: 4px; }
