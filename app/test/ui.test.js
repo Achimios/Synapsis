@@ -1130,11 +1130,9 @@ for (const kind of ['reactflow']) {
   ok(!(await page.$('.react-flow__node-frame')) && layoutFile() === L0, '再点两次 → 回到不接管，框没了，坐标文件还是原样');
   // 右键卡片：最上面「展开」四个小按钮；新建 / 钻进去收进悬停二级
   await page.mouse.click(...(m => [m.x + m.width / 2, m.y + m.height / 2])(await (await page.$('.card .lab')).boundingBox()), { button: 'right' }); await sleep(300);
-  ok(!(await page.$('.ctx .expchips')) && !!(await page.$('.ctx .mi.sub')), '节点右键：展开按钮已挪走，第一个二级是「新建 / 钻进去」');
-  ok(!(await page.$eval('.ctx .mi.sub .submenu', e => getComputedStyle(e).display !== 'none')), '「新建 / 钻进去」二级默认不显示');
-  await page.hover('.ctx .mi.sub'); await sleep(250);
-  const sub2 = await page.$$eval('.ctx .submenu .mi', e => e.map(x => x.textContent));
-  ok(sub2.length === 3 && sub2.some(t => t.includes('新建子节点')) && sub2.some(t => t.includes('新建同级')) && sub2.some(t => t.includes('钻进去')), '鼠标移上去 → 弹出 新建子节点 / 新建同级 / 钻进去 ' + sub2);
+  ok(!(await page.$('.ctx .expchips')), '节点右键：展开按钮已挪走');
+  const mis = await page.$$eval('.ctx > .mi', e => e.map(x => x.textContent));
+  ok(mis.filter(t => t.includes('新建')).length === 1 && mis.some(t => t.includes('新建子节点')) && !mis.some(t => t.includes('新建同级') || t.includes('钻进去')), '节点右键：只留一个「新建子节点」，没有二级 / 新建同级 / 钻进去 ' + mis);
   await page.mouse.move(600, 300); await sleep(150);
   await page.keyboard.press('Escape'); await sleep(150); await page.click('.card .kids:not(.fr)'); await sleep(500);
   ok((await nKids()) === 1, '点卡片标题上的 ▸ → 子级展开');
@@ -1192,12 +1190,16 @@ for (const kind of ['reactflow']) {
   await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
   // 饱和度档：没选颜色时灰着；选了蓝 → 50% → color: 蓝/50
   await page.click('.card .lab:text-is("甲")', { button: 'right' }); await sleep(300);
-  ok((await page.$$eval('.swatches.sat button', e => e.map(x => x.disabled))).every(Boolean), '没选颜色（自动）时饱和度档灰着');
+  ok((await page.$$eval('.ctx .swatches.sat button', e => e.map(x => x.disabled))).every(x => !x) && (await page.$$('.ctx .swatches.sat button')).length === 4, '自动色时饱和度档也能点（不再灰着）');
   await page.click('.swatches:not(.sat):not(.pats) button[title="蓝"]'); await sleep(1200);
   await page.click('.card .lab:text-is("甲")', { button: 'right' }); await sleep(300);
   await page.click('.swatches.sat button[title="50%"]'); await sleep(1200);
   ok(/color: 蓝\/50/.test(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8')), '选蓝再点 50% → 写进 color: 蓝/50');
   ok((await page.$eval('.card:has(.lab:text-is("甲"))', e => e.style.getPropertyValue('--c'))) !== '#4d9bff', '卡片颜色变淡了（不是原来的蓝）');
+  await page.mouse.click(1000, 300); await sleep(300); await page.click('.card .lab:text-is("甲")'); await sleep(500);
+  ok((await page.$$('aside.side .swatches.sat button')).length === 4, '右栏属性里也有饱和度一行');
+  await page.click('aside.side .swatches.sat button[title="25%"]'); await sleep(1200);
+  ok(/color: 蓝\/25/.test(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8')), '右栏点 25% → 写进 color: 蓝/25');
   // 新建 UI 框
   await page.mouse.click(700, 600, { button: 'right' }); await sleep(300);
   await page.click('.ctx .mi:has-text("新建 UI 框")'); await sleep(1500);
@@ -1228,7 +1230,7 @@ for (const kind of ['reactflow']) {
 {
   console.log('== 空白处属性与 Enter');
   const ws = mkdtempSync(join(tmpdir(), 'syn-blank-ui-')); noAi(ws);
-  saveOutline(ws, '父\n  子甲\n  子乙');
+  saveOutline(ws, '父\n  子甲\n  子乙\n  子丙');
   setNodeBody(ws, '父/子甲', '短行\n短二');
   writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 父: { x: 0, y: 0 } }));
   const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
@@ -1238,6 +1240,11 @@ for (const kind of ['reactflow']) {
   ok(/选中一个节点看它的属性/.test(await page.$eval('aside.side', e => e.innerText)), '根里没选中 → 还是「选中一个节点看它的属性」');
   await page.keyboard.press('Enter'); await sleep(800);
   ok((await page.$$('.card')).length === 1, '根里没选中按 Enter → 不新建节点');
+  // 展开子级列表后，对着某个子节点右键 = 那个子节点的菜单（不是父卡的）
+  await page.click('.card .kids:not(.fr)'); await sleep(500);
+  await page.click('.kidlist li:has-text("子乙")', { button: 'right' }); await sleep(400);
+  await page.click('.ctx .mi:has-text("删除")'); await sleep(1500);
+  ok(existsSync(join(ws, '__synapsis', '父', '子甲.md')) && !existsSync(join(ws, '__synapsis', '父', '子乙.md')) && (await page.$$('.card .lab:text-is("父")')).length === 1, '右键展开列表里的「子乙」→ 删除删的是子乙，不是整个父卡');
   await page.dblclick('.card .lab:text-is("父")'); await sleep(1200);
   await page.mouse.click(700, 700); await sleep(500);
   ok((await page.$$('.card.sel')).length === 0, '进入「父」后点空白 → 没有选中的卡');

@@ -313,7 +313,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
     <ReactFlow nodes={shown} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChange} onSelectionEnd={onSelectionEnd}
       onNodeClick={click} multiSelectionKeyCode={null} disableKeyboardA11y
       onPaneClick={() => { onSelect(null); setMulti([]); }}
-      onNodeContextMenu={(e, n) => { e.preventDefault(); onContextMenu(n.id, e.clientX, e.clientY); }}
+      onNodeContextMenu={(e, n) => { e.preventDefault(); const li = e.target.closest?.('.kidlist li[data-nid]'); onContextMenu(li ? li.dataset.nid : n.id, e.clientX, e.clientY); }} /* 右键展开的子节点列表里的一行 = 那个子节点的菜单，不是父卡的 */
       onPaneContextMenu={e => { e.preventDefault(); onContextMenu(null, e.clientX, e.clientY); }}
       onEdgeContextMenu={(e, edge) => { e.preventDefault(); onEdgeMenu?.(edge.id, e.clientX, e.clientY); }}
       onEdgeClick={() => {}} /* 有点击回调连线才接收鼠标（右键菜单、Alt 拖都要用） */

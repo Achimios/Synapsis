@@ -1321,7 +1321,7 @@ export function NodeCard({ node, img, dim, isSel }) {
       {node.spaceAxes && <div className="axchips" title="空间节点：双击进去看成员的坐标投影">⊹ {node.spaceAxes.join(' · ')}</div>}
       {node.vec && <VecBars vec={node.vec} axes={node.vecAxes} />}
       {node.open && node.kids && <ul className="kidlist">{node.kids.map(k => (
-        <li key={k.id} title="双击跳进去" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
+        <li key={k.id} data-nid={k.id} title="双击跳进去（右键 = 这个子节点的菜单）" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
           <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span>{k.renaming ? <RenameInput id={k.id} label={k.label} /> : <span className={k.status === 'dropped' ? 'strike' : ''}>{k.label}</span>}{k.n > 0 && <span className="kn">▸{k.n}</span>}
         </li>))}</ul>}
       {showPics && <div className={'pics n' + Math.min(img.length, 3)}>{img.map((u, i) => <img key={u} src={u} className="nodrag" draggable title="双击放大；拖到空白 = 变散图，拖到别的卡 = 换给它" onDragStart={e => { const p = new URL(u, location.href).searchParams.get('p'); e.dataTransfer.setData(DRAG_PIC, JSON.stringify({ path: p, from: node.id })); e.dataTransfer.effectAllowed = 'move'; }} onDoubleClick={e => { e.stopPropagation(); cardActions.lightbox?.(img, i); }} />)}

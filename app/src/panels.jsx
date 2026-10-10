@@ -82,11 +82,11 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         <button title="自动（按分组 / 名字配色，子节点跟着父节点）" className={!node.colorSet ? 'on auto' : 'auto'} onClick={() => { onClose(); actions.color(node.id, null); }}>自动</button>
         {actions.colorWords && <button title="自动配色按名字里的词认颜色：打开这个工作区的词表 __synapsis/_配色.md（没有就按默认建一份）" className="auto" onClick={() => { onClose(); actions.colorWords(); }}>配色词表…</button>}
       </div>}
-      {actions.color && (() => { // 饱和度档（👤 2026-10-10）：在已选的颜色上调 25 / 50 / 75 / 100%（没选颜色 = 自动时灰着）
-        const cs = String(node.colorSet || ''), [base, pct] = [cs.split('/')[0], +(cs.split('/')[1] || 100)], hex = base ? parseColor(base) : null;
+      {actions.color && (() => { // 饱和度档（👤 2026-10-10）：在颜色上调 25 / 50 / 75 / 100%；自动色也能调（按现在看到的颜色写成手动色）
+        const cs = String(node.colorSet || ''), b0 = cs.split('/')[0], pct = +(cs.split('/')[1] || 100), hex = b0 ? parseColor(b0) : (node.color || null), base = b0 || hex;
         return <div className="mi row swatches sat" onPointerDown={e => e.stopPropagation()}>
           <span>饱和</span>
-          {[25, 50, 75, 100].map(p => <button key={p} disabled={!hex} title={hex ? p + '%' : '先选一个颜色（自动时没有可调的）'} className={hex && pct === p ? 'on' : ''} style={{ background: hex ? satHex(hex, p) : 'var(--line2)', opacity: hex ? 1 : .35 }}
+          {[25, 50, 75, 100].map(p => <button key={p} disabled={!hex} title={hex ? p + '%' + (b0 ? '' : '（自动色会变成手动色）') : '没有可调的颜色'} className={hex && b0 && pct === p ? 'on' : ''} style={{ background: hex ? satHex(hex, p) : 'var(--line2)', opacity: hex ? 1 : .35 }}
             onClick={() => { onClose(); actions.color(node.id, p === 100 ? base : base + '/' + p); }}>{p}</button>)}
         </div>;
       })()}
@@ -110,14 +110,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
           {h.cur && item('＋ 钉到新组', () => h.pin('new'), { quiet: true })}
         </>;
       })()}
-      <div className="mi sub" onPointerDown={e => e.stopPropagation()}>
-        <span>新建 / 钻进去</span><kbd>▸</kbd>
-        <div className={'ctx submenu' + (style.left > innerWidth - 380 ? ' flip' : '')}>
-          {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'Tab' })}
-          {item('＋ 新建同级', () => actions.addSibling(node.id), { key: 'Shift+Enter' })}
-          {item('→ 钻进去', () => actions.drill(node.id), { key: 'Alt+S' })}
-        </div>
-      </div>
+      {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'Ctrl+Enter' })}
 
       <div className="msep" />
       {actions.hasFile(node.id) && item('看 md 原文', () => actions.openMd(node.id))}
@@ -215,6 +208,10 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
           {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={wsNode?.meta?.color === k ? 'on' : ''} style={{ background: c }} onClick={() => onColor(id, k)} />)}
           <button className={'auto' + (!wsNode?.meta?.color ? ' on' : '')} title="自动（按分组 / 词表配色）" onClick={() => onColor(id, null)}>自动</button>
           {onColorWords && <button className="auto words" title="自动配色按名字里的词认颜色：打开这个工作区的词表 __synapsis/_配色.md" onClick={onColorWords}>配色词表…</button>}</div>}
+        {onColor && (() => { const cs = String(wsNode?.meta?.color || ''), b0 = cs.split('/')[0], pct = +(cs.split('/')[1] || 100), hex = b0 ? parseColor(b0) : (color || null), base = b0 || hex;
+          return <div className="row swatches sat"><span className="rl">饱和</span>
+            {[25, 50, 75, 100].map(p => <button key={p} disabled={!hex} title={hex ? p + '%' + (b0 ? '' : '（自动色会变成手动色）') : '没有可调的颜色'} className={hex && b0 && pct === p ? 'on' : ''} style={{ background: hex ? satHex(hex, p) : 'var(--line2)', opacity: hex ? 1 : .35 }}
+              onClick={() => onColor(id, p === 100 ? base : base + '/' + p)}>{p}</button>)}</div>; })()}
         {onPattern && <div className="row swatches pats"><span className="rl">图案</span>{Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (wsNode?.meta?.pattern === k ? ' on' : !wsNode?.meta?.pattern && pattern === k ? ' auto-on' : '')} style={{ '--c': color }} onClick={() => onPattern(id, k)} />)}
           <button className={'auto' + (!wsNode?.meta?.pattern ? ' on' : '')} title="自动（按图案词表 / AI 归类）" onClick={() => onPattern(id, null)}>自动</button>
           <button className={'auto' + (wsNode?.meta?.pattern === '无' ? ' on' : '')} title="不要底纹" onClick={() => onPattern(id, '无')}>无</button>
