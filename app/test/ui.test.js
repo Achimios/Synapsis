@@ -712,8 +712,8 @@ for (const kind of ['reactflow']) {
   ok(!(await page.$('.finder')) && (await page.$eval('.side h3 input', e => e.value)) === '观察属性', 'Enter → 关掉搜索框，选中它');
   // L = 连线到…：从 敌方 连到 观察属性
   await page.click('.react-flow__controls-fitview'); await sleep(500); // 跳过去会居中放大，先看全
-  await page.click('.react-flow__node[data-id="敌方"] .lab'); await sleep(300);
-  await page.keyboard.press('Alt+KeyF'); await sleep(300);
+  await page.click('.react-flow__node[data-id="敌方"] .lab', { button: 'right' }); await sleep(300);
+  await page.click('.ctx .mi.row2 a:has-text("连线到")'); await sleep(300);
   ok((await page.$eval('.finder .bar b', e => e.textContent)).includes('敌方'), 'L → 「连线到…」框');
   await page.keyboard.type('观察属性'); await page.keyboard.press('Enter'); await sleep(1800);
   ok(/观察属性/.test(md('敌方.md')), '选目标 → 连上（写进 敌方.md） ' + md('敌方.md'));
@@ -1180,6 +1180,83 @@ for (const kind of ['reactflow']) {
   await page.close();
   rmSync(ws, { recursive: true, force: true });
 }
+// —— ▭ UI 框 + 颜色饱和度档（👤 2026-10-10）：空白处右键「新建 UI 框」→ 线框，拖右下角改大小，存进 frontmatter；右键「复制 UI 布局」→ 四个角；右键颜色下面 25/50/75/100% ——
+{
+  console.log('== UI 框');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-uibox-ui-')); noAi(ws);
+  saveOutline(ws, '甲');
+  writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 甲: { x: 0, y: 0 } }));
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  try { await page.context().grantPermissions(['clipboard-read', 'clipboard-write']); } catch {}
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
+  // 饱和度档：没选颜色时灰着；选了蓝 → 50% → color: 蓝/50
+  await page.click('.card .lab:text-is("甲")', { button: 'right' }); await sleep(300);
+  ok((await page.$$eval('.swatches.sat button', e => e.map(x => x.disabled))).every(Boolean), '没选颜色（自动）时饱和度档灰着');
+  await page.click('.swatches:not(.sat):not(.pats) button[title="蓝"]'); await sleep(1200);
+  await page.click('.card .lab:text-is("甲")', { button: 'right' }); await sleep(300);
+  await page.click('.swatches.sat button[title="50%"]'); await sleep(1200);
+  ok(/color: 蓝\/50/.test(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8')), '选蓝再点 50% → 写进 color: 蓝/50');
+  ok((await page.$eval('.card:has(.lab:text-is("甲"))', e => e.style.getPropertyValue('--c'))) !== '#4d9bff', '卡片颜色变淡了（不是原来的蓝）');
+  // 新建 UI 框
+  await page.mouse.click(700, 600, { button: 'right' }); await sleep(300);
+  await page.click('.ctx .mi:has-text("新建 UI 框")'); await sleep(1500);
+  await page.keyboard.type('主界面'); await page.keyboard.press('Enter'); await sleep(1500);
+  const sz = () => page.$eval('.card.uibox', e => [Math.round(e.offsetWidth), Math.round(e.offsetHeight)]);
+  ok(JSON.stringify(await sz()) === '[320,200]', '新建的 UI 框默认 320×200 ' + await sz());
+  const md = join(ws, '__synapsis', '主界面.md');
+  ok(existsSync(md) && /ui: true/.test(readFileSync(md, 'utf8')) && !/status/.test(readFileSync(md, 'utf8')), '节点 md 里写了 ui: true，没有 status');
+  await page.mouse.click(60, 820); await sleep(600);
+  const g = await (await page.$('.card.uibox .uigrip')).boundingBox();
+  await page.mouse.move(g.x + 6, g.y + 6); await page.mouse.down(); await page.mouse.move(g.x + 106, g.y + 56, { steps: 6 }); await page.mouse.up(); await sleep(1500);
+  const [w1, h1] = await sz();
+  ok(w1 > 380 && h1 > 230, '拖右下角 → 变大 ' + [w1, h1]);
+  ok(new RegExp('w: ' + w1 + '\\b').test(readFileSync(md, 'utf8')) && new RegExp('h: ' + h1 + '\\b').test(readFileSync(md, 'utf8')), '新宽高存进 frontmatter（w / h）');
+  await page.reload(); await sleep(2200);
+  ok(JSON.stringify(await sz()) === JSON.stringify([w1, h1]), '刷新后大小还在');
+  ok(!(await page.$('.card.uibox .props')), 'ui / w / h 不当普通属性列在卡片上');
+  // 复制 UI 布局
+  await page.click('.card.uibox .lab', { button: 'right' }); await sleep(300);
+  await page.click('.ctx .mi:has-text("复制 UI 布局")'); await sleep(500);
+  const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => '');
+  ok(/\[UI\] 主界面  左上\(/.test(clip) && new RegExp('宽' + w1 + ' 高' + h1).test(clip), '右键 → 复制 UI 布局：带四个角和宽高 ' + clip.split('\n')[1]);
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
+// —— ↗ 传送门卡片（👤 2026-10-10）：右键空白「引入…」→ 节点页签选一个别处的节点 → 这一页放一张指向它的卡；双击跳过去；本页的节点不列 ——
+{
+  console.log('== 传送门卡片');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-ref-ui-')); noAi(ws);
+  saveOutline(ws, '设计\n  战斗\n页面');
+  writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 设计: { x: 0, y: 0 }, 页面: { x: 300, y: 0 } }));
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
+  await page.mouse.click(700, 650, { button: 'right' }); await sleep(300);
+  await page.click('.ctx .mi:has-text("引入…")'); await sleep(800);
+  await page.fill('.finder input', '页面'); await sleep(400);
+  ok((await page.$$('.finder li b')).length === 0, '本页的节点（页面）不列：引入的是别处的节点，不是复制');
+  await page.fill('.finder input', '战斗'); await sleep(400);
+  ok((await page.$$eval('.finder li b', e => e.map(x => x.textContent))).join() === '战斗', '别处的节点（设计/战斗）能搜到');
+  await page.click('.finder li'); await sleep(1500);
+  ok(!!(await page.$('.card.refcard')) && (await page.$eval('.card.refcard .lab', e => e.textContent)) === '↗ 战斗', '这一页多了一张虚线框的传送门卡片「↗ 战斗」');
+  const md = join(ws, '__synapsis', '↗ 战斗.md');
+  ok(existsSync(md) && /ref: 设计\/战斗/.test(readFileSync(md, 'utf8')) && !/status/.test(readFileSync(md, 'utf8')), '节点 md 里写了 ref:，没有 status');
+  ok(!!(await page.$('.card.refcard .refsub:has-text("设计/战斗")')), '卡片上有「↗ 设计/战斗」小字');
+  const lb = await (await page.$('.card.refcard .lab')).boundingBox();
+  await page.mouse.dblclick(lb.x + lb.width / 2, lb.y + lb.height / 2); await sleep(1200);
+  ok((await page.$eval('.crumbs', e => e.innerText.replace(/\s+/g, ''))).includes('设计') && (await page.$eval('.card.sel .lab', e => e.textContent)) === '战斗', '双击传送门卡片 → 跳到「设计」那一页并选中战斗');
+  await page.keyboard.press('Alt+KeyW'); await sleep(800);
+  await page.click('.card.refcard .lab', { button: 'right' }); await sleep(300);
+  ok(!!(await page.$('.ctx .mi:has-text("跳到它指的节点")')), '右键传送门卡片有「↗ 跳到它指的节点」');
+  await page.keyboard.press('Escape'); await sleep(200);
+  await page.mouse.click(700, 700); await page.keyboard.press('Control+z'); await sleep(1500);
+  ok(!(await page.$('.card.refcard')), 'Ctrl+Z → 传送门卡片没了');
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
 // —— 📎 外部文件节点（👤 2026-10-10）：右键空白「引入外部文件」→ 选文件 → 建一个带 file: 的普通节点；双击打开原文件；撤销 ——
 {
   console.log('== 外部文件节点');
@@ -1193,14 +1270,16 @@ for (const kind of ['reactflow']) {
   const errs = []; page.on('pageerror', e => errs.push(e.message));
   await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
   await page.mouse.click(600, 720, { button: 'right' }); await sleep(300);
-  ok(!!(await page.$('.ctx .mi:has-text("引入外部文件")')), '右键空白有「📎 引入外部文件…」');
-  await page.click('.ctx .mi:has-text("引入外部文件")'); await sleep(600);
-  ok(!!(await page.$('.filepick')), '弹出选文件的小窗');
-  const listed = await page.$$eval('.filepick li b', e => e.map(x => x.textContent));
-  ok(listed.includes('设计笔记.md') && listed.includes('数据.json') && !listed.includes('甲.md') && !listed.includes('乙.md'), '列出项目文件，不列 __synapsis 里的节点 ' + listed.join('|'));
-  await page.fill('.filepick input', '笔记'); await sleep(300);
-  ok((await page.$$('.filepick li')).length === 1, '打字过滤 → 只剩一个');
-  await page.click('.filepick li'); await sleep(1500);
+  ok(!!(await page.$('.ctx .mi:has-text("引入…")')), '右键空白有「📎 引入…」');
+  await page.click('.ctx .mi:has-text("引入…")'); await sleep(800);
+  ok(!!(await page.$('.finder .ftabs')), '弹出和「连线到…」一样的两页签窗口');
+  await page.keyboard.press('Tab'); await sleep(200);
+  await page.fill('.finder input', '数据'); await sleep(400);
+  const listed = await page.$$eval('.finder li b', e => e.map(x => x.textContent));
+  ok(listed.length === 1 && listed[0].includes('数据.json'), '项目文件页：能搜到项目里的文件 ' + listed.join('|'));
+  await page.fill('.finder input', '笔记'); await sleep(400);
+  ok((await page.$$('.finder li b')).length === 1, '打字过滤 → 只剩一个');
+  await page.click('.finder li'); await sleep(1500);
   const card = (await page.$$('.card')).length === 3;
   ok(card && !!(await page.$('.card .filesub:has-text("docs/设计笔记.md")')), '画布上多了一张卡，带 📎 路径小字');
   const nodeMd = join(ws, '__synapsis', '设计笔记.md.md');
@@ -1227,8 +1306,8 @@ for (const kind of ['reactflow']) {
   await page.keyboard.press('Escape'); await sleep(200);
   // 连线到… 也能选外部文件：自动引成节点再连线
   const c甲 = await (async () => { for (const t of await page.$$('.card .lab')) if ((await t.textContent()) === '甲') return t; })();
-  const b甲 = await c甲.boundingBox(); await page.mouse.click(b甲.x + b甲.width / 2, b甲.y + b甲.height / 2); await sleep(300);
-  await page.keyboard.press('Alt+KeyF'); await sleep(800);
+  const b甲 = await c甲.boundingBox(); await page.mouse.click(b甲.x + b甲.width / 2, b甲.y + b甲.height / 2, { button: 'right' }); await sleep(300);
+  await page.click('.ctx .mi.row2 a:has-text("连线到")'); await sleep(800);
   ok(!!(await page.$('.finder')) && !!(await page.$('.finder .ftabs')) && !(await page.textContent('.finder .bar')).includes('也能选'), 'L → 连线搜索框，有「节点 / 项目文件」页签，标题不啰嗦');
   await page.fill('.finder input', '数据'); await sleep(500);
   ok(!!(await page.$('.finder .ftabs')) && (await page.textContent('.finder .ftabs a.on')).includes('节点'), '有「节点 / 项目文件」两个页签，默认在节点页');

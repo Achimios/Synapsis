@@ -2,11 +2,12 @@
 // 画布组件（main.jsx，React Flow）只负责「显示 view + 回报用户操作」。
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { describeChange } from './history.js';
+import { uiLayoutText, isUi, uiSize } from '../../core/uilayout.js';
 import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, withReordered, replaceLabels, autoLayout, lineOf, resolveLabel, isDropped, withCopies, withoutEdge, ROOT } from './outline.js';
 import { colorMap } from './colors.js';
 import { patternMap, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
-import { ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, HistoryPanel, OutlineTree, HelpModal, FilePickModal, SettingsModal, ReplaceBar, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
+import { ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, HistoryPanel, OutlineTree, HelpModal, SettingsModal, ReplaceBar, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
 const DRAG_PIC = 'application/x-synapsis-pic';
 import { initStash, useStash, putStash } from './stash.js';
 import { AiPanel, RelatedDock, AgentBox } from './ai.jsx';
@@ -36,7 +37,8 @@ initStash(api); // 界面暂存（关窗口不丢，托盘重启才清）：先�
 
 // >v<🎨画布-卡片属性-人加的属性显示在卡片上（👤 2026-10-08：加了属性画布上看不到）；结构 / 显示用的字段不算，最多 4 条
 const SYS_META = new Set(['to', 'label', 'status', 'order', 'color', 'vec', 'axes', 'evidence', 'evidence_hash', 'rate', 'picw', 'img', 'kind']);
-const cardProps = meta => Object.entries(meta || {}).filter(([k, v]) => !SYS_META.has(k) && !k.startsWith('_') && !k.startsWith('W_') && !k.startsWith('映射') && typeof v !== 'object' && String(v).trim() !== '');
+const CARD_HIDE = new Set(['file', 'ref', 'ui', 'w', 'h']); // 这些有专门的样子（📎 / ↗ / UI 框），不再当普通属性列在卡片上
+const cardProps = meta => Object.entries(meta || {}).filter(([k, v]) => !SYS_META.has(k) && !CARD_HIDE.has(k) && !k.startsWith('_') && !k.startsWith('W_') && !k.startsWith('映射') && typeof v !== 'object' && String(v).trim() !== '');
 export function Shell({ name, Canvas }) {
   const [mode, setMode] = useState(DEMO ? 'demo' : 'loading'); // demo | loading | ws | offline
   const [wsData, setWsData] = useState(null);
@@ -176,7 +178,7 @@ export function Shell({ name, Canvas }) {
         props: prpE(n.id) ? cardProps(wsData?.nodes[n.id]?.meta) : [], propN: cardProps(wsData?.nodes[n.id]?.meta).length,
         vec: getMeta(n.id)?.vec ? parseVec(getMeta(n.id).vec) : null, vecAxes: pAxes,
         spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
-        picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id], body: wsData?.nodes[n.id]?.body || '', file: wsData?.nodes[n.id]?.meta?.file || null, textOpen: txtE(n.id),
+        picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id], body: wsData?.nodes[n.id]?.body || '', file: wsData?.nodes[n.id]?.meta?.file || null, ui: isUi(wsData?.nodes[n.id]?.meta), uiW: uiSize(wsData?.nodes[n.id]?.meta).w, uiH: uiSize(wsData?.nodes[n.id]?.meta).h, ref: wsData?.nodes[n.id]?.meta?.ref || null, refMissing: !!wsData?.nodes[n.id]?.meta?.ref && !graph.nodes.has(String(wsData.nodes[n.id].meta.ref)), textOpen: txtE(n.id),
         open: expE(n.id) && n.children.length > 0 && !v.parentOf.has(n.id) && !(frmE(n.id) && !space), renaming: canvasRename === n.id,
         framed: !space && frmE(n.id) && n.children.length > 0,
         tempFrame: !space && frmE(n.id) && !framed[n.id] && n.children.length > 0, // 只是「看」临时展开的子图：不挪别的卡，也不存坐标
@@ -295,6 +297,8 @@ export function Shell({ name, Canvas }) {
       const target = id.slice(8);
       go(graph.nodes.get(target).parent);
       setSelected(target);
+    } else if (wsData?.nodes[id]?.meta?.ref && graph.nodes.has(String(wsData.nodes[id].meta.ref)) && !graph.nodes.get(id)?.children.length) { // ↗ 传送门卡片：双击 = 跳到它指的节点（去它那一页并选中）
+      const target = String(wsData.nodes[id].meta.ref); go(graph.nodes.get(target).parent); setSelected(target);
     } else if (wsData?.nodes[id]?.meta?.file && !graph.nodes.get(id)?.children.length) { setSelected(id); openFile(wsData.nodes[id].meta.file); } // 引用外部文件的叶子：双击 = 打开那个文件（钻进去没东西可看）
     else { go(id); setSelected(null); }
   }, [graph, go, wsData]);
@@ -451,7 +455,7 @@ export function Shell({ name, Canvas }) {
   const [helpOpen, setHelpOpen] = useState(false);
   // >v<🔎搜索-接入-Ctrl+F 跳过去（换页 + 选中 + 居中）；L / 右键「连线到…」= 选目标连线（可以连到别的页，那头会变成传送门）
   const [finder, setFinder] = useState(null); // {mode: 'go' | 'link', from?}
-  const searchItems = useMemo(() => [...graph.nodes.values()].filter(n => n.id !== ROOT).map(n => ({ id: n.id, label: n.label, path: n.id, meta: wsData?.nodes[n.id]?.meta, body: wsData?.nodes[n.id]?.body })), [graph, wsData]);
+  const searchItems = useMemo(() => [...graph.nodes.values()].filter(n => n.id !== ROOT).map(n => ({ id: n.id, label: n.label, path: n.id, here: n.parent === realScope, meta: wsData?.nodes[n.id]?.meta, body: wsData?.nodes[n.id]?.body })), [graph, wsData, realScope]);
   const jumpTo = id => {
     const p = graph.nodes.get(id)?.parent;
     if (p == null) return;
@@ -524,6 +528,23 @@ export function Shell({ name, Canvas }) {
     status: setStatus,
     addChild: id => { setSelected(id); const r = withNode(graph, id, null); pendingRename.current = r.id; setText(r.text); setExpanded(x => ({ ...x, [id]: true })); },
     addSibling: id => { const r = withNode(graph, graph.nodes.get(id).parent, id); pendingRename.current = r.id; setText(r.text); setSelected(r.id); },
+    addUiHere: async () => { // 空白处右键 → 新建 UI 框：放在右键点的位置
+      try {
+        const d = await api('/addui', { method: 'POST', body: JSON.stringify({ parent: realScope }) });
+        pendingRename.current = d.id; lastSaved.current = d.report.outline; setText(d.report.outline); setWsData(d); recordSave(d.report.outline, d.report);
+        const p = menu && cardActions.toFlow ? cardActions.toFlow({ x: menu.x, y: menu.y }) : null;
+        if (p) move({ [d.id]: { x: Math.round(p.x), y: Math.round(p.y) } }, { silent: true });
+        setSelected(d.id); setSaveState('已新建 UI 框（拖右下角调大小；双击标题钻进去里面摆小框；Ctrl+Z 撤销）');
+        setTimeout(() => { const el = document.querySelector('.react-flow__node[data-id="' + CSS.escape(d.id) + '"] .uibox'), r = el?.getBoundingClientRect(); if (r && (r.right > innerWidth - 20 || r.bottom > innerHeight - 20)) cardActions.centerOn?.(d.id, true); }, 400); // 框比较大，落在屏幕边上看不全 → 移到视野里
+      } catch (e) { setSaveState('❌ 新建 UI 框失败：' + e.message); }
+    },
+    copyUiLayout: id => { // 右键 UI 框 → 复制 UI 布局：选中了好几个就一起；每个 UI 节点带四角位置，普通节点带名字和正文
+      const ids = cardActions.multi?.length && cardActions.multi.includes(id) ? cardActions.multi : [id];
+      const nodes = wsData?.nodes || {}, meta = Object.fromEntries(Object.entries(nodes).map(([k, n]) => [k, n.meta || {}])), body = Object.fromEntries(Object.entries(nodes).map(([k, n]) => [k, n.body || '']));
+      const t = uiLayoutText(graph, meta, body, { ...positions, ...layout }, ids);
+      if (!t) return setSaveState('选中的里面没有 UI 框');
+      navigator.clipboard?.writeText(t).then(() => setSaveState('已复制 UI 布局（' + t.split('\n').length + ' 行）：贴给 LLM 就行'), () => setSaveState('❌ 复制失败：浏览器没给剪贴板权限'));
+    },
     addHere: () => {
       const r = withNode(graph, realScope, null); pendingRename.current = r.id; setText(r.text); setSelected(r.id);
       // 放在右键点的位置（👤 2026-10-08：以前落到自动布局的空槽里）
@@ -532,7 +553,7 @@ export function Shell({ name, Canvas }) {
     },
     toggle: id => toggle(id), drill: id => drill(id), remove, frame: id => toggleFrame(id), isFramed: id => !!framed[id],
     // 右键「展开 ▸」二级菜单：这个节点能展开的几种，及各自现在是展开还是收起（点一下 = 翻转它自己的状态，和空格 / 点卡片 ▸N 一样不进历史）
-    openProjectFile: p => openFile(p), pickFile: () => setFilePick(true),
+    openProjectFile: p => openFile(p), pickFile: () => setFinder({ mode: 'import' }), gotoRef: id => { const t = String(wsData?.nodes[id]?.meta?.ref || ''); if (graph.nodes.has(t)) { go(graph.nodes.get(t).parent); setSelected(t); } },
     expAll: () => Object.entries(EXP).map(([k, E]) => ({ k, name: E.name, any: expAnyOpen(k), none: !expIds(k).length })),
     expChange: k => expChange(k),
     expToggle: (id, k) => { const flip = x => { const y = { ...x }; if (y[id]) delete y[id]; else y[id] = true; return y; }; ({ kids: setExpanded, props: setPropsShut, text: setTextOpen, frame: setFramed })[k](flip); },
@@ -540,6 +561,7 @@ export function Shell({ name, Canvas }) {
     openMd: id => { setSelected(id); setPropsOpen(true); setPropsTab('raw'); },
     reveal: id => reveal(nodeFile(id), 'select'),
     linkTo: id => setFinder({ mode: 'link', from: id }),
+    linkFrom: id => setFinder({ mode: 'linkfrom', to: id }), // 从另一个节点连到这个：和「连线到…」同一个弹窗，反过来连
     // 📌 右键 → 钉到…：右键的节点在多选里就一起钉；当前组（高亮）排第一，最好点到
     pinsSelMenu: mode === 'ws' ? sel => { const d = pinsRef.current, cur = d.groups.find(g => g.id === d.current) || null; return { cur, others: d.groups.filter(g => g !== cur), pin: gid => pinSelection(sel, gid) }; } : null,
     pinsMenu: mode === 'ws' ? id => {
@@ -743,9 +765,15 @@ export function Shell({ name, Canvas }) {
     const again = repl.to.toLowerCase().includes(repl.find.toLowerCase()); // 替换后还含查找词：别原地打转
     setRepl(x => ({ ...x, ids: x.ids ? x.ids.map(id => map[id] ?? id) : null, idx: only && again ? x.idx + 1 : x.idx, note: `已改 ${r.changed.length} 个` + (r.skipped.length ? `，${r.skipped.length} 个因${r.skipped[0].why}跳过` : '') }));
   };
-  const [filePick, setFilePick] = useState(false); // 右键空白 → 引入外部文件：选文件的小窗
+  const addRefNodeFrom = async target => { // 右键空白 → 引入… → 选了一个节点：这一页放一张传送门卡片（指向它，不用连线；不是复制）
+    try {
+      const d = await api('/addref', { method: 'POST', body: JSON.stringify({ parent: realScope, target }) });
+      lastSaved.current = d.report.outline; setText(d.report.outline); setWsData(d); recordSave(d.report.outline, d.report);
+      setSelected(d.id); setSaveState('已放一张传送门卡片「' + (graph.nodes.get(target)?.label || target) + '」（Ctrl+Z 撤销；双击卡片跳过去）');
+      requestAnimationFrame(() => cardActions.centerOn?.(d.id));
+    } catch (e) { setSaveState('❌ 引入失败：' + e.message); }
+  };
   const addFileNodeFrom = async rel => {
-    setFilePick(false);
     try {
       const d = await api('/addfile', { method: 'POST', body: JSON.stringify({ parent: realScope, rel }) });
       lastSaved.current = d.report.outline; setText(d.report.outline); setWsData(d); recordSave(d.report.outline, d.report);
@@ -756,8 +784,8 @@ export function Shell({ name, Canvas }) {
   // 「连线到…」也能选项目里的外部文件：选了就先把它引成节点（已有节点引用过的不重复列），再连线
   useEffect(() => { if (finder && mode === 'ws' && !tree) api('/tree').then(setTree).catch(e => setTree({ tree: [], error: e.message })); }, [finder]);
   const fileItems = useMemo(() => {
-    if (!finder || !tree?.tree) return [];
-    const used = finder.mode === 'link' ? new Set(Object.values(wsData?.nodes || {}).map(n => n.meta?.file).filter(Boolean)) : new Set(); // 连线时已有节点引用过的文件不重复列；Ctrl+F 跳转时全列
+    if (!finder || finder.mode === 'linkfrom' || !tree?.tree) return []; // 「从…连过来」只选节点（文件节点要先引入）
+    const used = finder.mode !== 'go' ? new Set(Object.values(wsData?.nodes || {}).map(n => n.meta?.file).filter(Boolean)) : new Set(); // 连线时已有节点引用过的文件不重复列；Ctrl+F 跳转时全列
     const out = [], walk = items => { for (const it of items || []) { if (it.dir) walk(it.children); else if (!(it.path === '__synapsis' || it.path.startsWith('__synapsis/')) && !used.has(it.path)) out.push({ id: '@file:' + it.path, label: '📎 ' + it.name, path: it.path, meta: {}, body: '' }); } };
     walk(tree.tree); return out;
   }, [finder, tree, wsData]);
@@ -822,7 +850,6 @@ export function Shell({ name, Canvas }) {
       else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); e.stopPropagation(); remove(sel); }
       else if (e.key === 'F2' && sel) { e.preventDefault(); focusLabel(sel); }
       else if (e.key === '?' || e.key === 'F1') { e.preventDefault(); setHelpOpen(h => !h); }
-      else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyF' && sel && !sel.startsWith('@')) { e.preventDefault(); setFinder({ mode: 'link', from: sel }); }
     };
     // 鼠标侧键：3 = 后退，4 = 前进（拦掉浏览器自己的历史跳转）
     const onMouse = e => {
@@ -1009,6 +1036,7 @@ export function Shell({ name, Canvas }) {
     return () => { window.removeEventListener('dragover', no); window.removeEventListener('drop', no); };
   }, []);
   cardActions.resizeLoose = (id, w) => move({ [id]: { w: Math.round(Math.max(60, Math.min(2400, w))) } });
+  cardActions.resizeUi = (id, w, h) => { w = Math.round(Math.max(40, Math.min(4000, w))); h = Math.round(Math.max(30, Math.min(4000, h))); if (mode === 'ws') saveMeta(id, { w: String(w), h: String(h) }); };
   cardActions.foldPics = id => setPicFold(f => ({ ...f, [id]: !f[id] }));
   cardActions.toggleProps = id => menuActions.expToggle(id, 'props');
   cardActions.toggleText = id => setTextOpen(f => { const g = { ...f }; if (g[id]) delete g[id]; else g[id] = true; return g; });
@@ -1115,11 +1143,12 @@ export function Shell({ name, Canvas }) {
         </OverflowBar>
         <div className="cwrap">
         {mode !== 'loading' && <div className="expbar">
-          <button className="expmore" title="本页的展开：真改每个节点的状态（进 Ctrl+Z）" onClick={() => setExpMore(o => !o)}>⋯</button>
+          <button className="expmore" title="真的展开：真改本页每个节点自己的状态（进 Ctrl+Z）；下面四个是「预览展开」，只是临时看一眼" onClick={() => setExpMore(o => !o)}>⋯</button>
           {expMore && <div className="ctx expmenu">
-            <div className="mh">真改本页（Ctrl+Z 能撤销）</div>
+            <div className="mh">真的展开本页（Ctrl+Z 能撤销）</div>
             {Object.entries(EXP).map(([k, E]) => { const none = !expIds(k).length, any = expAnyOpen(k); return <div key={k} className={'mi' + (none ? ' quiet' : '')} onClick={() => { if (none) return; setExpMore(false); expChange(k); }} title={none ? `本页没有可展开的${E.name}` : '有没折叠的先全部收起；已经全收起了就全部展开'}><span>{any ? '收起' : '展开'}本页{E.name}</span></div>; })}
           </div>}
+          <div className="exphead" title="预览展开：只在本页临时盖一层，节点自己的状态不动、不进历史、切页不继承。要真的展开，点上面的 ⋯">预览展开</div>
           {Object.entries(EXP).map(([k, E]) => {
             const m = sm[k], none = !expIds(k).length;
             return <button key={k} className={'exprow see' + (m === 'on' ? ' on' : m === 'off' ? ' off' : '') + (none ? ' none' : '')}
@@ -1160,7 +1189,6 @@ export function Shell({ name, Canvas }) {
       {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（Shift+Tab 开关）</div></aside>}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
       {settingsOpen && mode === 'ws' && <SettingsModal api={api} onClose={() => setSettingsOpen(false)} onHelp={() => setHelpOpen(true)} />}
-      {filePick && mode === 'ws' && <FilePickModal api={api} tree={tree} setTree={setTree} onPick={addFileNodeFrom} onClose={() => setFilePick(false)} />}
       {lightbox && <div className="lightbox" onClick={() => setLightbox(null)}>
         <img src={lightbox.urls[lightbox.i]} onClick={e => e.stopPropagation()} />
         {lightbox.urls.length > 1 && <div className="lbcount">{lightbox.i + 1} / {lightbox.urls.length}（← →）</div>}
@@ -1179,12 +1207,12 @@ export function Shell({ name, Canvas }) {
       {aiOpen && <AiPanel api={api} status={aiStatus} onStatus={setAiStatus} onClose={() => setAiOpen(false)} />}
       {repl && <ReplaceBar r={repl} setR={setRepl} total={replHits.length} cur={replCur} skip={replSkip} scopeText={repl.ids ? `只在选中的 ${repl.ids.length} 张里` : '本页节点名'}
         onStep={d => setRepl(x => ({ ...x, idx: replCur + d, note: '' }))} onOne={() => replHits.length && replRun(replHits[replCur])} onAll={() => replHits.length && replRun(null)} onClose={() => setRepl(null)} />}
-      {finder && <SearchModal title={finder.mode === 'link' ? '连线：「' + graph.nodes.get(finder.from)?.label + '」→ 哪个节点？' : '跳到节点（Ctrl+F）'} items={[...searchItems, ...fileItems]} exclude={finder.from}
-        onClose={() => setFinder(null)} onPick={id => id.startsWith('@file:') ? (finder.mode === 'link' ? linkToFile(finder.from, id.slice(6)) : openFile(id.slice(6))) : finder.mode === 'link' ? connect(finder.from, id) : jumpTo(id)} />}
+      {finder && <SearchModal title={finder.mode === 'link' ? '连线：「' + graph.nodes.get(finder.from)?.label + '」→ 哪个节点？' : finder.mode === 'linkfrom' ? '连线：哪个节点 → 「' + graph.nodes.get(finder.to)?.label + '」？' : finder.mode === 'import' ? '引入到这里：节点 → 传送门卡片，项目文件 → 文件节点' : '跳到节点（Ctrl+F）'} items={[...(finder.mode === 'import' ? searchItems.filter(x => !x.here && !wsData?.nodes[x.id]?.meta?.ref) : searchItems), ...fileItems]} exclude={finder.from || finder.to}
+        onClose={() => setFinder(null)} onPick={id => id.startsWith('@file:') ? (finder.mode === 'link' ? linkToFile(finder.from, id.slice(6)) : finder.mode === 'import' ? addFileNodeFrom(id.slice(6)) : openFile(id.slice(6))) : finder.mode === 'link' ? connect(finder.from, id) : finder.mode === 'linkfrom' ? connect(id, finder.to) : finder.mode === 'import' ? addRefNodeFrom(id) : jumpTo(id)} />}
       {scaffold && <ScaffoldModal items={scaffold} root={wsData?.root || ''} onClose={() => setScaffold(null)}
         onCreate={files => api('/scaffold', { method: 'POST', body: JSON.stringify({ files }) }).then(d => { setScaffold(null); setTree(null); setSaveState(d.made.length ? '已创建 ' + d.made.join('、') : '没有新建（都已存在）'); }).catch(e => setSaveState('❌ ' + e.message))} />}
       {fileView && <FilePanel file={fileView.text !== undefined || fileView.error || fileView.note ? fileView : null} onClose={() => setFileView(null)} hl={fileHl && fileHl.file === fileView.path ? fileHl : null} onSelMenu={mode === 'ws' ? (e, s) => setMenu({ x: e.clientX, y: e.clientY, sel: s }) : null} />}
-      {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), color: colors.get(menu.id), colorSet: getMeta(menu.id)?.color || null, patternSet: getMeta(menu.id)?.pattern || null, pattern: patterns.get(menu.id) || null, open: !!expanded[menu.id], file: wsData?.nodes[menu.id]?.meta?.file || null, descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
+      {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), color: colors.get(menu.id), colorSet: getMeta(menu.id)?.color || null, patternSet: getMeta(menu.id)?.pattern || null, pattern: patterns.get(menu.id) || null, open: !!expanded[menu.id], file: wsData?.nodes[menu.id]?.meta?.file || null, ref: wsData?.nodes[menu.id]?.meta?.ref || null, ui: isUi(wsData?.nodes[menu.id]?.meta), descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
         actions={{ ...menuActions, allOpen }} onClose={() => setMenu(null)} />}
       {exportText !== null && (
         <div className="modal" onClick={() => setExportText(null)}>
@@ -1269,8 +1297,8 @@ export function NodeCard({ node, img, dim, isSel }) {
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
   };
   return (
-    <div className={'card' + (node.pattern ? ' pat-' + node.pattern : '') + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (showPics ? ' hasimg' : '') + (node.status ? ' s-' + node.status : '') + (node.dropped ? ' dropped' : '')}
-      style={{ ...(node.color ? { '--c': node.color } : {}), ...(showPics && node.picw ? { width: node.picw, maxWidth: 'none' } : node.textOpen ? { width: 420, maxWidth: 'none' } : {}) }}>
+    <div className={'card' + (node.ref ? ' refcard' : '') + (node.pattern ? ' pat-' + node.pattern : '') + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (showPics ? ' hasimg' : '') + (node.status ? ' s-' + node.status : '') + (node.dropped ? ' dropped' : '')}
+      style={{ ...(node.color ? { '--c': node.color } : {}), ...(showPics && node.picw ? { width: node.picw, maxWidth: 'none' } : node.textOpen && node.body?.trim() ? { width: 420, maxWidth: 'none' } : {}) }}>
       <div className="title">{node.status && <span className="st">{STATUS_ICON[node.status]}</span>}{node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
         {pics && <span className="picbadge" title={node.foldPics ? '显示图片' : '收起图片'} onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.foldPics(node.id); }}>🖼{img.length > 1 ? img.length : ''}</span>}
@@ -1285,6 +1313,7 @@ export function NodeCard({ node, img, dim, isSel }) {
       {(node.sub || node.evidence) && <div className="sub">{node.evidence && <span className={'ev ev-' + (EVIDENCE[node.evidence] || 'x')} title="证据等级（evidence:）">{node.evidence}</span>}{node.sub}</div>}
       {node.props?.length > 0 && <div className="props">{node.props.slice(0, 4).map(([k, v]) => <div key={k} title={k + ': ' + v}><span className="pk">{k}</span>{String(v)}</div>)}
         {node.props.length > 4 && <div className="hint">… 还有 {node.props.length - 4} 条（Shift+Tab 看全部）</div>}</div>}
+      {node.ref && <div className={'sub filesub refsub' + (node.refMissing ? ' miss' : '')} title={node.refMissing ? '指向的节点不见了：' + node.ref : '传送门：指向「' + node.ref + '」（双击跳过去）'}>↗ {node.ref}{node.refMissing ? '（没找到）' : ''}</div>}
       {node.file && <div className="sub filesub" title={'引用项目里的文件：' + node.file + '（双击打开）'}>📎 {node.file}</div>}
       {node.textOpen && node.body?.trim() && <div className="cardtext nodrag nowheel" onDoubleClick={e => e.stopPropagation()}><MdLite text={node.body} /></div>}
       {node.spaceAxes && <div className="axchips" title="空间节点：双击进去看成员的坐标投影">⊹ {node.spaceAxes.join(' · ')}</div>}
@@ -1355,6 +1384,26 @@ export function PicCard({ pic, isSel }) {
   );
 }
 // 展开成框的分组：半透明底框 + 标题栏（⊟ 收起；双击标题 = 钻进去）。大小由 main.jsx 按子节点算好传进来
+// >v<🖼️UI节点-卡片-线框：宽高 = meta w / h（右下角拖着改，存进节点 frontmatter）；里面（双击标题钻进去）是正常画布，位置用里面那一页自己的坐标
+export function UiCard({ node, dim, isSel }) {
+  const startResize = e => {
+    e.stopPropagation(); e.preventDefault();
+    const box = e.currentTarget.closest('.uibox');
+    const w0 = box.offsetWidth, h0 = box.offsetHeight, z = box.getBoundingClientRect().width / w0 || 1, x0 = e.clientX, y0 = e.clientY;
+    let w = w0, h = h0;
+    const mv = ev => { w = Math.max(40, w0 + (ev.clientX - x0) / z); h = Math.max(30, h0 + (ev.clientY - y0) / z); box.style.width = w + 'px'; box.style.height = h + 'px'; };
+    const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); cardActions.resizeUi(node.id, w, h); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+  };
+  return (
+    <div className={'card uibox' + (dim ? ' dim' : '') + (isSel ? ' sel' : '')} style={{ width: node.uiW, height: node.uiH, ...(node.color ? { '--c': node.color } : {}) }}>
+      <div className="title">{node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
+        <span className="uidim" title="宽 × 高（右下角拖着改）">{Math.round(node.uiW)}×{Math.round(node.uiH)}</span>
+        {node.children.length > 0 && <span className="kids" title="里面有 UI 框 / 节点（双击标题钻进去）">▸ {node.children.length}</span>}</div>
+      <span className="uigrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} />
+    </div>
+  );
+}
 export function FrameCard({ node, dim, isSel }) {
   return (
     <div className={'frame' + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (node.dropped ? ' dropped' : '')} style={{ '--c': node.color }}>

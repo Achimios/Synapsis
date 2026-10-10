@@ -301,6 +301,7 @@ export function saveOutline(root, text, hint = null) {
     layout['@pic:' + (hit ? picKeys[hit] + p.slice(hit.length) : p)] = ws.layout[k];
   }
   writeLayout(base, layout);
+  try { migrateRefs(root, map); } catch { /* 引用迁移失败不该拦住保存 */ } // ↗ 传送门卡片的 ref: 指向的节点改名 / 搬家了 → 跟着走
   try { migratePinsFile(root, map); } catch { /* 钉子文件坏了不该拦住保存 */ } // 📌 钉子指向的节点改名 / 搬家了 → 钉子跟着走（撤销时反向的对应表也走这里）
   return report;
 }
@@ -418,6 +419,29 @@ export function addFileNode(root, parent, rel) {
   if (!res.ok) throw new Error('建节点失败：' + JSON.stringify(res.errors));
   setNodeMeta(root, made.id, { file: r, status: null }); // 引用外部文件不是一件待做的事：不带 status（新建节点默认 todo 会混进进度统计）
   return { id: made.id, report: res };
+}
+// >v<🖼️传送门卡片-引用节点-👤 2026-10-10：在这一页放一张卡，指向图里别处的一个节点（不用连线）。存成一个普通节点，frontmatter 带 ref: <目标节点 id>，名字 = ↗ 目标名；
+//   和 file:（引用外部文件）并列：不带 status。目标改名 / 搬家 → saveOutline 里 migrateRefs 把 ref: 跟过去；目标删了 → 卡片留着，check 报「ref 指向不存在的节点」
+export function addRefNode(root, parent, target) {
+  const ws = loadWorkspace(root), g = ws.graph;
+  if (parent !== ROOT && !g.nodes.has(parent)) throw new Error('没有这个节点：' + parent);
+  const t = g.nodes.get(target);
+  if (!t || target === ROOT) throw new Error('没有这个节点：' + target);
+  const ref = t.meta?.ref ? String(t.meta.ref) : target; // 指向的本身是传送门卡片：直接指它的目标，别绕两层
+  const label = ('↗ ' + (g.nodes.get(ref)?.label || t.label)).replace(/->/g, '→').replace(/[,，]/g, '、').trim();
+  const made = withNode(g, parent, null, label);
+  const res = saveOutline(root, made.text);
+  if (!res.ok) throw new Error('建节点失败：' + JSON.stringify(res.errors));
+  setNodeMeta(root, made.id, { ref, status: null });
+  return { id: made.id, report: res };
+}
+export function migrateRefs(root, idMap) {
+  const back = {}; // 旧 id → 新 id
+  for (const [nid, cid] of idMap) if (cid && cid !== nid) back[cid] = nid;
+  if (!Object.keys(back).length) return 0;
+  const ws = loadWorkspace(root); let n = 0;
+  for (const [id, node] of ws.graph.nodes) { const r = node.meta?.ref; if (r && back[r]) { setNodeMeta(root, id, { ref: back[r] }); n++; } }
+  return n;
 }
 // >v<✅自检-实测快照-code 文件内容的短 hash（换行统一成 \n，免得 git 的 CRLF 转换被当成「改过」）；最小版：只比整个文件，不做依赖分析
 export const EVIDENCE_HASH = 'evidence_hash';
@@ -622,8 +646,9 @@ export function checkWorkspace(ws) {
   const issues = [...ws.graph.errors.map(e => ({ level: 'error', where: e.file, msg: e.msg }))];
   for (const n of ws.graph.nodes.values()) {
     if (n.id === ROOT || isDropped(ws.graph, n.id)) continue; // 弃用的（含弃用分组的子孙）不查
-    if (!n.status && !n.children.length && !n.meta.file) issues.push({ level: 'warn', where: n.id, msg: '没有 status' }); // 分组的状态由子节点汇总；引用外部文件的节点（file:）不是待做的事，不查
+    if (!n.status && !n.children.length && !n.meta.file && !n.meta.ref && !n.meta.ui) issues.push({ level: 'warn', where: n.id, msg: '没有 status' }); // 分组的状态由子节点汇总；引用外部文件的节点（file:）不是待做的事，不查
     if (n.meta.file && !existsSync(join(ws.root, String(n.meta.file)))) issues.push({ level: 'warn', where: n.id, msg: 'file 指向不存在的文件：' + n.meta.file + '（文件被移走或改名了？）' });
+    if (n.meta.ref && !ws.graph.nodes.has(String(n.meta.ref))) issues.push({ level: 'warn', where: n.id, msg: 'ref 指向不存在的节点：' + n.meta.ref + '（目标被删了或改名没跟上？）' });
     if (n.meta.code && n.meta.code !== 'null') {
       const [f, sym] = n.meta.code.split('#');
       const p = join(ws.root, f);
@@ -805,4 +830,15 @@ export function readProjectFile(root, rel, maxBytes = 300000) {
   const buf = readFileSync(f);
   if (buf.subarray(0, 8000).includes(0)) return { path: rel, size: st.size, text: null, note: '二进制文件，不预览' };
   return { path: rel, size: st.size, text: buf.toString('utf8') };
+}
+
+// >v<🖼️UI节点-新建-空白处右键「新建 UI 框」：带 ui: 的普通节点，宽高 w / h（可在画布上拖角调）。不带 status（是设计元素，不是待办）
+export function addUiNode(root, parent, { w = 320, h = 200, label = 'UI框' } = {}) {
+  const ws = loadWorkspace(root), g = ws.graph;
+  if (parent !== ROOT && !g.nodes.has(parent)) throw new Error('没有这个节点：' + parent);
+  const made = withNode(g, parent, null, label);
+  const res = saveOutline(root, made.text);
+  if (!res.ok) throw new Error('建节点失败：' + JSON.stringify(res.errors));
+  setNodeMeta(root, made.id, { ui: 'true', w: String(Math.round(w)), h: String(Math.round(h)), status: null });
+  return { id: made.id, report: res };
 }

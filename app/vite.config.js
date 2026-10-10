@@ -4,7 +4,7 @@ import { resolve, join, normalize, relative } from 'node:path';
 import { spawn } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { loadSettings, saveSettings, settingsPath, SCHEMA as SETTINGS_SCHEMA } from '../core/settings.js';
-import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, loadPins, savePins, findFilesByName, addFileNode, saveLooseImage, removeLooseImage, restoreRemoved, graveyardInfo, clearGraveyard, ensureGitignore, pasteNodes, ensureColorWords, ensurePatternWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, movePic, grepProject, DIR } from '../core/workspace.js';
+import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, loadPins, savePins, findFilesByName, addFileNode, addRefNode, addUiNode, saveLooseImage, removeLooseImage, restoreRemoved, graveyardInfo, clearGraveyard, ensureGitignore, pasteNodes, ensureColorWords, ensurePatternWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, movePic, grepProject, DIR } from '../core/workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 
 import { workspaceRoot, manualText } from '../core/cli.js';
@@ -161,6 +161,8 @@ function workspaceApi() {
           if (url.pathname === '/tree' && req.method === 'GET') return send(200, listTree(root));
           if (url.pathname === '/grep' && req.method === 'GET') return send(200, grepProject(root, url.searchParams.get('q') || ''));
           if (url.pathname === '/addfile' && req.method === 'POST') { const b = await body(req); try { const r = addFileNode(root, b.parent || '', b.rel); return send(200, { id: r.id, report: { ...r.report, outline: workspaceOutline(loadWorkspace(root)) }, ...payload(root) }); } catch (e) { return send(400, { error: e.message }); } } // 外部文件当节点
+          if (url.pathname === '/addref' && req.method === 'POST') { const b = await body(req); try { const r = addRefNode(root, b.parent || '', b.target); return send(200, { id: r.id, report: { ...r.report, outline: workspaceOutline(loadWorkspace(root)) }, ...payload(root) }); } catch (e) { return send(400, { error: e.message }); } } // 传送门卡片：指向别处节点
+          if (url.pathname === '/addui' && req.method === 'POST') { const b = await body(req); try { const r = addUiNode(root, b.parent || '', { w: b.w, h: b.h }); return send(200, { id: r.id, report: { ...r.report, outline: workspaceOutline(loadWorkspace(root)) }, ...payload(root) }); } catch (e) { return send(400, { error: e.message }); } } // UI 框
           if (url.pathname === '/findfile' && req.method === 'GET') return send(200, { matches: findFilesByName(root, url.searchParams.get('p') || '') }); // 📌 行钉子的文件搬了位置：按文件名找
           if (url.pathname === '/raw' && req.method === 'GET') return send(200, readProjectFile(root, url.searchParams.get('p') || ''));
           if (url.pathname === '/layout' && req.method === 'PUT') { saveLayout(root, (await body(req)).positions); return send(200, { ok: true }); }

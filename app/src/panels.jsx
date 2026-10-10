@@ -2,7 +2,7 @@
 import { useStash } from './stash.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, Children } from 'react';
 
-import { PALETTE } from './colors.js';
+import { PALETTE, parseColor, satHex } from './colors.js';
 import { PATTERNS, PATTERN_HINT } from './patterns.js';
 import { searchNodes, filterTree } from './search.js';
 import { groupSiblings } from './outline.js';
@@ -50,7 +50,8 @@ export function ContextMenu({ menu, node, actions, onClose }) {
   if (!node) return (
     <div className="ctx" style={style}>
       {item('＋ 在这里新建节点', actions.addHere)}
-      {actions.pickFile && item('📎 引入外部文件…', actions.pickFile)}
+      {actions.addUiHere && item('▭ 新建 UI 框', actions.addUiHere)}
+      {actions.pickFile && item('📎 引入…', actions.pickFile)}
       <div className="mi sub" onPointerDown={e => e.stopPropagation()}>
         <span>展开本页</span><kbd>▸</kbd>
         <div className={'ctx submenu' + (style.left > innerWidth - 380 ? ' flip' : '')}>
@@ -68,6 +69,8 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       {item('属性…', () => actions.props(node.id), { key: 'Shift+Tab' })}
       {item('重命名', () => actions.rename(node.id), { key: 'F2' })}
       {node.file && item('📎 打开引用的文件', () => actions.openProjectFile(node.file))}
+      {node.ref && item('↗ 跳到它指的节点', () => actions.gotoRef(node.id))}
+      {node.ui && item('▭ 复制 UI 布局', () => actions.copyUiLayout(node.id))}
       <div className="mi row" onPointerDown={e => e.stopPropagation()}>
         <span>状态</span>
         {STATUS.map(([s, ic]) => <button key={s} className={node.status === s ? 'on' : ''} onClick={() => { onClose(); actions.status(node.id, s); }}>{ic}</button>)}
@@ -75,10 +78,18 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       </div>
       {actions.color && <div className="mi row swatches" onPointerDown={e => e.stopPropagation()}>
         <span>颜色</span>
-        {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={node.colorSet === k ? 'on' : ''} style={{ background: c }} onClick={() => { onClose(); actions.color(node.id, k); }} />)}
+        {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={String(node.colorSet || '').split('/')[0] === k ? 'on' : ''} style={{ background: c }} onClick={() => { onClose(); actions.color(node.id, k); }} />)}
         <button title="自动（按分组 / 名字配色，子节点跟着父节点）" className={!node.colorSet ? 'on auto' : 'auto'} onClick={() => { onClose(); actions.color(node.id, null); }}>自动</button>
         {actions.colorWords && <button title="自动配色按名字里的词认颜色：打开这个工作区的词表 __synapsis/_配色.md（没有就按默认建一份）" className="auto" onClick={() => { onClose(); actions.colorWords(); }}>配色词表…</button>}
       </div>}
+      {actions.color && (() => { // 饱和度档（👤 2026-10-10）：在已选的颜色上调 25 / 50 / 75 / 100%（没选颜色 = 自动时灰着）
+        const cs = String(node.colorSet || ''), [base, pct] = [cs.split('/')[0], +(cs.split('/')[1] || 100)], hex = base ? parseColor(base) : null;
+        return <div className="mi row swatches sat" onPointerDown={e => e.stopPropagation()}>
+          <span>饱和</span>
+          {[25, 50, 75, 100].map(p => <button key={p} disabled={!hex} title={hex ? p + '%' : '先选一个颜色（自动时没有可调的）'} className={hex && pct === p ? 'on' : ''} style={{ background: hex ? satHex(hex, p) : 'var(--line2)', opacity: hex ? 1 : .35 }}
+            onClick={() => { onClose(); actions.color(node.id, p === 100 ? base : base + '/' + p); }}>{p}</button>)}
+        </div>;
+      })()}
       {actions.pattern && <div className="mi row swatches pats" onPointerDown={e => e.stopPropagation()}>
         <span>图案</span>
         {Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (node.patternSet === k ? ' on' : !node.patternSet && node.pattern === k ? ' auto-on' : '')} style={{ '--c': node.color }} onClick={() => { onClose(); actions.pattern(node.id, k); }} />)}
@@ -87,7 +98,10 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         {actions.patternWords && <button title="打开图案词表 __synapsis/_图案.md" className="auto" onClick={() => { onClose(); actions.patternWords(); }}>图案词表…</button>}
       </div>}
       <div className="msep" />
-      {item('🔗 连线到…', () => actions.linkTo(node.id), { key: 'Alt+F' })}
+      <div className="mi row2" onPointerDown={e => e.stopPropagation()}>
+        <a title="选一个别的节点，从它连到这个节点" onClick={() => { onClose(); actions.linkFrom(node.id); }}>← 从…连过来</a>
+        <a title="选一个别的节点，从这个节点连过去" onClick={() => { onClose(); actions.linkTo(node.id); }}>🔗 连线到…</a>
+      </div>
       {actions.pinsMenu && (() => { // 📌 钉到钉子组：当前（高亮）组最好点，其余组和新组灰色小字（👤 2026-10-09）
         const h = actions.pinsMenu(node.id), many = h.n > 1 ? `（${h.n} 个）` : '';
         return <>
@@ -515,7 +529,7 @@ export function SearchModal({ title, items, exclude, onPick, onClose }) {
   const nodeItems = useMemo(() => items.filter(x => !String(x.id).startsWith('@file:')), [items]);
   const fileItems = useMemo(() => items.filter(x => String(x.id).startsWith('@file:')), [items]);
   const hasFiles = fileItems.length > 0; // 文件列表还没读出来 / 没有文件时，「项目文件」页签灰着
-  const resN = useMemo(() => searchNodes(nodeItems, q).filter(r => r.id !== exclude), [nodeItems, q, exclude]);
+  const resN = useMemo(() => searchNodes(nodeItems, q).filter(r => r.id !== exclude).sort((a, b) => (b.here ? 1 : 0) - (a.here ? 1 : 0)), [nodeItems, q, exclude]); // 本页的节点排最前（稳定排序，页内仍按匹配度）
   const resF = useMemo(() => hasFiles ? searchNodes(fileItems, q) : [], [fileItems, q, hasFiles]);
   const res = hasFiles && tab === 'file' ? resF : resN;
   useEffect(() => setI(0), [q, tab]);
@@ -538,7 +552,7 @@ export function SearchModal({ title, items, exclude, onPick, onClose }) {
           onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') onClose(); else if (e.key === 'ArrowDown') { e.preventDefault(); setI(x => Math.min(res.length - 1, x + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setI(x => Math.max(0, x - 1)); } else if (e.key === 'Enter') pick(res[i]); }} />
         <ul>{res.map((r, k) => (
           <li key={r.id} className={k === i ? 'on' : ''} onMouseEnter={() => setI(k)} onClick={() => pick(r)}>
-            <b>{r.label}</b><span className="fp">{r.path.split('/').slice(0, -1).join(' / ')}</span>{r.where !== '名字' && <span className="fw">{r.where}</span>}
+            <b>{r.label}</b><span className="fp">{r.path.split('/').slice(0, -1).join(' / ')}</span>{r.here && <span className="fw here">本页</span>}{r.where !== '名字' && <span className="fw">{r.where}</span>}
             {r.snippet && <div className="fs">{r.snippet}</div>}
           </li>))}
           {q.trim() && !res.length && <li className="hint">没找到{hasFiles && (tab === 'node' ? resF.length : resN.length) ? '（' + (tab === 'node' ? '「项目文件」页' : '「节点」页') + '有 ' + (tab === 'node' ? resF.length : resN.length) + ' 个）' : ''}</li>}</ul>
@@ -572,26 +586,6 @@ export function SettingsModal({ api, onClose, onHelp }) {
           </section>
           {d && <div className="hint spath" title={d.path}>设置文件：{d.path}（进 git，调好了直接分享；也可以手动改）</div>}
         </div>
-      </div>
-    </div>
-  );
-}
-
-// 引入外部文件：列项目里 __synapsis 以外的所有文件，打字过滤，点一个就建成节点（只是引用，不复制、不改原文件）
-export function FilePickModal({ api, tree, setTree, onPick, onClose }) {
-  const [q, setQ] = useState('');
-  useEffect(() => { if (!tree) api('/tree').then(setTree).catch(e => setTree({ tree: [], error: e.message })); }, []);
-  const files = useMemo(() => { const out = []; const walk = items => { for (const it of items || []) { if (it.dir) walk(it.children); else if (!(it.path === '__synapsis' || it.path.startsWith('__synapsis/'))) out.push(it.path); } }; walk(tree?.tree); return out; }, [tree]);
-  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = files.filter(f => words.every(w => f.toLowerCase().includes(w))).slice(0, 80);
-  return (
-    <div className="modal" onClick={onClose}>
-      <div className="filepick" onClick={e => e.stopPropagation()}>
-        <div className="bar"><b>📎 引入外部文件</b><span className="hint" style={{ flex: 1 }}>项目里 __synapsis 以外的文件 → 建成一个节点（只引用，不复制、不改原文件）</span><button onClick={onClose}>✕</button></div>
-        <input autoFocus placeholder="打字过滤（路径里含这些词）…" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') onClose(); if (e.key === 'Enter' && shown.length) onPick(shown[0]); }} />
-        <ul>{shown.map(f => <li key={f} onClick={() => onPick(f)} title={f}><b>{f.split('/').pop()}</b><span className="fp">{f.split('/').slice(0, -1).join(' / ')}</span></li>)}
-          {!tree && <li className="hint">读取文件列表…</li>}
-          {tree && !shown.length && <li className="hint">没有符合的文件</li>}</ul>
       </div>
     </div>
   );

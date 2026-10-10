@@ -607,3 +607,21 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 .outline .bar.tabs .hint { flex: 1; }
 .outline .colsbtn, .outline .herebtn, .outline .lockbtn, .outline .groupbtn, .outline .sortbtn { margin-left: 8px; }
 .orow .oup { margin-left: auto; padding: 0 5px; font-size: 10px; color: var(--dim); border: 1px solid var(--line2); border-radius: 8px; flex: none; } .orow .oup + .odrill { margin-left: 4px; }
+
+/* ↗ 传送门卡片（ref:）：虚线框，和普通节点一眼分得开 */
+.card.refcard { border-style: dashed; }
+.card .refsub { color: var(--dim); } .card .refsub.miss { color: #e08a4a; }
+.finder .fw.here { color: var(--accent); border-color: var(--accent); }
+
+/* 右键：「从…连过来」和「连线到…」同一行左右排 */
+.ctx .mi.row2 { display: flex; padding: 0; gap: 0; cursor: default; } .ctx .mi.row2:hover { background: none; }
+.ctx .mi.row2 > a { flex: 1; padding: 4px 10px; cursor: pointer; white-space: nowrap; display: flex; gap: 8px; justify-content: space-between; } .ctx .mi.row2 > a:hover { background: var(--hover); }
+.ctx .mi.row2 > a + a { border-left: 1px solid var(--line); }
+.expbar .exphead { font-size: 10px; color: var(--dim); text-align: center; padding: 2px 0 1px; cursor: help; letter-spacing: 1px; }
+
+/* UI 框：线框，宽高自己定 */
+.card.uibox { position: relative; box-sizing: border-box; padding: 0; border: 1.5px solid var(--c, var(--accent)); background: color-mix(in srgb, var(--c, var(--accent)) 7%, var(--panel)); border-radius: 3px; min-width: 0; max-width: none; overflow: hidden; }
+.card.uibox .title { padding: 2px 6px; gap: 8px; }
+.card.uibox .uidim { margin-left: auto; font-size: 10px; color: var(--dim); font-weight: normal; }
+.card.uibox .uigrip { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 50%, var(--c, var(--accent)) 50%); opacity: .7; } .card.uibox .uigrip:hover { opacity: 1; }
+.ctx .swatches.sat button { font-size: 8px; line-height: 1; color: rgba(0,0,0,.65); padding: 0; } .ctx .swatches.sat button:disabled { cursor: default; }

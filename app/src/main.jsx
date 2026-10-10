@@ -4,7 +4,7 @@ import { ReactFlow, Background, Controls, MiniMap, Handle, Position, applyNodeCh
 import { dragScale } from './arrange.js';
 import { expand, pathBetween } from './select.js';
 import '@xyflow/react/dist/style.css';
-import { Shell, cardActions, FrameCard, NodeCard, PortalCard, PicCard, AxesCard, MatrixChip, edgeLook, lengthFade, desat, nodeDim } from './shell.jsx';
+import { Shell, cardActions, FrameCard, NodeCard, UiCard, PortalCard, PicCard, AxesCard, MatrixChip, edgeLook, lengthFade, desat, nodeDim } from './shell.jsx';
 
 // 左进右出 = 数据流；顶上 mi / 底下 mo = 调节口（kind 调节：调节源从底下连到被调节者顶上）
 const ModHandles = () => (<><Handle type="target" position={Position.Top} id="mi" className="modh" title="调节口：把调节源（参数 / 修改器）连到这里" /><Handle type="source" position={Position.Bottom} id="mo" className="modh" title="从这里拖到别的节点顶上 = 调节它" /></>);
@@ -12,7 +12,7 @@ function SNode({ data }) {
   return (
     <>
       <Handle type="target" position={Position.Left} />
-      {data.portal ? <PortalCard portal={data.portal} dim={data.dim} /> : <NodeCard node={data.node} img={data.img} dim={data.dim} isSel={data.isSel} />}
+      {data.portal ? <PortalCard portal={data.portal} dim={data.dim} /> : data.node.ui ? <UiCard node={data.node} dim={data.dim} isSel={data.isSel} /> : <NodeCard node={data.node} img={data.img} dim={data.dim} isSel={data.isSel} />}
       <Handle type="source" position={Position.Right} />
       <ModHandles />
     </>
@@ -179,7 +179,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   const toLayout = (id, p) => { const f = frameOf.get(id); return f != null && fmin[f] ? { x: Math.round(p.x - FP.x + fmin[f].x), y: Math.round(p.y - FP.y + fmin[f].y) } : p; };
   const build = () => [
     ...(plane ? [{ id: '@axes', type: 'axes', position: { x: -plane.S * 1.25, y: -plane.S * 1.25 }, data: plane, draggable: false, selectable: false, focusable: false, zIndex: -1, style: { pointerEvents: 'none' } }] : []),
-    ...view.nodes.map(n => ({ id: n.id, type: n.framed ? 'frame' : 's', position: posOf(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(n.framed ? { style: { width: FMIN.w, height: FMIN.h } } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id) }, selected: isSel(n.id) })),
+    ...view.nodes.map(n => ({ id: n.id, type: n.framed ? 'frame' : 's', position: posOf(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(n.framed ? { style: { width: FMIN.w, height: FMIN.h } } : {}), ...(n.ui && !n.framed ? { style: { width: n.uiW, height: n.uiH } } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id) }, selected: isSel(n.id) })),
     ...view.portals.map(p => ({ id: p.id, type: 's', position: layout[p.id], data: { portal: p, dim: nodeDim(p.id, view, selected) }, selected: isSel(p.id) })),
     ...pics.map(p => ({ id: p.id, type: 'pic', position: layout[p.id] || { x: 0, y: 0 }, data: { pic: p, isSel: isSel(p.id) }, selected: isSel(p.id) })),
   ];

@@ -21,7 +21,7 @@ export function searchNodes(items, q, limit = 50) {
     }
     if (score < 0) continue;
     const snippet = hit ? (hit[1] > 20 ? '…' : '') + hit[0].slice(Math.max(0, hit[1] - 20), hit[1] + hit[2] + 40).replace(/\s+/g, ' ') : '';
-    out.push({ id: it.id, label: it.label, path: it.path, where: hit ? where : '名字', snippet, score: score - it.path.length * 0.01 });
+    out.push({ id: it.id, label: it.label, path: it.path, here: !!it.here, where: hit ? where : '名字', snippet, score: score - it.path.length * 0.01 });
   }
   return out.sort((a, b) => b.score - a.score).slice(0, limit);
 }

@@ -8,6 +8,17 @@ export const PALETTE = {
   蓝: '#4d9bff', 紫: '#a97cff', 橙: '#ff9636', 绿: '#5cc46a', 红: '#ff5f5f',
   灰: '#9a9a9a', 青: '#36c6c0', 粉: '#ff79c2', 黄: '#e6c440',
 };
+// >v<🎨画布-饱和度档-颜色右键里的 25 / 50 / 75 / 100%（👤 2026-10-10）：按 HSL 把饱和度乘上去，色相和亮度不变
+export function satHex(hex, pct) {
+  const p = Math.max(0, Math.min(100, pct)) / 100, n = parseInt(hex.slice(1), 16), r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+  let h = 0, s = 0;
+  if (d) { s = d / (1 - Math.abs(2 * l - 1)); h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; if (h < 0) h += 360; }
+  s *= p;
+  const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m0 = l - c / 2;
+  const [r1, g1, b1] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return '#' + [r1, g1, b1].map(v => Math.round((v + m0) * 255).toString(16).padStart(2, '0')).join('');
+}
 export const WORDS_FILE = '_配色.md';
 export const DEFAULT_WORDS = `# 配色词表
 
@@ -43,9 +54,12 @@ const CYCLE = ['青', '粉', '黄', '蓝', '紫', '橙', '绿', '红'].map(k => 
 
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 // color: 的值：调色板名（蓝 / 紫…）或 #rgb / #rrggbb；认不出 → null（当没写）
+// 后面可以跟 /25 /50 /75（饱和度百分比，100 = 不写）：蓝/50、#ff9636/25
 export function parseColor(s) {
   if (s == null) return null;
-  const t = String(s).trim();
+  let t = String(s).trim();
+  const m = t.match(/^(.+)\/(\d{1,3})$/);
+  if (m) { const base = parseColor(m[1]); return base ? satHex(base, +m[2]) : null; }
   if (PALETTE[t]) return PALETTE[t];
   if (!HEX.test(t)) return null;
   return t.length === 4 ? '#' + [...t.slice(1)].map(c => c + c).join('') : t.toLowerCase();
