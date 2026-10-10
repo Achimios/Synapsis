@@ -173,13 +173,14 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   cardActions.multi = multi; // 外壳的 Ctrl+C 要知道多选了哪些
   // 框里子节点：画布坐标（相对框）↔ 存的坐标（钻进分组那页的坐标）
   const fmin = {};
-  for (const n of view.nodes) if (n.framed) { const ks = n.children.map(c => layout[c]).filter(Boolean); fmin[n.id] = ks.length ? { x: Math.min(...ks.map(p => p.x)), y: Math.min(...ks.map(p => p.y)) } : { x: 0, y: 0 }; }
+  for (const n of view.nodes) if (n.framed && n.ui) fmin[n.id] = { x: 0, y: 0 }; /* UI 框：里面的坐标原点 = 框左上角 */
+  for (const n of view.nodes) if (n.framed && !n.ui) { const ks = n.children.map(c => layout[c]).filter(Boolean); fmin[n.id] = ks.length ? { x: Math.min(...ks.map(p => p.x)), y: Math.min(...ks.map(p => p.y)) } : { x: 0, y: 0 }; }
   const frameOf = new Map(view.nodes.filter(n => n.frame != null).map(n => [n.id, n.frame]));
   const posOf = n => { const p = layout[n.id], f = frameOf.get(n.id); return f != null && p && fmin[f] ? { x: p.x - fmin[f].x + FP.x, y: p.y - fmin[f].y + FP.y } : p; };
   const toLayout = (id, p) => { const f = frameOf.get(id); return f != null && fmin[f] ? { x: Math.round(p.x - FP.x + fmin[f].x), y: Math.round(p.y - FP.y + fmin[f].y) } : p; };
   const build = () => [
     ...(plane ? [{ id: '@axes', type: 'axes', position: { x: -plane.S * 1.25, y: -plane.S * 1.25 }, data: plane, draggable: false, selectable: false, focusable: false, zIndex: -1, style: { pointerEvents: 'none' } }] : []),
-    ...view.nodes.map(n => ({ id: n.id, type: n.framed ? 'frame' : 's', position: posOf(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(n.framed ? { style: { width: FMIN.w, height: FMIN.h } } : {}), ...(n.ui && !n.framed ? { style: { width: n.uiW, height: n.uiH } } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id) }, selected: isSel(n.id) })),
+    ...view.nodes.map(n => ({ id: n.id, type: n.framed && !n.ui ? 'frame' : 's', position: posOf(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(n.framed && !n.ui ? { style: { width: FMIN.w, height: FMIN.h } } : {}), ...(n.ui ? { style: { width: n.uiW, height: n.uiH } } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id) }, selected: isSel(n.id) })),
     ...view.portals.map(p => ({ id: p.id, type: 's', position: layout[p.id], data: { portal: p, dim: nodeDim(p.id, view, selected) }, selected: isSel(p.id) })),
     ...pics.map(p => ({ id: p.id, type: 'pic', position: layout[p.id] || { x: 0, y: 0 }, data: { pic: p, isSel: isSel(p.id) }, selected: isSel(p.id) })),
   ];

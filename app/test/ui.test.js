@@ -861,6 +861,12 @@ for (const kind of ['reactflow']) {
   await page.click('button.aibtn'); await sleep(800);
   ok((await page.$eval('.aistat', e => e.textContent)).includes('已连上'), 'AI 面板：已连上');
   ok(!(await page.$('.aipanel button:has-text("生成词表")')), '设置页只放设置：没有「生成词表」按钮');
+  // 按用途细分（👤 2026-10-10）：7 个用途各一行，继承 / 本地 / 在线 + 模型；点「在线」存进 cfg.tasks
+  ok((await page.$$('.aipanel .srcrow.task')).length === 7, 'AI 设置：7 个用途各一行 ' + (await page.$$('.aipanel .srcrow.task')).length);
+  await page.click('.aipanel .srcrow.task:has-text("语义配色归类") .seg a:has-text("在线")'); await sleep(900);
+  ok(await page.$eval('.aipanel .srcrow.task:has-text("语义配色归类") .seg a.on', e => e.textContent.includes('在线')), '语义配色归类 单独选了在线');
+  ok(await page.$eval('.aipanel .srcrow.task:has-text("潜在关联精排") .seg a.on', e => e.textContent === '继承'), '别的用途仍是「继承」');
+  await page.click('.aipanel .srcrow.task:has-text("语义配色归类") .seg a:has-text("继承")'); await sleep(900);
   await page.click('.aipanel .bar button'); await sleep(500);
   // 生成词表在指令框的「🎨 配色词表」页（👤「这种操作不该丢配置页面」）
   await page.mouse.click(700, 760); await page.keyboard.press('Shift+F'); await sleep(500);
@@ -1282,6 +1288,36 @@ for (const kind of ['reactflow']) {
   const rc2 = await page.$eval('.card.uibox', e => { const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
   await page.mouse.dblclick(rc2[0], rc2[1]); await sleep(1200);
   ok((await page.$eval('.crumbs', e => e.innerText.replace(/\s+/g, ''))).includes('框框'), '双击 UI 框中间（不是标题）→ 进到框里面');
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
+// —— UI 框展开子级 / 子图（👤 2026-10-10）：UI 框也有 ▸ N 和 ⊞，新建出来默认都不展开；子图 = 里面的东西画在框里，框大小不变 ——
+{
+  console.log('== UI 框展开');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-uifr-ui-')); noAi(ws);
+  saveOutline(ws, '甲');
+  writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 甲: { x: 0, y: 0 } }));
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
+  await page.mouse.click(700, 500, { button: 'right' }); await sleep(300);
+  await page.click('.ctx .mi:has-text("新建 UI 框")'); await sleep(1500);
+  await page.keyboard.type('框'); await page.keyboard.press('Enter'); await sleep(1500);
+  ok(!(await page.$('.card.uibox .kids')), '新建的 UI 框里没东西 → 没有展开按钮');
+  await page.keyboard.press('Control+Enter'); await sleep(1200);
+  await page.keyboard.type('内'); await page.keyboard.press('Enter'); await sleep(1500);
+  ok(!!(await page.$('.card.uibox .kids.fr')) && !!(await page.$('.card.uibox .kidlist li:has-text("内")')) && !(await page.$('.react-flow__node-frame')), '加了个子节点（和别的卡一样原地展开子级）→ 出现 ▸ 1 和 ⊞，框里列出子级，没变成分组框');
+  await page.click('.card.uibox .kids:not(.fr)'); await sleep(500);
+  ok(!(await page.$('.card.uibox .kidlist')), '点 ▸ → 收起子级列表');
+  const sz0 = await page.$eval('.card.uibox', e => [e.offsetWidth, e.offsetHeight]);
+  await page.click('.card.uibox .kids.fr'); await sleep(900);
+  const ub = await (await page.$('.card.uibox')).boundingBox(), cb = await (await page.$('.card:has(.lab:text-is("内")):not(.uibox)')).boundingBox();
+  ok(cb.x >= ub.x && cb.y >= ub.y && cb.x + cb.width <= ub.x + ub.width && cb.y + cb.height <= ub.y + ub.height, '点 ⊞ → 子节点画在框里面 ' + JSON.stringify([ub, cb].map(b => [b.x, b.y, b.width, b.height].map(Math.round))));
+  ok(JSON.stringify(await page.$eval('.card.uibox', e => [e.offsetWidth, e.offsetHeight])) === JSON.stringify(sz0) && !(await page.$('.react-flow__node-frame')), '框的大小不变，也没有变成普通分组框');
+  await page.click('.card.uibox .kids.fr'); await sleep(900);
+  const cb2 = await (await page.$('.card:has(.lab:text-is("内")):not(.uibox)'))?.boundingBox();
+  ok(!cb2 || cb2.x + cb2.width <= ub.x || cb2.y >= ub.y + ub.height || cb2.x >= ub.x + ub.width || cb2.y + cb2.height <= ub.y, '再点 ⊟ → 子图收起（子节点不再画在框里）');
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });

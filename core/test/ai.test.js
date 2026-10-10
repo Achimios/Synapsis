@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { aiStatus, related, rerank, semColors, semPatterns, suggestWords, applyWords, explainRelation, embed, chat, chatModel } from '../ai.js';
+import { aiStatus, related, rerank, semColors, semPatterns, suggestWords, applyWords, explainRelation, embed, chat, chatModel, taskSrc, TASKS } from '../ai.js';
 import { saveOutline, loadWorkspace, DIR } from '../workspace.js';
 import { colorMap, PALETTE } from '../colors.js';
 
@@ -44,6 +44,13 @@ try {
   rmSync(kf);
   const both = { chat: 'qwen-x', agentSrc: 'online', bulkSrc: 'local', onlineModel: 'deepseek-v4-pro' };
   ok(chatModel(both) === 'deepseek:deepseek-v4-pro' && chatModel(both, true) === 'qwen-x' && chatModel({ chat: 'q' }) === 'q', '指令框走在线、高频（潜在关联 / 配色）照旧本地');
+  // 👤 2026-10-10 按用途细分：没指定 = 继承；指定了就各走各的（本地 / 在线、各自的模型）
+  const per = { ...both, tasks: { semColors: { src: 'online', model: 'deepseek-flash' }, agent: { src: 'local', chat: 'qwen-big' }, words: { model: 'deepseek-flash' } } };
+  ok(chatModel(per, 'semColors') === 'deepseek:deepseek-flash' && chatModel(per, 'rerank') === 'qwen-x' && chatModel(per, 'semPatterns') === 'qwen-x', '语义配色单独走在线，精排 / 图案仍继承本地');
+  ok(chatModel(per) === 'qwen-big' && chatModel(per, 'agent') === 'qwen-big' && chatModel(per, 'qa') === 'deepseek:deepseek-v4-pro', '指令框单独走本地大模型，问答继承通用在线');
+  ok(chatModel(per, 'words') === 'deepseek:deepseek-flash' && taskSrc(per, 'words') === 'online', '只写 model 不写 src → 仍继承 src，但在线模型用它指定的');
+  ok(chatModel({ ...per, offline: true }, 'semColors') === 'qwen-x' && taskSrc({ ...per, offline: true }, 'semColors') === 'local', 'offline 一律本地（自检不联网）');
+  ok(TASKS.every(t => t.id && t.name) && TASKS.filter(t => t.bulk).map(t => t.id).join() === 'rerank,semColors,semPatterns', '用途清单：高频的是 精排 / 语义配色 / 语义图案');
 
   saveOutline(root, `情绪空间 -> 行为输出
   恐惧

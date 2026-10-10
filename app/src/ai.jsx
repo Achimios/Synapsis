@@ -55,8 +55,7 @@ export function AiPanel({ api, status, onStatus, onClose }) {
         <div className="aibody">
           <div className="aigroup">
             <b>通用</b>
-            {src('agentSrc', 'AI 指令框 / 问答 / 生成词表 / 「?」关系说明', '（一次一问，用在线更聪明）')}
-            {src('bulkSrc', '潜在关联精排 / 语义配色归类', '（高频、后台自动跑，默认本地，免得悄悄花钱）')}
+            <TaskRows {...{ status, cfg, save }} />
             <label className="chk"><input type="checkbox" checked={!!cfg.semColors} onChange={e => save({ semColors: e.target.checked })} />语义配色：词表没认出的节点让对话模型归到词表某一行（结果缓存，有新节点才再问）</label>
             <div className="hint">按节点生成配色词表在 AI 指令框（Shift+F）的「🎨 配色词表」页 —— 这里只放设置。{busy}</div>
           </div>
@@ -67,6 +66,38 @@ export function AiPanel({ api, status, onStatus, onClose }) {
       </div>
     </div>
   );
+}
+
+// >v<🤖AI辅助-按用途选模型-👤 2026-10-10：每个用途一行（继承 / 本地 / ☁在线 + 模型）。清单和 core/ai.js 的 TASKS 同一份（浏览器里不能 import 那个文件，改了要两边一起改）
+const TASK_ROWS = [
+  ['agent', 'AI 指令框', '含 ⇅ 自动排序；在线 = 宽松版，本地 = 严格版'], ['qa', '问答', '问「怎么用」时（本地严格版才走）'], ['words', '生成词表', '配色词表草稿'], ['relation', '「?」关系说明', '潜在关联里点 ? 时'],
+  ['rerank', '潜在关联精排', '高频、后台自动跑', true], ['semColors', '语义配色归类', '高频，改节点时触发', true], ['semPatterns', '语义图案归类', '高频，改节点时触发', true],
+];
+function TaskRows({ status, cfg, save }) {
+  const tasks = cfg.tasks || {};
+  const set = (id, patch) => {
+    const t = { ...(tasks[id] || {}), ...patch };
+    for (const k of Object.keys(t)) if (t[k] == null || t[k] === '') delete t[k];
+    const next = { ...tasks, [id]: t }; if (!Object.keys(t).length) delete next[id];
+    save({ tasks: next });
+  };
+  return <div className="taskrows">
+    <div className="hint">每个用途单独选本地还是在线、用哪个模型；「继承」= 跟下面「默认」走。</div>
+    <div className="srcrow"><span>默认：指令框 / 问答 / 词表 / 关系说明<span className="hint"> （一次一问，在线更聪明）</span></span>
+      <span className="seg">{[['local', '本地'], ['online', '☁ 在线']].map(([v, t]) => <a key={v} className={(cfg.agentSrc || 'local') === v ? 'on' : ''} onClick={() => save({ agentSrc: v })}>{t}</a>)}</span></div>
+    <div className="srcrow"><span>默认：高频后台（精排 / 语义配色 / 语义图案）<span className="hint"> （默认本地，免得悄悄花钱）</span></span>
+      <span className="seg">{[['local', '本地'], ['online', '☁ 在线']].map(([v, t]) => <a key={v} className={(cfg.bulkSrc || 'local') === v ? 'on' : ''} onClick={() => save({ bulkSrc: v })}>{t}</a>)}</span></div>
+    {TASK_ROWS.map(([id, name, hint, bulk]) => {
+      const own = tasks[id] || {}, eff = cfg.offline ? 'local' : own.src || ((bulk ? cfg.bulkSrc : cfg.agentSrc) === 'online' ? 'online' : 'local');
+      return <div key={id} className="srcrow task">
+        <span>{name}<span className="hint"> {hint}</span></span>
+        <span className="seg">{[[null, '继承'], ['local', '本地'], ['online', '☁ 在线']].map(([v, t]) => <a key={t} className={(own.src || null) === v ? 'on' : ''} onClick={() => set(id, { src: v })}>{t}</a>)}</span>
+        {eff === 'online'
+          ? <select title="在线模型（空 = 默认）" value={own.model || ''} onChange={e => set(id, { model: e.target.value })}><option value="">默认在线模型</option>{(status?.online || []).map(m => <option key={m.id} value={m.id.replace(/^\w+:/, '')}>{m.id}</option>)}</select>
+          : <select title="本地模型（空 = 默认）" value={own.chat || ''} onChange={e => set(id, { chat: e.target.value })}><option value="">默认本地模型</option>{(status?.chat || []).map(m => <option key={m.id} value={m.id}>{m.id}</option>)}</select>}
+      </div>;
+    })}
+  </div>;
 }
 
 function LocalTab({ api, status, cfg, save, onStatus }) {

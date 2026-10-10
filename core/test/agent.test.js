@@ -139,6 +139,11 @@ try {
   ok(lk.text.includes('我是项目里的文档') && lk.said.includes('读文件 设计说明.md'), '查看：读项目里的 md');
   ok((lk.text.match(/不能读/g) || []).length === 2 && lk.text.includes('没有这个文件'), '查看：项目外 / .synapsis / 不存在的文件读不了');
   ok(lk.text.includes('【手册·怎么连线】') && !lk.text.includes('（手册里没有相关的段落）'), '查看：翻手册能找到连线那段');
+  // 在线版（rich）多给：正文开头、传送门障碍物、本页范围、项目大纲
+  { const w = loadWorkspace(root), c = pageContext(w, '设计', [], { '设计/战斗': { x: 0, y: 0, w: 100, h: 40 }, '@portal:别处': { x: 300, y: 20, w: 120, h: 30 } }, { rich: true });
+    const plain = pageContext(w, '设计', [], { '@portal:别处': { x: 300, y: 20, w: 120, h: 30 } });
+    ok(c.text.includes('障碍物') && c.text.includes('传送门→别处') && c.text.includes('宽高比') && c.text.includes('项目大纲') && c.text.includes('「挥刀') === false, 'rich：障碍物 / 范围 / 项目大纲都在 ' + c.text.slice(0, 40));
+    ok(!plain.text.includes('障碍物') && !plain.text.includes('项目大纲'), '严格版（8B）上下文不变短小') ; }
   ok(lp.includes('【手册目录】') && lp.length < loosePrompt([], []).length + 9000, '宽松版提示词：快捷键表 + 手册目录，手册正文不整份塞');
 
   // 问模型（假服务）：第一次回废话 → 重试；带短记忆；写日志

@@ -625,3 +625,4 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 .card.uibox .uidim { margin-left: auto; font-size: 10px; color: var(--dim); font-weight: normal; }
 .card.uibox .uigrip { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 50%, var(--c, var(--accent)) 50%); opacity: .7; } .card.uibox .uigrip:hover { opacity: 1; }
 .ctx .swatches.sat button { font-size: 8px; line-height: 1; color: rgba(0,0,0,.65); padding: 0; } .ctx .swatches.sat button:disabled { cursor: default; }
+.taskrows { display: flex; flex-direction: column; gap: 5px; } .taskrows .srcrow.task { border-top: 1px dashed var(--line); padding-top: 4px; flex-wrap: wrap; } .taskrows .srcrow.task select { max-width: 160px; font-size: 11px; }

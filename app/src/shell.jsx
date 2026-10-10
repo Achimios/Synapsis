@@ -151,7 +151,8 @@ export function Shell({ name, Canvas }) {
   // 边标签 / 节点副标题来自工作区文件（大纲里没有）
   const sm = seeModes[realScope] || {};
   const eff = (m, own) => m === 'on' ? true : m === 'off' ? false : own; // 本页「看」盖一层：展开 / 收起；不接管 = 用节点自己的
-  const expE = id => eff(sm.kids, !!expanded[id]), frmE = id => eff(sm.frame, !!framed[id]), txtE = id => eff(sm.text, !!textOpen[id]), prpE = id => eff(sm.props, !propsShut[id]);
+  const uiId = id => isUi(wsData?.nodes[id]?.meta); // 👤 2026-10-10 UI 框不跟「预览展开」的全局三态，只认自己的 ▸ / ⊞
+  const expE = id => uiId(id) ? !!expanded[id] : eff(sm.kids, !!expanded[id]), frmE = id => uiId(id) ? !!framed[id] : eff(sm.frame, !!framed[id]), txtE = id => eff(sm.text, !!textOpen[id]), prpE = id => eff(sm.props, !propsShut[id]);
   const view = useMemo(() => {
     const v = projectView(graph, realScope, space ? null : new Set([...graph.nodes.keys()].filter(k => graph.nodes.get(k)?.children.length && frmE(k))));
     const lab = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.label]));
@@ -1401,7 +1402,12 @@ export function UiCard({ node, dim, isSel }) {
     <div className={'card uibox' + (dim ? ' dim' : '') + (isSel ? ' sel' : '')} style={{ width: node.uiW, height: node.uiH, ...(node.color ? { '--c': node.color } : {}) }}>
       <div className="title">{node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
         <span className="uidim" title="宽 × 高（右下角拖着改）">{Math.round(node.uiW)}×{Math.round(node.uiH)}</span>
-        {node.children.length > 0 && <span className="kids" title="里面有 UI 框 / 节点（双击标题钻进去）">▸ {node.children.length}</span>}</div>
+        {node.children.length > 0 && <span className="kids" title="展开子级列表（空格）；双击钻进去" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggle(node.id); }}>{node.open ? '▾' : '▸'} {node.children.length}</span>}
+        {node.children.length > 0 && <span className="kids fr" title={node.framed ? '收起子图：里面的东西不画在框里' : '展开子图：里面的东西画在框里（位置 = 钻进去那一页的坐标）'} onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggleFrame(node.id); }}>{node.framed ? '⊟' : '⊞'}</span>}</div>
+      {node.open && node.kids && <ul className="kidlist" style={{ margin: '2px 6px' }}>{node.kids.map(k => (
+        <li key={k.id} data-nid={k.id} title="双击跳进去" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
+          <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span>{k.renaming ? <RenameInput id={k.id} label={k.label} /> : <span>{k.label}</span>}{k.n > 0 && <span className="kn">▸{k.n}</span>}
+        </li>))}</ul>}
       <span className="uigrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} onClick={stop} />
     </div>
   );

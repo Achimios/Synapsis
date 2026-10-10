@@ -26,7 +26,29 @@ export const keyFile = home => join(home, '.synapsis', 'keys.json');
 // SYNAPSIS_ONLINE_URL = 自检用：把在线请求指到本机假服务
 const onlineOf = id => { const m = /^(\w+):(.+)$/.exec(id || ''); return m && ONLINE[m[1]] ? { provider: m[1], model: m[2], ...ONLINE[m[1]], ...(process.env.SYNAPSIS_ONLINE_URL ? { url: process.env.SYNAPSIS_ONLINE_URL } : {}) } : null; };
 // 这次调用实际用哪个对话模型（在线的带「deepseek:」前缀）
-export const chatModel = (cfg, bulk = false) => !cfg.offline && (bulk ? cfg.bulkSrc : cfg.agentSrc) === 'online' ? 'deepseek:' + (cfg.onlineModel || 'deepseek-flash') : cfg.chat;
+// >v<🤖AI辅助-按用途选模型-👤 2026-10-10「开发阶段调用什么模型，在 AI 配置页分细一点」：每个用途可以单独指定 本地 / 在线 + 模型；
+//   没指定 = 继承通用（高频后台那几个跟 bulkSrc，其余跟 agentSrc；在线模型跟 onlineModel，本地跟 chat）。cfg.tasks = { 用途: { src?, model?（在线）, chat?（本地） } }
+export const TASKS = [
+  { id: 'agent', name: 'AI 指令框', hint: '含 ⇅ 自动排序；在线 = 宽松版，本地 = 严格版' },
+  { id: 'qa', name: '问答', hint: '问「怎么用」时' },
+  { id: 'words', name: '生成词表', hint: '配色词表草稿' },
+  { id: 'relation', name: '「?」关系说明', hint: '潜在关联里点 ? 时' },
+  { id: 'rerank', name: '潜在关联精排', hint: '高频，后台自动跑', bulk: true },
+  { id: 'semColors', name: '语义配色归类', hint: '高频，改节点时触发', bulk: true },
+  { id: 'semPatterns', name: '语义图案归类', hint: '高频，改节点时触发', bulk: true },
+];
+const BULK_TASKS = new Set(TASKS.filter(t => t.bulk).map(t => t.id));
+export const taskSrc = (cfg, task) => {
+  if (cfg.offline) return 'local';
+  const s = cfg.tasks?.[task]?.src;
+  return s === 'local' || s === 'online' ? s : (BULK_TASKS.has(task) ? cfg.bulkSrc : cfg.agentSrc) === 'online' ? 'online' : 'local';
+};
+// task = 用途 id；旧写法 true = 高频后台（rerank）、不写 = agent
+export const chatModel = (cfg, task = 'agent') => {
+  if (task === true) task = 'rerank'; else if (!task) task = 'agent';
+  const t = cfg.tasks?.[task] || {};
+  return taskSrc(cfg, task) === 'online' ? 'deepseek:' + (t.model || cfg.onlineModel || 'deepseek-flash') : (t.chat || cfg.chat);
+};
 function onlineKey(cfg, provider) {
   if (process.env[ONLINE[provider].env]) return process.env[ONLINE[provider].env];
   try { return JSON.parse(readFileSync(cfg.keys, 'utf8'))[provider] || null; } catch { return null; }
@@ -129,7 +151,7 @@ const cacheOf = root => join(root, '.synapsis', 'embed.json');
 // opts.kind = 日志里的用途名；opts.history = 之前几轮 [{role, content}]（AI 指令框的短记忆）；opts.usage = 传个空对象进来，填上服务端报的 token 用量
 // opts.bulk = 高频后台调用（潜在关联重排、语义配色归类）→ 按 cfg.bulkSrc 选本地 / 在线，其余按 cfg.agentSrc
 export async function chat(cfg, system, user, maxTokens = 300, opts = {}) {
-  const model = chatModel(cfg, opts.bulk), on = onlineOf(model);
+  const model = chatModel(cfg, opts.task || (opts.bulk ? 'rerank' : 'agent')), on = onlineOf(model);
   const messages = [{ role: 'system', content: system }, ...(opts.history || []), { role: 'user', content: on ? user : user + '\n/no_think' }];
   const t0 = Date.now(), u = opts.usage || {}; // u = 这次的 token 用量（调用方没传就自己攒一份，用来记总用量）
   let raw = '', err = null;
@@ -229,7 +251,7 @@ export async function related(root, id, cfg, k = 20) {
 export async function explainRelation(root, id, other, cfg) {
   const ws = loadWorkspace(root);
   const b = other.kind === 'file' ? projectDocs(root).find(d => d.path === other.id)?.text || other.id : nodeText(ws, other.id);
-  return chat(cfg, '你在帮人整理一个项目的思维导图。给你两个条目，用一句中文（不超过 50 字）说出它们之间可能有什么关系、为什么值得连起来。看不出有意义的关系就回答「看不出明显关系」。只输出这一句。', `A：${nodeText(ws, id)}\n\nB：${b}`, 200, { kind: "关系说明" });
+  return chat(cfg, '你在帮人整理一个项目的思维导图。给你两个条目，用一句中文（不超过 50 字）说出它们之间可能有什么关系、为什么值得连起来。看不出有意义的关系就回答「看不出明显关系」。只输出这一句。', `A：${nodeText(ws, id)}\n\nB：${b}`, 200, { kind: "关系说明", task: 'relation' });
 }
 
 // >v<🤖AI辅助-精排-嵌入只看「字面像不像」（👤 2026-10-08：嵌入不够用）→ 对话模型（8B）给嵌入挑出的前 N 条逐条打 0~3 分 + 一句理由
@@ -241,7 +263,7 @@ export async function rerank(root, id, items, cfg) {
   const raw = await chat(cfg, `你在帮人整理一个项目的思维导图，判断候选条目和目标条目有没有值得连起来的关系（因果、组成、输入输出、同一机制、互相制约）。
 只是用词相近、但讲的不是一回事 → 0 分。评分：0 无关，1 弱相关，2 有关，3 强相关。
 每个候选输出一行，格式严格是：序号: 分数 | 理由（不超过 25 字）
-不要输出别的任何文字。`, `目标：${nodeText(ws, id).replace(/\s+/g, ' ').slice(0, 300)}\n\n候选：\n${list.map((it, i) => `${i + 1}. ${textOf(it)}`).join('\n')}`, 60 + list.length * 40, { kind: "精排", temperature: 0.1, bulk: true });
+不要输出别的任何文字。`, `目标：${nodeText(ws, id).replace(/\s+/g, ' ').slice(0, 300)}\n\n候选：\n${list.map((it, i) => `${i + 1}. ${textOf(it)}`).join('\n')}`, 60 + list.length * 40, { kind: "精排", temperature: 0.1, task: 'rerank' });
   const got = new Map();
   // 8B 实测会把名字也复述一遍（「1. 名字 | 2 | 理由」）→ 按竖线切开，取第一个单独是 0~3 的段当分数，它后面的段当理由
   for (const line of raw.split(/\r?\n/)) {
@@ -274,7 +296,7 @@ export async function semColors(root, cfg) {
 
 // 通用：把一批名字归到 rows 的某一行（-1 = 都不贴切）。按名字缓存在 file（行或模型一变就作废），只问新名字
 async function classifyLabels(cfg, file, rows, labels, intro, kind) {
-  const key = h(chatModel(cfg, true) + JSON.stringify(rows));
+  const key = h(chatModel(cfg, kind === '语义配色' ? 'semColors' : 'semPatterns') + JSON.stringify(rows));
   let cache = {};
   try { const c = JSON.parse(readFileSync(file, 'utf8')); if (c.key === key) cache = c.map; } catch { /* 第一次 */ }
   const todo = [...new Set(labels.filter(l => !(l in cache)))];
@@ -283,7 +305,7 @@ async function classifyLabels(cfg, file, rows, labels, intro, kind) {
     const part = todo.slice(i, i + 60);
     const raw = await chat(cfg, `${intro}类别（编号. 关键词）：
 ${list}
-对每个节点名，判断它最属于哪个类别；都不贴切就写 0。每行输出「节点序号: 类别编号」，不要别的文字。`, part.map((l, j) => `${j + 1}. ${l}`).join('\n'), 20 + part.length * 12, { kind, temperature: 0.1, bulk: true });
+对每个节点名，判断它最属于哪个类别；都不贴切就写 0。每行输出「节点序号: 类别编号」，不要别的文字。`, part.map((l, j) => `${j + 1}. ${l}`).join('\n'), 20 + part.length * 12, { kind, temperature: 0.1, task: kind === '语义配色' ? 'semColors' : 'semPatterns' });
     const got = {};
     for (const m of raw.matchAll(/(\d+)\s*[:：.、]\s*(\d+)/g)) got[+m[1] - 1] = +m[2] - 1;
     part.forEach((l, j) => { const r = got[j]; cache[l] = r >= 0 && r < rows.length ? r : -1; });
@@ -313,7 +335,7 @@ export async function suggestWords(root, cfg) {
 按节点名的主题把它们分成 4~7 组，每组一个颜色，每组列 4~10 个「关键词」（短词，2~4 个字，节点名里会出现的那种词，不要整句节点名）。
 只输出词表行，每行格式严格是：- 颜色: 词, 词, 词
 不要输出任何别的文字。`;
-  const raw = await chat(cfg, sys, `现有词表（可以参考、改进）：\n${(ws.colorWords ?? DEFAULT_WORDS).split(/\r?\n/).filter(l => /^\s*[-*]/.test(l)).join('\n')}\n\n节点名：\n${labels.join('、')}`, 800, { kind: "生成词表" });
+  const raw = await chat(cfg, sys, `现有词表（可以参考、改进）：\n${(ws.colorWords ?? DEFAULT_WORDS).split(/\r?\n/).filter(l => /^\s*[-*]/.test(l)).join('\n')}\n\n节点名：\n${labels.join('、')}`, 800, { kind: "生成词表", task: 'words' });
   const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => /^[-*]\s*[^:：]+[:：]/.test(l));
   const head = DEFAULT_WORDS.split('\n- ')[0].trimEnd();
   const text = head + '\n\n' + lines.join('\n') + '\n';

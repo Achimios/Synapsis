@@ -24,7 +24,7 @@ export function loadSkills(dir = SKILL_DIR) {
 const ST = { done: '✅', partial: '◐', todo: '○', dropped: '❌' };
 // 本页（scope 的子节点）+ 选中的节点，编号 n1、n2…；模型只能用这些编号（真 id 是长路径，交给模型容易抄错）
 // boxes = 前端量到的卡片 {id: {x, y, w, h}}（有就用它的坐标和宽高 —— 模型自己算位置时要知道卡多大）
-export function pageContext(ws, scope, selected = [], boxes = {}) {
+export function pageContext(ws, scope, selected = [], boxes = {}, opts = {}) {
   const g = ws.graph;
   if (!g.nodes.has(scope)) scope = ROOT;
   const ids = [...g.nodes.get(scope).children];
@@ -38,8 +38,23 @@ export function pageContext(ws, scope, selected = [], boxes = {}) {
       n.parent !== scope ? `（在「${g.nodes.get(n.parent)?.label}」下）` : '', p ? `@(${Math.round(p.x / 10) * 10},${Math.round(p.y / 10) * 10})` : '', b ? `${Math.round(b.w)}×${Math.round(b.h)}` : '', sel.has(id) ? '★选中' : ''].filter(Boolean).join(' ');
   });
   const edges = g.edges.filter(e => back.has(e.from) && back.has(e.to)).map(e => `${back.get(e.from)} -> ${back.get(e.to)}${e.kind ? '（' + e.kind + '）' : ''}${e.label ? '「' + e.label + '」' : ''}`);
+  // 👤 2026-10-10 在线宽松版看得到更多：每张卡的正文开头、本页范围和比例、传送门 / 图片卡（只读的障碍物，排版时别压）、当前页节点自己的正文、整个项目的大纲（前 80 行）
+  let extra = '';
+  if (opts.rich) {
+    const snip = id => { const t = (g.nodes.get(id).body || '').replace(/\s+/g, ' ').trim(); return t ? `「${t.slice(0, 40)}${t.length > 40 ? '…' : ''}」` : ''; };
+    ids.forEach((id, i) => { if (snip(id)) lines[i] += ' ' + snip(id); });
+    const fixed = Object.entries(boxes).filter(([id, b]) => id.startsWith('@') && b && b.w > 0);
+    const obs = fixed.map(([id, b]) => `${id.startsWith('@portal:') ? '传送门→' + (g.nodes.get(id.slice(8))?.label ?? id.slice(8)) : id} @(${Math.round(b.x / 10) * 10},${Math.round(b.y / 10) * 10}) ${Math.round(b.w)}×${Math.round(b.h)}`);
+    const all = [...ids.map(id => boxes[id]), ...fixed.map(([, b]) => b)].filter(b => b && b.w > 0);
+    if (all.length) { const x0 = Math.min(...all.map(b => b.x)), y0 = Math.min(...all.map(b => b.y)), x1 = Math.max(...all.map(b => b.x + b.w)), y1 = Math.max(...all.map(b => b.y + b.h)); extra += `\n本页所有卡片（含传送门 / 图片）占的范围：x ${Math.round(x0)}~${Math.round(x1)}，y ${Math.round(y0)}~${Math.round(y1)}（${Math.round(x1 - x0)}×${Math.round(y1 - y0)}，宽高比 ${((x1 - x0) / Math.max(1, y1 - y0)).toFixed(2)}）`; }
+    if (obs.length) extra += `\n障碍物（传送门 / 图片卡：没有编号，不能动，排版时别压）：\n${obs.join('\n')}`;
+    const me = scope !== ROOT && g.nodes.get(scope);
+    if (me && (me.body || '').trim()) extra += `\n当前页这个节点自己的正文：${me.body.trim().slice(0, 600)}`;
+    const ol = workspaceOutline(ws).split('\n');
+    extra += `\n项目大纲（只列名字和层级，前 ${Math.min(ol.length, 80)} 行 / 共 ${ol.length} 行）：\n${ol.slice(0, 80).map(l => l.replace(/ -> .*$/, '')).join('\n')}`;
+  }
   const crumb = []; for (let x = scope; x && x !== ROOT; x = g.nodes.get(x)?.parent) crumb.unshift(g.nodes.get(x).label);
-  return { scope, refs, back, text: `当前页：${crumb.length ? crumb.join(' / ') : '根'}\n节点（编号 名字 状态 子节点数 @左上角画布坐标(x 向右, y 向下) 宽×高 是否选中）：\n${lines.join('\n') || '（空页）'}\n连线：\n${edges.join('\n') || '（无）'}` };
+  return { scope, refs, back, text: `当前页：${crumb.length ? crumb.join(' / ') : '根'}\n节点（编号 名字 状态 子节点数 @左上角画布坐标(x 向右, y 向下) 宽×高 是否选中）：\n${lines.join('\n') || '（空页）'}\n连线：\n${edges.join('\n') || '（无）'}${extra}` };
 }
 
 // >v<🤖AI指令-宽松版-在线模型（聪明）用：👤 2026-10-08「被你训的太听话了…主观能动性…扁平化指挥给基层更多自由度」。
@@ -59,7 +74,7 @@ export function loosePrompt(skills = loadSkills(), knowledge = knowledgeChunks()
 - 长期记忆：有时消息里会附【记忆索引】（每份一行：名字 + 一句描述）。觉得哪份和这次有关、想看全文，就只输出 {"read": ["名字", …]}（这一次不要 say 和 actions），全文会发给你，你再正常回答。用不上就别读。值得以后记住的，用 remember 提议。
 - 查看：【当前页】只列了名字和位置。需要更多信息（某张卡的正文、某个节点里面有什么、项目里哪里提到某个词、某份文档、软件怎么用）时，只输出 {"look": [{"node": "n3"}, {"page": "n5"}, {"search": "词"}, {"file": "路径.md"}, {"manual": "关键词"}]}（这一次不要 say 和 actions），结果会发给你，你再继续。{"node": 编号} = 正文和属性；{"page": 编号} = 那个节点里面有什么（子节点和连线；里面的东西没有编号，只能读，不能动手）；{"search": 词} = 搜节点名字 / 正文 / 项目文件（结果没有编号）；{"file": 项目里的相对路径} = 读一份文本文件（md / txt / 代码…）；{"manual": 关键词} = 翻软件手册。查看只读，不改任何东西；最多连续查看 3 次，能直接答就别查。
 - 【上一轮结果】：消息里可能有这一行，告诉你上次提议的动作人执行了没有、执行后检查出了什么问题（比如卡片重叠了）。以它为准，别凭印象说「已经做完了」；有问题就这一轮顺手修好。
-- 坐标：@(x,y) 是卡片左上角，x 向右、y 向下，后面是宽×高。用 place 挪位置时自己算好，别和别的卡重叠（留 20 以上的空隙）。
+- 坐标：@(x,y) 是卡片左上角，x 向右、y 向下，后面是宽×高。用 place 挪位置时自己算好，别和别的卡重叠（留 20 以上的空隙）；【当前页】里「障碍物」是传送门 / 图片卡，不能动，排版也要躲开它们。
 
 动作（说明书）：
 ${skills.map(s => `## ${s.name}：${s.do}\n参数：${s.args}\n${s.body}`).join('\n\n')}
@@ -144,7 +159,7 @@ export const ANSWER_PROMPT = `你是 Synapsis（思维导图 / 节点图工具�
 export const estTokens = s => { const t = String(s); const cjk = (t.match(/[㐀-鿿＀-￯]/g) || []).length; return Math.round(cjk + (t.length - cjk) / 3.5); };
 export const isLoose = cfg => !!cfg && /^\w+:/.test(chatModel(cfg) || ''); // 在线模型 → 宽松版
 export function estimateContext(root, { scope = ROOT, selected = [], loose = false } = {}) {
-  const ws = loadWorkspace(root), ctx = pageContext(ws, scope, selected);
+  const ws = loadWorkspace(root), ctx = pageContext(ws, scope, selected, {}, { rich: loose });
   const hist = recentTurns(root, loose).map(t => t.user + JSON.stringify({ say: t.say, actions: t.actions || [] })).join('');
   const parts = { 系统提示词: estTokens(loose ? loosePrompt() : systemPrompt()), 当前页: estTokens(ctx.text), 短记忆: estTokens(hist), 回答上限: 1200 };
   return { parts, total: Object.values(parts).reduce((a, b) => a + b, 0) };
@@ -196,7 +211,7 @@ export function lookAt(root, ctx, items) {
 // opts.home = Synapsis 目录（用户级记忆在那儿）；给了才有长期记忆（只给宽松版 / 在线模型用）
 export async function runAgent(root, { scope = ROOT, selected = [], text, boxes = {} }, cfg, opts = {}) {
   if (!text || !String(text).trim()) throw new Error('说点什么');
-  const ws = loadWorkspace(root), ctx = pageContext(ws, scope, selected, boxes), loose = isLoose(cfg);
+  const ws = loadWorkspace(root), loose = isLoose(cfg), ctx = pageContext(ws, scope, selected, boxes, { rich: loose });
   // 历史里的回答按规定格式原样放回（以前存成 {say, done}，8B 会照着学、把 actions 丢掉 —— 2026-10-08 实测）；编号是当时那一页的，可能已变
   const recent = recentTurns(root, loose);
   // 记忆索引附在那一轮的人话后面、跟着历史走：8 轮之内模型都看得见；滚出去了（或新对话 / 清空后）再附一次
@@ -207,7 +222,7 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   const know = pickKnowledge(text), usage = {}; // usage = LM Studio 报的 token 用量（prompt / completion / total），界面显示「已用 / 容量」
   if (!loose && isQuestion(text)) { // 宽松版（在线）不分流：问用法、聊天、做事都在一个提示词里，它自己判断
     const q = String(text).trim();
-    const raw = await chat(cfg, ANSWER_PROMPT, `【软件知识】\n${know.length ? knowledgeText(know) : '（没有找到相关的段落）'}\n\n问题：${q}`, 900, { kind: 'AI 问答', usage, temperature: 0.2 });
+    const raw = await chat(cfg, ANSWER_PROMPT, `【软件知识】\n${know.length ? knowledgeText(know) : '（没有找到相关的段落）'}\n\n问题：${q}`, 900, { kind: 'AI 问答', usage, temperature: 0.2, task: 'qa' });
     const say = raw.replace(/^```\w*\n?|```$/g, '').trim().slice(0, 1200) || '（模型没有回答）';
     pushChat(root, { t: new Date().toISOString(), mode: 'strict', scope: ctx.scope, user: q, say, actions: [], done: [] });
     return { say, actions: [], raw, knowledge: know.map(c => c.src), mode: 'answer', usage };
