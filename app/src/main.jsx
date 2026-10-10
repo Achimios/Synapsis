@@ -250,7 +250,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   // UI 框里的东西被平移 / 缩放到框外的部分裁掉（子节点是画布上的独立节点，不在框的 DOM 里，用 clip-path 按框的范围裁）
   const uiClip = n => {
     const f = n.frame != null && view.nodes.find(x => x.id === n.frame);
-    if (!f || !f.ui) return {};
+    if (!f || !f.ui || n.tempDeep) return {}; // Shift+1 递进预览展开的子图：塞不下就让它超出 UI 框，不裁
     const p = posOf(n), m = nodesRef.current?.find(x => x.id === n.id)?.measured; if (!p || !m?.width) return {};
     const t = Math.max(0, UI_TITLE - p.y), l = Math.max(0, -p.x), r = Math.max(0, p.x + m.width - f.uiW), b = Math.max(0, p.y + m.height - f.uiH);
     return t || l || r || b ? { clipPath: `inset(${t}px ${r}px ${b}px ${l}px)` } : {};

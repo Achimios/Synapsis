@@ -154,7 +154,7 @@ export function Shell({ name, Canvas }) {
   const sm = seeModes[realScope] || {};
   const eff = (m, own, id) => m === 'deep' || (m === 'on' && (graph.nodes.get(id)?.parent ?? ROOT) === realScope) ? true : own; // 本页「看」盖一层：on = 只展开本页直接的节点；deep = 子孙也一起（Shift+数字）；没开 = 用节点自己的
   const uiId = id => isUi(wsData?.nodes[id]?.meta); // 👤 2026-10-10 UI 框不跟「预览展开」的全局三态，只认自己的 ▸ / ⊞
-  const expE = id => uiId(id) ? !!expanded[id] : eff(sm.kids, !!expanded[id], id), frmE = id => uiId(id) ? !!framed[id] : eff(sm.frame, !!framed[id], id), txtE = id => eff(sm.text, !!textOpen[id], id), prpE = id => eff(sm.props, !propsShut[id], id);
+  const expE = id => eff(sm.kids, !!expanded[id], id), frmE = id => eff(sm.frame, !!framed[id], id), txtE = id => eff(sm.text, !!textOpen[id], id), prpE = id => eff(sm.props, !propsShut[id], id);
   const view = useMemo(() => {
     const v = projectView(graph, realScope, space ? null : new Set([...graph.nodes.keys()].filter(k => graph.nodes.get(k)?.children.length && frmE(k))));
     const lab = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.label]));
@@ -183,7 +183,7 @@ export function Shell({ name, Canvas }) {
         spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
         picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id], body: wsData?.nodes[n.id]?.body || '', file: wsData?.nodes[n.id]?.meta?.file || null, ui: isUi(wsData?.nodes[n.id]?.meta), uiW: uiSize(wsData?.nodes[n.id]?.meta).w, uiH: uiSize(wsData?.nodes[n.id]?.meta).h, ref: wsData?.nodes[n.id]?.meta?.ref || null, refMissing: !!wsData?.nodes[n.id]?.meta?.ref && !graph.nodes.has(String(wsData.nodes[n.id].meta.ref)), textOpen: txtE(n.id),
         open: expE(n.id) && n.children.length > 0 && !v.parentOf.has(n.id) && !(frmE(n.id) && !space), renaming: canvasRename === n.id,
-        framed: !space && frmE(n.id) && n.children.length > 0,
+        framed: !space && frmE(n.id) && n.children.length > 0, tempDeep: sm.frame === 'deep' && !framed[n.id] && n.children.length > 0,
         tempFrame: !space && frmE(n.id) && !framed[n.id] && n.children.length > 0, // 只是「看」临时展开的子图：不挪别的卡，也不存坐标
         frame: v.parentOf.get(n.id) ?? null,
         kids: n.children.map(c => { const k = graph.nodes.get(c); return { id: c, label: k.label, status: k.status, n: k.children.length, renaming: canvasRename === c }; }),
@@ -807,7 +807,7 @@ export function Shell({ name, Canvas }) {
   const EXP_KEY = { frame: '1', kids: '2', props: '3', text: '4' };
   const [expMore, setExpMore] = useState(false); // 竖栏最上面的 ⋯ 菜单（「改」放这里，用得少）
   useEffect(() => { if (!expMore) return; const c = e => { if (!e.target.closest?.('.expmore, .expmenu')) setExpMore(false); }; window.addEventListener('pointerdown', c, true); return () => window.removeEventListener('pointerdown', c, true); }, [expMore]);
-  const expIds = k => view.nodes.filter(EXP[k].ok).map(n => n.id);
+  const expIds = k => view.nodes.filter(n => !uiId(n.id) && !uiId(n.frame) && EXP[k].ok(n)).map(n => n.id); // 真的展开本页：UI 框自己和 UI 框里面的节点都不动（UI 框自己单独展开）
   const expAnyOpen = k => expIds(k).some(EXP[k].own);
   // 改：有没折叠的 → 先全部折叠；已经全折叠了 → 全部展开（本页的节点；没东西可展开的不算）。进 Ctrl+Z；节点之间的位置照原有的展开逻辑，不额外挪
   const expChange = k => {
