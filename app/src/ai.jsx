@@ -88,13 +88,16 @@ function TaskRows({ status, cfg, save }) {
     <div className="srcrow"><span>默认：高频后台（精排 / 语义配色 / 语义图案）<span className="hint"> （默认本地，免得悄悄花钱）</span></span>
       <span className="seg">{[['local', '本地'], ['online', '☁ 在线']].map(([v, t]) => <a key={v} className={(cfg.bulkSrc || 'local') === v ? 'on' : ''} onClick={() => save({ bulkSrc: v })}>{t}</a>)}</span></div>
     {TASK_ROWS.map(([id, name, hint, bulk]) => {
-      const own = tasks[id] || {}, eff = cfg.offline ? 'local' : own.src || ((bulk ? cfg.bulkSrc : cfg.agentSrc) === 'online' ? 'online' : 'local');
+      const own = tasks[id] || {}, dflt = cfg.offline ? 'local' : (bulk ? cfg.bulkSrc : cfg.agentSrc) === 'online' ? 'online' : 'local';
+      const cur = own.src === 'local' ? 'local:' + (own.chat || '') : own.src === 'online' ? 'online:' + (own.model || '') : own.model ? 'online:' + own.model : own.chat ? 'local:' + own.chat : '';
+      const pick = v => { const [src, ...m] = v.split(':'), model = m.join(':'); set(id, v ? (src === 'local' ? { src, chat: model || null, model: null } : { src, model: model || null, chat: null }) : { src: null, model: null, chat: null }); };
       return <div key={id} className="srcrow task">
         <span>{name}<span className="hint"> {hint}</span></span>
-        <span className="seg">{[[null, '继承'], ['local', '本地'], ['online', '☁ 在线']].map(([v, t]) => <a key={t} className={(own.src || null) === v ? 'on' : ''} onClick={() => set(id, { src: v })}>{t}</a>)}</span>
-        {eff === 'online'
-          ? <select title="在线模型（空 = 默认）" value={own.model || ''} onChange={e => set(id, { model: e.target.value })}><option value="">默认在线模型</option>{(status?.online || []).map(m => <option key={m.id} value={m.id.replace(/^\w+:/, '')}>{m.id}</option>)}</select>
-          : <select title="本地模型（空 = 默认）" value={own.chat || ''} onChange={e => set(id, { chat: e.target.value })}><option value="">默认本地模型</option>{(status?.chat || []).map(m => <option key={m.id} value={m.id}>{m.id}</option>)}</select>}
+        <select value={cur} onChange={e => pick(e.target.value)} title="这个用途用哪个模型；「继承默认」= 跟上面的默认走">
+          <option value="">{'继承默认（' + (dflt === 'online' ? '☁ 在线' : '本地') + '）'}</option>
+          <optgroup label="本地"><option value="local:">本地 · 默认本地模型</option>{(status?.chat || []).map(m => <option key={m.id} value={'local:' + m.id}>本地 · {m.id}</option>)}</optgroup>
+          <optgroup label="在线"><option value="online:">☁ 在线 · 默认在线模型</option>{(status?.online || []).map(m => <option key={m.id} value={'online:' + m.id.replace(/^\w+:/, '')}>☁ 在线 · {m.id}</option>)}</optgroup>
+        </select>
       </div>;
     })}
   </div>;

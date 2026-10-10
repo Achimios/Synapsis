@@ -863,10 +863,13 @@ for (const kind of ['reactflow']) {
   ok(!(await page.$('.aipanel button:has-text("生成词表")')), '设置页只放设置：没有「生成词表」按钮');
   // 按用途细分（👤 2026-10-10）：7 个用途各一行，继承 / 本地 / 在线 + 模型；点「在线」存进 cfg.tasks
   ok((await page.$$('.aipanel .srcrow.task')).length === 7, 'AI 设置：7 个用途各一行 ' + (await page.$$('.aipanel .srcrow.task')).length);
-  await page.click('.aipanel .srcrow.task:has-text("语义配色归类") .seg a:has-text("在线")'); await sleep(900);
-  ok(await page.$eval('.aipanel .srcrow.task:has-text("语义配色归类") .seg a.on', e => e.textContent.includes('在线')), '语义配色归类 单独选了在线');
-  ok(await page.$eval('.aipanel .srcrow.task:has-text("潜在关联精排") .seg a.on', e => e.textContent === '继承'), '别的用途仍是「继承」');
-  await page.click('.aipanel .srcrow.task:has-text("语义配色归类") .seg a:has-text("继承")'); await sleep(900);
+  const semSel = '.aipanel .srcrow.task:has-text("语义配色归类") select';
+  ok((await page.$eval(semSel, e => e.options[0].textContent)).includes('继承默认'), '每个用途一个下拉，第一项「继承默认」（不再有继承 / 本地 / 在线 + 模型两套控件）');
+  ok((await page.$$('.aipanel .srcrow.task .seg')).length === 0, '用途行里没有单独的 本地 / 在线 按钮');
+  await page.selectOption(semSel, 'online:'); await sleep(900);
+  ok((await page.$eval(semSel, e => e.value)) === 'online:', '语义配色归类 单独选了「在线 · 默认在线模型」');
+  ok((await page.$eval('.aipanel .srcrow.task:has-text("潜在关联精排") select', e => e.value)) === '', '别的用途仍是「继承默认」');
+  await page.selectOption(semSel, ''); await sleep(900);
   await page.click('.aipanel .bar button'); await sleep(500);
   // 生成词表在指令框的「🎨 配色词表」页（👤「这种操作不该丢配置页面」）
   await page.mouse.click(700, 760); await page.keyboard.press('Shift+F'); await sleep(500);
