@@ -15,11 +15,11 @@
 //   ---
 //   正文（人写的，Synapsis 不动）
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, unlinkSync, rmdirSync, cpSync } from 'node:fs';
-import { join, dirname, relative, isAbsolute } from 'node:path';
+import { join, dirname, relative, isAbsolute, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { PATTERN_FILE, DEFAULT_PATTERN_WORDS, parsePatternWords } from './patterns.js';
-import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, withCopies, withEdge, withoutEdge, withMoved, ROOT } from './outline.js';
+import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, withCopies, withEdge, withoutEdge, withMoved, withNode, ROOT } from './outline.js';
 import { checkSpaces } from './space.js';
 import { emptyPins, cleanPins, remapNodes } from './pins.js';
 import { WORDS_FILE, DEFAULT_WORDS, OLD_DEFAULT_WORDS, parseColorWords } from './colors.js';
@@ -403,6 +403,22 @@ export function setNodeMeta(root, id, patch) {
   else if ('evidence' in patch || 'code' in patch) { const h = codeHash(codeFile(ws.root, meta.code)); if (h) meta[EVIDENCE_HASH] = h; else delete meta[EVIDENCE_HASH]; }
   writeFileSync(n.file, serializeNode(meta, n.body));
 }
+// >v<💾工作区-外部文件节点-把 __synapsis 外、项目里的文件当节点引进来：新建一个普通节点，frontmatter 写 file: 相对项目根的路径（👤 2026-10-10）
+//   连线 / 改名 / 撤销 / 导出都照普通节点走；删节点只把这个小 md 送进 .junk/，不碰原文件。名字取文件名（去掉会被当成连线的 -> 和逗号），同级重名自动加序号
+export function addFileNode(root, parent, rel) {
+  const r = String(rel || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  const abs = join(root, r);
+  if (!r || r.split('/').includes('..') || !abs.startsWith(root) || !existsSync(abs) || !statSync(abs).isFile()) throw new Error('项目里没有这个文件：' + rel);
+  if (r === DIR || r.startsWith(DIR + '/')) throw new Error('这个文件本来就在 ' + DIR + '/ 里，不用引入');
+  const ws = loadWorkspace(root), g = ws.graph;
+  if (parent !== ROOT && !g.nodes.has(parent)) throw new Error('没有这个节点：' + parent);
+  const label = (r.split('/').pop() || r).replace(/->/g, '→').replace(/[,，]/g, '、').trim();
+  const made = withNode(g, parent, null, label);
+  const res = saveOutline(root, made.text);
+  if (!res.ok) throw new Error('建节点失败：' + JSON.stringify(res.errors));
+  setNodeMeta(root, made.id, { file: r, status: null }); // 引用外部文件不是一件待做的事：不带 status（新建节点默认 todo 会混进进度统计）
+  return { id: made.id, report: res };
+}
 // >v<✅自检-实测快照-code 文件内容的短 hash（换行统一成 \n，免得 git 的 CRLF 转换被当成「改过」）；最小版：只比整个文件，不做依赖分析
 export const EVIDENCE_HASH = 'evidence_hash';
 export const codeFile = (root, code) => !code || code === 'null' ? null : join(root, String(code).split('#')[0]);
@@ -424,15 +440,19 @@ export function ensureColorWords(root) {
 }
 
 // >v<💾工作区-粘贴节点-复制 ids（子孙、状态、内部边）到 parent 下，再把属性（除结构字段）、正文、节点图片跟着拷（👤 2026-10-08）
-export function pasteNodes(root, ids, parent) {
+//   srcRoot = 从另一个项目复制来的（跨项目粘贴，👤 2026-10-10）：从那个项目读节点（同一台机器上的路径），图片文件夹一起拷；file: / code: 这类相对路径属性原样带过来（目标项目里没有那个文件就会被 check 提示）
+export function pasteNodes(root, ids, parent, srcRoot = root) {
   const ws = loadWorkspace(root);
-  const r = withCopies(ws.graph, ids, parent);
-  if (!r) throw new Error('没有可复制的节点（不在这个工作区？）');
+  const cross = resolve(srcRoot) !== resolve(root);
+  if (cross && !existsSync(join(srcRoot, DIR))) throw new Error('来源项目找不到（移走了？）：' + srcRoot);
+  const src0 = cross ? loadWorkspace(srcRoot) : ws;
+  const r = withCopies(src0.graph, ids, parent, ws.graph);
+  if (!r) throw new Error('没有可复制的节点（不在来源工作区？）');
   const report = saveOutline(root, r.text);
   if (!report.ok) throw new Error('粘贴失败：' + JSON.stringify(report.errors || report));
   const now = loadWorkspace(root);
   for (const [o, n] of r.map) {
-    const src = ws.graph.nodes.get(o), dst = now.graph.nodes.get(n);
+    const src = src0.graph.nodes.get(o), dst = now.graph.nodes.get(n);
     if (!src || !dst) continue;
     const extra = Object.fromEntries(Object.entries(src.meta).filter(([k]) => !['to', 'label', 'status', 'order'].includes(k)));
     const meta = { ...dst.meta, ...extra, ...(fileName(dst.label) !== dst.label ? { label: dst.label } : {}), ...(dst.status ? { status: dst.status } : {}), ...(dst.order !== Infinity ? { order: String(dst.order) } : {}) };
@@ -602,7 +622,8 @@ export function checkWorkspace(ws) {
   const issues = [...ws.graph.errors.map(e => ({ level: 'error', where: e.file, msg: e.msg }))];
   for (const n of ws.graph.nodes.values()) {
     if (n.id === ROOT || isDropped(ws.graph, n.id)) continue; // 弃用的（含弃用分组的子孙）不查
-    if (!n.status && !n.children.length) issues.push({ level: 'warn', where: n.id, msg: '没有 status' }); // 分组的状态由子节点汇总
+    if (!n.status && !n.children.length && !n.meta.file) issues.push({ level: 'warn', where: n.id, msg: '没有 status' }); // 分组的状态由子节点汇总；引用外部文件的节点（file:）不是待做的事，不查
+    if (n.meta.file && !existsSync(join(ws.root, String(n.meta.file)))) issues.push({ level: 'warn', where: n.id, msg: 'file 指向不存在的文件：' + n.meta.file + '（文件被移走或改名了？）' });
     if (n.meta.code && n.meta.code !== 'null') {
       const [f, sym] = n.meta.code.split('#');
       const p = join(ws.root, f);

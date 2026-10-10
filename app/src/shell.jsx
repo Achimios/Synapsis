@@ -6,7 +6,7 @@ import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode
 import { colorMap } from './colors.js';
 import { patternMap, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
-import { ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, HistoryPanel, OutlineTree, HelpModal, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
+import { ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, HistoryPanel, OutlineTree, HelpModal, FilePickModal, SettingsModal, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
 const DRAG_PIC = 'application/x-synapsis-pic';
 import { initStash, useStash, putStash } from './stash.js';
 import { AiPanel, RelatedDock, AgentBox } from './ai.jsx';
@@ -95,7 +95,12 @@ export function Shell({ name, Canvas }) {
   }, [!!lightbox]);
   const [portalModes, setPortalModes] = useState({}); // 每页的传送门：show | fade | hide（记进 view.json）
   const [histOpen, setHistOpen] = useState(false), [histBusy, setHistBusy] = useState(false); // 操作历史栏（Shift+Tab；记进 view.json）
-  const [cardPropsOn, setCardPropsOn] = useState(true); // 卡片上显示属性（👤 2026-10-08：卡片太高时关掉；记进 view.json）
+  const [seeLines, setSeeLines] = useState(false); // 看清连线：卡片变淡变小、连线更粗更亮（记进 view.json）
+  // >v<🎨画布-展开竖栏-四种展开（子级 / 属性 / 正文 / 成框）各有「改」和「看」（👤 2026-10-10）：
+  //   改 = 真改每个节点自己的展开状态（expanded / propsShut / textOpen / framed，进 Ctrl+Z）；
+  //   看 = 本页临时盖一层：不接管 → 展开 → 收起 三态轮换，节点自己的状态不动，按页记（seeModes[页]），切页不继承
+  const [propsShut, setPropsShut] = useState({}); // 卡片上人加的属性默认显示；收起的节点记在这（以前是全局开关 cardProps）
+  const [seeModes, setSeeModes] = useState({}); // { 页: { kids|props|text|frame: 'on' | 'off' } }
   const [theme, setTheme] = useState(() => load('syn.theme', 'dark')); // 本机偏好，不跟项目走
   useEffect(() => { document.documentElement.dataset.theme = theme; save('syn.theme', theme); }, [theme]);
   const [localPicw, setLocalPicw] = useState(() => load('syn.pw', {}));
@@ -135,8 +140,11 @@ export function Shell({ name, Canvas }) {
   }, [mode, aiStatus, wsData?.outline, wsData?.patternWords]);
   const patterns = useMemo(() => patternMap(graph, getMeta, wsData?.patternWords, semPats), [graph, getMeta, wsData?.patternWords, semPats]);
   // 边标签 / 节点副标题来自工作区文件（大纲里没有）
+  const sm = seeModes[realScope] || {};
+  const eff = (m, own) => m === 'on' ? true : m === 'off' ? false : own; // 本页「看」盖一层：展开 / 收起；不接管 = 用节点自己的
+  const expE = id => eff(sm.kids, !!expanded[id]), frmE = id => eff(sm.frame, !!framed[id]), txtE = id => eff(sm.text, !!textOpen[id]), prpE = id => eff(sm.props, !propsShut[id]);
   const view = useMemo(() => {
-    const v = projectView(graph, realScope, space ? null : new Set(Object.keys(framed).filter(k => framed[k] && graph.nodes.get(k)?.children.length)));
+    const v = projectView(graph, realScope, space ? null : new Set([...graph.nodes.keys()].filter(k => graph.nodes.get(k)?.children.length && frmE(k))));
     const lab = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.label]));
     // >v<🔭视图投影-传送门三档-每页：显示 / 淡化 / 隐藏（👤 2026-10-08 待办第 5 条）；隐藏时和选中节点相连的传送门照样显示
     const pm = portalModes[realScope] || 'show';
@@ -158,19 +166,21 @@ export function Shell({ name, Canvas }) {
       nodes: v.nodes.map(n => ({
         ...n, color: colOf(n.id), pattern: PATTERNS[patterns.get(n.id)] || '', dropped: isDropped(graph, n.id), sub: wsData?.nodes[n.id]?.meta?.rate || '',
         evidence: wsData?.nodes[n.id]?.meta?.evidence || '',
-        props: cardPropsOn ? cardProps(wsData?.nodes[n.id]?.meta) : [],
+        props: prpE(n.id) ? cardProps(wsData?.nodes[n.id]?.meta) : [],
         vec: getMeta(n.id)?.vec ? parseVec(getMeta(n.id).vec) : null, vecAxes: pAxes,
         spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
-        picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id], body: wsData?.nodes[n.id]?.body || '', textOpen: !!textOpen[n.id],
-        open: !!expanded[n.id] && n.children.length > 0 && !v.parentOf.has(n.id) && !(framed[n.id] && !space), renaming: canvasRename === n.id,
-        framed: !space && !!framed[n.id] && n.children.length > 0, frame: v.parentOf.get(n.id) ?? null,
+        picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id], body: wsData?.nodes[n.id]?.body || '', file: wsData?.nodes[n.id]?.meta?.file || null, textOpen: txtE(n.id),
+        open: expE(n.id) && n.children.length > 0 && !v.parentOf.has(n.id) && !(frmE(n.id) && !space), renaming: canvasRename === n.id,
+        framed: !space && frmE(n.id) && n.children.length > 0,
+        tempFrame: !space && frmE(n.id) && !framed[n.id] && n.children.length > 0, // 只是「看」临时展开的子图：不挪别的卡，也不存坐标
+        frame: v.parentOf.get(n.id) ?? null,
         kids: n.children.map(c => { const k = graph.nodes.get(c); return { id: c, label: k.label, status: k.status, n: k.children.length, renaming: canvasRename === c }; }),
       })),
       portals: v.portals.filter(p => pm !== 'hide' || keepPortal.has(p.id)).map(p => ({ ...p, label: '↗ ' + (graph.nodes.get(p.target)?.label || p.target), color: colOf(p.id), dropped: isDropped(graph, p.target), faded: pm === 'fade' && !keepPortal.has(p.id) })), // 淡化时，和选中节点相连的也不淡（同隐藏）
       // 线 = 出发节点的颜色；kind 是「离散」→ 虚线（聚合的边要每条都离散才虚）
       edges: v.edges.filter(e => pm !== 'hide' || [e.from, e.to].every(x => !x.startsWith('@portal:') || keepPortal.has(x))).map(e => ({ ...e, fadedPortal: pm === 'fade' && [e.from, e.to].some(x => x.startsWith('@portal:') && !keepPortal.has(x)), text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e), color: colOf(e.from), dropped: [e.from, e.to].some(x => isDropped(graph, x.startsWith('@portal:') ? x.slice(8) : x)), dashed: e.raw.every(r => DISCRETE.test(kind.get(r) || '')), mod: e.raw.every(r => MOD.test(kind.get(r) || '')) })),
     };
-  }, [graph, realScope, wsData, expanded, picFold, textOpen, localPicw, space, getMeta, colors, patterns, canvasRename, framed, portalModes, selected, cardPropsOn]);
+  }, [graph, realScope, wsData, expanded, picFold, textOpen, localPicw, space, getMeta, colors, patterns, canvasRename, framed, portalModes, selected, propsShut, seeModes]);
   // >v<🖼️图片-卡片显示-节点的 _pics_名字/ 里所有图（旧版 frontmatter img: 也认）
   const images = useMemo(() => {
     if (local) return localImages;
@@ -198,7 +208,7 @@ export function Shell({ name, Canvas }) {
       // 撤销记录优先从服务进程的暂存取（关 vault 再从托盘打开也还在，退出托盘才没）；取不到再用 sessionStorage（刷新页面）
       const sv = stash?.[HIST_KEY] || (() => { try { return JSON.parse(sessionStorage.getItem(HIST_KEY)); } catch { return null; } })();
       if (sv?.committed?.text === d.outline) { hist2.current.undo = sv.undo || []; hist2.current.redo = sv.redo || []; }
-      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); if (v.cardProps === false) setCardPropsOn(false); if (v.histOpen) setHistOpen(true); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
+      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); setPropsShut(v.propsShut || {}); setSeeModes(v.seeModes || {}); setSeeLines(!!v.seeLines); if (v.histOpen) setHistOpen(true); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
       setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
       // .junk/ = 删除的临时去处，正常关窗口会清空；还有东西 = 上次没正常关闭（或 CLI / AI 删过东西）→ 问要不要清
       if (d.graveyard) setTimeout(() => {
@@ -244,7 +254,8 @@ export function Shell({ name, Canvas }) {
   const inPlane = id => !!plane && plane.pts.some(p => p.id === id);
   // 自动排出来的位置立刻固定（存起来），之后加节点别的节点不会跟着跳（空间成员的位置由坐标决定，不存）
   useEffect(() => {
-    const missing = Object.fromEntries(Object.entries(layout).filter(([id]) => !positions[id] && !inPlane(id)));
+    const tmpFrames = new Set(view.nodes.filter(n => n.tempFrame).map(n => n.id)); // 「看」临时展开的子图里的节点：自动排的位置不存盘（看完就恢复原样，一个文件都不动）
+    const missing = Object.fromEntries(Object.entries(layout).filter(([id]) => !positions[id] && !inPlane(id) && !tmpFrames.has(graph.nodes.get(id)?.parent)));
     if (Object.keys(missing).length) move(missing, { silent: true });
   }, [layout]);
   const sel = selected && (view.nodes.some(n => n.id === selected) || view.portals.some(p => p.id === selected) || loosePics.some(p => p.id === selected)) ? selected : null;
@@ -260,9 +271,9 @@ export function Shell({ name, Canvas }) {
   // 工作区：视图状态停手 0.6s 写进 .synapsis/view.json
   useEffect(() => {
     if (mode !== 'ws') return;
-    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, framed, panelW, leftHidden, picFold, textOpen, portalModes, cardProps: cardPropsOn, histOpen, propsOpen, spaceAxes, scope: realScope }) }).catch(() => {}), 600);
+    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, framed, panelW, leftHidden, picFold, textOpen, portalModes, propsShut, seeModes, seeLines, histOpen, propsOpen, spaceAxes, scope: realScope }) }).catch(() => {}), 600);
     return () => clearTimeout(t);
-  }, [viewports, expanded, framed, panelW, leftHidden, picFold, textOpen, portalModes, cardPropsOn, histOpen, propsOpen, spaceAxes, realScope, mode]);
+  }, [viewports, expanded, framed, panelW, leftHidden, picFold, textOpen, portalModes, propsShut, seeModes, seeLines, histOpen, propsOpen, spaceAxes, realScope, mode]);
   const onViewport = useCallback((sc, vp) => setViewports(v => ({ ...v, [sc]: vp })), []);
   const go = useCallback(next => {
     if (next === realScope) return;
@@ -277,8 +288,9 @@ export function Shell({ name, Canvas }) {
       const target = id.slice(8);
       go(graph.nodes.get(target).parent);
       setSelected(target);
-    } else { go(id); setSelected(null); }
-  }, [graph, go]);
+    } else if (wsData?.nodes[id]?.meta?.file && !graph.nodes.get(id)?.children.length) { setSelected(id); openFile(wsData.nodes[id].meta.file); } // 引用外部文件的叶子：双击 = 打开那个文件（钻进去没东西可看）
+    else { go(id); setSelected(null); }
+  }, [graph, go, wsData]);
   const up = () => { const p = graph.nodes.get(realScope).parent; if (p !== null) { setSelected(realScope); go(p); } };
   const connect = useCallback((from, to, mod) => {
     const resolve = id => id.startsWith('@portal:') ? id.slice(8) : id;
@@ -370,7 +382,7 @@ export function Shell({ name, Canvas }) {
     const h = hist2.current;
     if (mode !== 'ws' || !h.committed) return setSaveState('撤销只在工作区模式');
     const e = h.undo.pop(); if (!e) return setSaveState('没有可撤销的');
-    if (e.op) { h.redo.push(e); persistHist(); return applyOp(e, 'undo').then(() => setSaveState('已撤销' + ({ meta: '属性修改', pins: '钉子操作' }[e.op] || '正文修改') + ' · 还能撤 ' + h.undo.length + ' 步')); }
+    if (e.op) { h.redo.push(e); persistHist(); return applyOp(e, 'undo').then(() => setSaveState('已撤销' + ({ meta: '属性修改', pins: '钉子操作', vs: '展开状态' }[e.op] || '正文修改') + ' · 还能撤 ' + h.undo.length + ' 步')); }
     h.redo.push({ text: h.committed.text, positions: h.committed.positions, hint: flip(e.hint), desc: e.desc, t: e.t });
     return applyHist(e).then(() => setSaveState(h.lost > 0 ? `⚠ 已撤销，但有 ${h.lost} 项没能从 .junk/ 搬回来（已被清理，或原位置有同名文件）：那部分的正文 / 图片找不回，去系统回收站看看 · 还能撤 ${h.undo.length} 步` : '已撤销' + (e.restore ? '（删掉的节点从 .junk/ 搬回来了）' : '') + ' · 还能撤 ' + h.undo.length + ' 步'));
   };
@@ -409,7 +421,7 @@ export function Shell({ name, Canvas }) {
   const focusLabel = (id, again) => {
     // 改名：卡片在画布上（或在展开的子级列表里）→ 就地输入；否则在大纲树里原地出输入框；「文本」页里则选中那一行的名字
     const p = graph.nodes.get(id)?.parent;
-    if (view.nodes.some(n => n.id === id) || (p != null && expanded[p] && view.nodes.some(n => n.id === p))) { setCanvasRename(id); return; }
+    if (view.nodes.some(n => n.id === id) || (p != null && expE(p) && view.nodes.some(n => n.id === p))) { setCanvasRename(id); return; }
     if (leftHidden) setLeftHidden(false);
     if (leftTab !== 'text') { if (leftTab === 'files') setLeftTab('outline'); setRenaming(id); return; }
     if (leftHidden && !again) { requestAnimationFrame(() => focusLabel(id, true)); return; }
@@ -436,7 +448,7 @@ export function Shell({ name, Canvas }) {
   const jumpTo = id => {
     const p = graph.nodes.get(id)?.parent;
     if (p == null) return;
-    if (p !== realScope && !(framed[p] && view.nodes.some(n => n.id === id))) go(p);
+    if (p !== realScope && !(frmE(p) && view.nodes.some(n => n.id === id))) go(p);
     setSelected(id); setPropsOpen(true);
     // 等画布把这张卡画出来再居中（以前固定等 400ms + 300ms 动画，跳转显得拖）：同一页立刻就成，换页一般 1~2 帧
     const center = (n = 0) => { if (n > 30 || cardActions.centerOn?.(id, n >= 15)) return; setTimeout(() => center(n + 1), 30); };
@@ -511,6 +523,12 @@ export function Shell({ name, Canvas }) {
       if (p) move({ [r.id]: { x: Math.round(p.x), y: Math.round(p.y) } }, { silent: true });
     },
     toggle: id => toggle(id), drill: id => drill(id), remove, frame: id => toggleFrame(id), isFramed: id => !!framed[id],
+    // 右键「展开 ▸」二级菜单：这个节点能展开的几种，及各自现在是展开还是收起（点一下 = 翻转它自己的状态，和空格 / 点卡片 ▸N 一样不进历史）
+    openProjectFile: p => openFile(p), pickFile: () => setFilePick(true),
+    expAll: () => Object.entries(EXP).map(([k, E]) => ({ k, name: E.name, any: expAnyOpen(k), none: !expIds(k).length })),
+    expChange: k => expChange(k),
+    expItems: id => { const n = { id, children: graph.nodes.get(id)?.children || [] }; return Object.entries(EXP).map(([k, E]) => ({ k, name: E.name, open: E.own(id), ok: E.ok(n) })); }, // 四项都给；这个节点做不了的（没子级 / 没属性 / 没正文）灰着，不隐藏
+    expToggle: (id, k) => { const flip = x => { const y = { ...x }; if (y[id]) delete y[id]; else y[id] = true; return y; }; ({ kids: setExpanded, props: setPropsShut, text: setTextOpen, frame: setFramed })[k](flip); },
     hasFile: id => !!nodeFile(id),
     openMd: id => { setSelected(id); setPropsOpen(true); setPropsTab('raw'); },
     reveal: id => reveal(nodeFile(id), 'select'),
@@ -652,7 +670,10 @@ export function Shell({ name, Canvas }) {
     if (!opt.silent) pushOp({ op: 'body', id, undo: old, redo: body });
     return api('/node', { method: 'PATCH', body: JSON.stringify({ id, body }) }).then(d => { setWsData(d); setSaveState('正文已保存 ' + new Date().toLocaleTimeString() + '（Ctrl+Z 撤销）'); }).catch(e => setSaveState('❌ 正文保存失败：' + e.message));
   };
-  const applyOp = (e, which) => e.op === 'pins' || e.op === 'hooks' ? Promise.resolve(restorePins(e[which])) : e.op === 'meta' ? saveMeta(e.id, e[which], { silent: true }) : saveBody(e.id, e[which], { silent: true });
+  // 展开竖栏「改」：四份展开状态整份存进撤销栈（几十个 true，很小）；撤销 / 重做 = 整份写回
+  const vsRef = useRef({}); vsRef.current = { expanded, framed, textOpen, propsShut };
+  const restoreVS = s => { setExpanded(s.expanded || {}); setFramed(s.framed || {}); setTextOpen(s.textOpen || {}); setPropsShut(s.propsShut || {}); };
+  const applyOp = (e, which) => e.op === 'vs' ? Promise.resolve(restoreVS(e[which])) : e.op === 'pins' || e.op === 'hooks' ? Promise.resolve(restorePins(e[which])) : e.op === 'meta' ? saveMeta(e.id, e[which], { silent: true }) : saveBody(e.id, e[which], { silent: true });
 
   const toggle = id => setExpanded(x => ({ ...x, [id]: !x[id] }));
   cardActions.toggle = toggle;
@@ -662,6 +683,56 @@ export function Shell({ name, Canvas }) {
   cardActions.cancelRename = () => setCanvasRename(null);
   cardActions.openChild = child => { const p = graph.nodes.get(child)?.parent; if (p == null) return; go(p); setSelected(child); };
   const allOpen = view.nodes.filter(n => n.children.length).every(n => expanded[n.id]);
+  // >v<🎨画布-展开竖栏-四种展开 × 改 / 看（👤 2026-10-10）。适用的节点：子级 / 成框 = 有子节点；正文 = 有正文；属性 = 卡片上有属性可显示
+  const EXP = {
+    frame: { name: '子图', field: 'framed', ok: n => n.children.length > 0, own: id => !!framed[id], tip: '子节点画在框里、线直连（内部画布）' },
+    kids: { name: '子级', field: 'expanded', ok: n => n.children.length > 0, own: id => !!expanded[id], tip: '卡片里列出子节点' },
+    props: { name: '属性', field: 'propsShut', inv: true, ok: n => cardProps(wsData?.nodes[n.id]?.meta).length > 0, own: id => !propsShut[id], tip: '卡片上人加的属性' },
+    text: { name: '正文', field: 'textOpen', ok: n => !!wsData?.nodes[n.id]?.body?.trim(), own: id => !!textOpen[id], tip: '卡片里渲染 md 正文' },
+  };
+  const [settingsOpen, setSettingsOpen] = useState(false); // 左上角 ⚙
+  const [filePick, setFilePick] = useState(false); // 右键空白 → 引入外部文件：选文件的小窗
+  const addFileNodeFrom = async rel => {
+    setFilePick(false);
+    try {
+      const d = await api('/addfile', { method: 'POST', body: JSON.stringify({ parent: realScope, rel }) });
+      lastSaved.current = d.report.outline; setText(d.report.outline); setWsData(d); recordSave(d.report.outline, d.report);
+      setSelected(d.id); setSaveState('已引入文件「' + rel + '」为节点（Ctrl+Z 撤销；原文件不动）');
+      requestAnimationFrame(() => cardActions.centerOn?.(d.id));
+    } catch (e) { setSaveState('❌ 引入失败：' + e.message); }
+  };
+  // 「连线到…」也能选项目里的外部文件：选了就先把它引成节点（已有节点引用过的不重复列），再连线
+  useEffect(() => { if (finder && mode === 'ws' && !tree) api('/tree').then(setTree).catch(e => setTree({ tree: [], error: e.message })); }, [finder]);
+  const fileItems = useMemo(() => {
+    if (!finder || !tree?.tree) return [];
+    const used = finder.mode === 'link' ? new Set(Object.values(wsData?.nodes || {}).map(n => n.meta?.file).filter(Boolean)) : new Set(); // 连线时已有节点引用过的文件不重复列；Ctrl+F 跳转时全列
+    const out = [], walk = items => { for (const it of items || []) { if (it.dir) walk(it.children); else if (!(it.path === '__synapsis' || it.path.startsWith('__synapsis/')) && !used.has(it.path)) out.push({ id: '@file:' + it.path, label: '📎 ' + it.name, path: it.path, meta: {}, body: '' }); } };
+    walk(tree.tree); return out;
+  }, [finder, tree, wsData]);
+  const linkToFile = async (from, rel) => {
+    try {
+      const d = await api('/addfile', { method: 'POST', body: JSON.stringify({ parent: realScope, rel }) });
+      lastSaved.current = d.report.outline; setText(d.report.outline); setWsData(d); recordSave(d.report.outline, d.report);
+      const d2 = await api('/link', { method: 'POST', body: JSON.stringify({ from, to: d.id }) });
+      lastSaved.current = d2.report.outline; setText(d2.report.outline); setWsData(d2); recordSave(d2.report.outline, d2.report);
+      setSelected(from); setSaveState('已把文件「' + rel + '」引成节点并连线（Ctrl+Z 撤销，两步）');
+    } catch (e) { setSaveState('❌ 连到文件失败：' + e.message); }
+  };
+  const [expMore, setExpMore] = useState(false); // 竖栏最上面的 ⋯ 菜单（「改」放这里，用得少）
+  useEffect(() => { if (!expMore) return; const c = e => { if (!e.target.closest?.('.expmore, .expmenu')) setExpMore(false); }; window.addEventListener('pointerdown', c, true); return () => window.removeEventListener('pointerdown', c, true); }, [expMore]);
+  const expIds = k => view.nodes.filter(EXP[k].ok).map(n => n.id);
+  const expAnyOpen = k => expIds(k).some(EXP[k].own);
+  // 改：有没折叠的 → 先全部折叠；已经全折叠了 → 全部展开（本页的节点；没东西可展开的不算）。进 Ctrl+Z；节点之间的位置照原有的展开逻辑，不额外挪
+  const expChange = k => {
+    const ids = expIds(k); if (!ids.length) return;
+    const open = !expAnyOpen(k), E = EXP[k], prev = vsRef.current, cur = { ...prev[E.field] };
+    for (const id of ids) { if (open !== !!E.inv) cur[id] = true; else delete cur[id]; }
+    const next = { ...prev, [E.field]: cur };
+    pushOp({ op: 'vs', undo: prev, redo: next, desc: `${open ? '展开' : '收起'}本页 ${ids.length} 个节点的${E.name}` });
+    restoreVS(next);
+  };
+  // 看：不接管 → 展开 → 收起 → 不接管。只改本页的临时覆盖，不进历史
+  const expSee = k => setSeeModes(m => { const cur = m[realScope] || {}, nx = { undefined: 'on', on: 'off', off: undefined }[cur[k]]; const o = { ...cur }; if (nx) o[k] = nx; else delete o[k]; const r = { ...m }; if (Object.keys(o).length) r[realScope] = o; else delete r[realScope]; return r; });
 
   // >v<🧭导航-快捷键-Enter 同级 / Insert·Ctrl+Enter 子级 / Tab 左栏开关 / Esc / Alt+方向 / 鼠标侧键 后退前进
   // 画布快捷键（焦点在输入框里时不触发）
@@ -673,6 +744,7 @@ export function Shell({ name, Canvas }) {
       if (inText) return;
       if (helpOpen && e.key === 'Escape') { setHelpOpen(false); return; }
       if (e.key === '`' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.isComposing) { e.preventDefault(); e.stopPropagation(); if (mode === 'ws') setPinsOpen(o => !o); return; } // 👤 2026-10-09 反引号 = 钉子窗口开关
+      if (e.code === 'KeyQ' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.isComposing && !e.repeat) { e.preventDefault(); e.stopPropagation(); setSeeLines(o => !o); return; } // 👤 2026-10-10 Q = 看清连线开关
       if (e.shiftKey && !e.ctrlKey && !e.altKey && e.code === 'KeyF') { e.preventDefault(); e.stopPropagation(); if (mode === 'ws') setAgentOpen(o => !o); return; } // 👤 2026-10-08 Shift+F = AI 指令框（单手）
       if (e.ctrlKey && !e.altKey && (e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y')) { e.preventDefault(); e.stopPropagation(); (e.key.toLowerCase() === 'y' || e.shiftKey ? redo : undo)(); return; }
       if (e.key === 'Tab' && e.ctrlKey) { e.preventDefault(); e.stopPropagation(); setPropsOpen(o => !o); } // 👤 Ctrl+Tab = 右栏开关
@@ -768,13 +840,14 @@ export function Shell({ name, Canvas }) {
   cardActions.movePics = movePics;
   const mouse = useRef(null);
   useEffect(() => { const m = e => { mouse.current = { x: e.clientX, y: e.clientY }; }; window.addEventListener('pointermove', m); return () => window.removeEventListener('pointermove', m); }, []);
-  const pasteNodes = async ids => {
-    const r = withCopies(graph, ids, realScope);
+  const pasteNodes = async (ids, src) => {
+    const cross = !!src && !!wsData?.root && src !== wsData.root; // 从另一个项目复制来的（托盘里开着多个项目）：服务端按来源路径去读
+    const r = cross ? { roots: [] } : withCopies(graph, ids, realScope);
     if (!r) return setSaveState('剪贴板里的节点不在这个工作区');
     let roots = r.roots;
     if (mode === 'ws') {
       try {
-        const d = await api('/paste', { method: 'POST', body: JSON.stringify({ ids, parent: realScope }) });
+        const d = await api('/paste', { method: 'POST', body: JSON.stringify({ ids, parent: realScope, ...(cross ? { src } : {}) }) });
         roots = d.report.roots;
         lastSaved.current = d.report.outline; setText(d.report.outline); setWsData(d); recordSave(d.report.outline, d.report);
       } catch (e) { return setSaveState('❌ 粘贴失败：' + e.message); }
@@ -782,7 +855,7 @@ export function Shell({ name, Canvas }) {
     const p = mouse.current && cardActions.toFlow ? cardActions.toFlow(mouse.current) : null;
     if (p) move(Object.fromEntries(roots.map((id, i) => [id, { x: Math.round(p.x), y: Math.round(p.y + i * 50) }])), { silent: true });
     setSelected(roots[0]);
-    setSaveState('已粘贴 ' + roots.map(id => graph.nodes.get(id)?.label || id.split('/').pop()).join('、') + '（Ctrl+Z 撤销）');
+    setSaveState((cross ? '已从另一个项目粘贴 ' : '已粘贴 ') + roots.map(id => graph.nodes.get(id)?.label || id.split('/').pop()).join('、') + '（Ctrl+Z 撤销）');
   };
   useEffect(() => {
     const onCopy = e => {
@@ -790,7 +863,7 @@ export function Shell({ name, Canvas }) {
       const ids = (cardActions.multi?.length ? cardActions.multi : sel ? [sel] : []).filter(id => !id.startsWith('@'));
       if (!ids.length) return;
       e.preventDefault();
-      e.clipboardData.setData('text/plain', CLIP + JSON.stringify({ ids }));
+      e.clipboardData.setData('text/plain', CLIP + JSON.stringify({ ids, src: wsData?.root || null }));
       setSaveState('已复制 ' + ids.length + ' 个节点（连同子孙）· 到目标页 Ctrl+V');
     };
     const onCut = e => {
@@ -816,7 +889,7 @@ export function Shell({ name, Canvas }) {
       }
       if (txt.startsWith(CLIP) && !e.target.closest?.('textarea, input, [contenteditable="true"]')) {
         e.preventDefault(); e.stopPropagation();
-        try { pasteNodes(JSON.parse(txt.slice(CLIP.length)).ids); } catch { setSaveState('❌ 剪贴板内容坏了'); }
+        try { const c = JSON.parse(txt.slice(CLIP.length)); pasteNodes(c.ids, c.src); } catch { setSaveState('❌ 剪贴板内容坏了'); }
         return;
       }
       const files = [...(e.clipboardData?.items || [])].filter(i => i.type.startsWith('image/')).map(i => i.getAsFile());
@@ -884,7 +957,6 @@ export function Shell({ name, Canvas }) {
   };
   const withPics = [...view.nodes.filter(n => images[n.id]?.length), ...loosePics];
   const allPicsFolded = withPics.length > 0 && withPics.every(n => picFold[n.id]);
-  const withText = view.nodes.filter(n => wsData?.nodes[n.id]?.body?.trim()), allTextOpen = withText.length > 0 && withText.every(n => textOpen[n.id]);
 
   // 大纲里：Tab 缩进、Shift+Tab 反缩进、回车保持缩进
   const onTaKey = e => {
@@ -935,6 +1007,7 @@ export function Shell({ name, Canvas }) {
       {!leftHidden && <div className="resizer left" title="拖动调宽度" onPointerDown={e => dragPanel(e, 'left')} />}
       <aside className="outline" style={leftHidden ? { display: 'none' } : undefined}>
         <div className="bar tabs">
+          {mode === 'ws' && <a className="gear" title="设置（init 生成哪些、以后的快捷键自定义…）" onClick={() => setSettingsOpen(true)}>⚙</a>}
           <a className={leftTab === 'outline' ? 'on' : ''} onClick={() => setLeftTab('outline')} title="点一下 = 画布跳过去并显示内容；双击 / F2 = 改名">大纲</a>
           <a className={leftTab === 'text' ? 'on' : ''} onClick={() => setLeftTab('text')} title="原始大纲文本：成片打字、批量改结构">文本</a>
           <a className={leftTab === 'files' ? 'on' : ''} onClick={() => setLeftTab('files')} title="项目根目录的文件（只读预览；点 __synapsis 里的节点 md → 画布跳过去）">文件</a>
@@ -951,6 +1024,7 @@ export function Shell({ name, Canvas }) {
       {histOpen && mode === 'ws' && <HistoryPanel hist={hist2.current} tick={histTick} busy={histBusy} onClose={() => setHistOpen(false)} onJump={jumpHist} />}
       <main>
         <div className="bar top">
+          {leftHidden && mode === 'ws' && <button className="ghost" title="设置" onClick={() => setSettingsOpen(true)}>⚙</button>}
           <button className="ghost" onClick={() => setLeftHidden(h => !h)} title="显示/隐藏左栏（大纲、文件）">{leftHidden ? '▸' : '◂'}</button>
           <button className="ghost" disabled={!selected && realScope === ROOT} onClick={goUp} title={selected ? '上一级：选中它的父节点（顶层节点 = 取消选中）' : '上一级：回到上一层页面，并选中刚离开的那个节点'}>↑</button>
           <span className="crumbs">{crumbs.map((c, i) => <span key={c.id}>{i > 0 && ' › '}<a onClick={() => { go(c.id); setSelected(null); }}>{c.label}</a></span>)}
@@ -961,11 +1035,7 @@ export function Shell({ name, Canvas }) {
         </div>
         <OverflowBar>
           <button onClick={() => addNode(false)} title="在当前层新建（选中节点时建在它后面）；建完直接打字改名">＋ 节点</button>
-          <button onClick={() => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; })}>{allOpen ? '全部收起' : '全部展开'}</button>
           {mode === 'ws' && <button className={histOpen ? '' : 'off'} title="操作历史：每一步改了什么，点一行回到那一步（Shift+Tab）" onClick={() => setHistOpen(o => !o)}>🕘 历史</button>}
-          {mode === 'ws' && <button className={pinsOpen ? '' : 'off'} title="钉子：临时翻阅用的书签组（右键卡片 → 📌 钉到…；反引号 ` 开关）" onClick={() => setPinsOpen(o => !o)}>📌 钉子{pins.groups.some(g => g.items.length) ? ' ' + pins.groups.reduce((s, g) => s + g.items.length, 0) : ''}</button>}
-          {mode === 'ws' && <button className={cardPropsOn ? '' : 'off'} title="卡片上显示人加的属性（卡片太高就关掉；属性面板里照样能看能改）" onClick={() => setCardPropsOn(o => !o)}>🏷 {cardPropsOn ? '收起属性' : '显示属性'}</button>}
-          {withText.length > 0 && <button title="当前页所有带正文的卡片：一起展开 / 收起正文（单张点卡片上的 📄）" onClick={() => setTextOpen(f => { const g = { ...f }; for (const n of withText) { if (allTextOpen) delete g[n.id]; else g[n.id] = true; } return g; })}>{allTextOpen ? '📄 收起正文' : '📄 展开正文'}</button>}
           {withPics.length > 0 && <button onClick={() => setPicFold(f => { const g = { ...f }; for (const n of withPics) g[n.id] = !allPicsFolded; return g; })} title="当前页所有卡片的图片一起收起 / 显示">{allPicsFolded ? '显示图片' : '收起图片'}</button>}
           {view.portals.length + (portalModes[realScope] === 'hide' ? 1 : 0) > 0 && <button className="portalbtn" title="这一页的传送门（别的层的节点）：显示 → 淡化 → 隐藏（隐藏时和选中节点相连的仍显示）" onClick={() => setPortalModes(m => ({ ...m, [realScope]: { show: 'fade', fade: 'hide', hide: 'show' }[m[realScope] || 'show'] }))}>↗ 传送门：{{ show: '显示', fade: '淡化', hide: '隐藏' }[portalModes[realScope] || 'show']}</button>}
           <button onClick={() => setExportText(exportForLLM(graph, realScope))}>导出给 LLM</button>
@@ -976,7 +1046,23 @@ export function Shell({ name, Canvas }) {
           <button className="themebtn" title={theme === 'light' ? '换深色主题' : '换白色主题'} onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}>{theme === 'light' ? '🌙' : '☀'}</button>
           <button className="keysbtn" title="快捷键一览（? 或 F1）" onClick={() => setHelpOpen(true)}>⌨ 快捷键</button>
         </OverflowBar>
-        {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className="canvas" onDragOver={e => e.preventDefault()} onDrop={onDrop}>
+        <div className="cwrap">
+        {mode !== 'loading' && <div className="expbar">
+          <button className="expmore" title="本页的展开：真改每个节点的状态（进 Ctrl+Z）" onClick={() => setExpMore(o => !o)}>⋯</button>
+          {expMore && <div className="ctx expmenu">
+            <div className="mh">真改本页（Ctrl+Z 能撤销）</div>
+            {Object.entries(EXP).map(([k, E]) => { const none = !expIds(k).length, any = expAnyOpen(k); return <div key={k} className={'mi' + (none ? ' quiet' : '')} onClick={() => { if (none) return; setExpMore(false); expChange(k); }} title={none ? `本页没有可展开的${E.name}` : '有没折叠的先全部收起；已经全收起了就全部展开'}><span>{any ? '收起' : '展开'}本页{E.name}</span></div>; })}
+          </div>}
+          {Object.entries(EXP).map(([k, E]) => {
+            const m = sm[k], none = !expIds(k).length;
+            return <button key={k} className={'exprow see' + (m === 'on' ? ' on' : m === 'off' ? ' off' : '') + (none ? ' none' : '')}
+              title={`${E.name}（${E.tip}）\n看：只在本页临时盖一层，节点自己的状态不动，切页不继承\n现在：${m === 'on' ? '临时展开（再点 = 临时收起）' : m === 'off' ? '临时收起（再点 = 不接管）' : '不接管（点一下 = 临时全部展开）'}`} onClick={() => expSee(k)}>{E.name}</button>;
+          })}
+          <div className="expsep" />
+          {mode === 'ws' && <button className={'tool pinbtn' + (pinsOpen ? ' on' : '')} title={'钉子：临时翻阅用的书签组（右键卡片 → 📌 钉到…；反引号 ` 开关）' + (pins.groups.some(g => g.items.length) ? '\n现有 ' + pins.groups.reduce((s, g) => s + g.items.length, 0) + ' 个钉子' : '')} onClick={() => setPinsOpen(o => !o)}>📌钉</button>}
+          <button className={'tool linebtn' + (seeLines ? ' on' : '')} title="看清连线（Q）：卡片缩小变淡（选中节点和它相连的不变），连线变粗变亮。再点一下恢复" onClick={() => setSeeLines(o => !o)}>🔍线</button>
+        </div>}
+        {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className={'canvas' + (seeLines ? ' seelines' : '') + (sel ? ' hassel' : '')} onDragOver={e => e.preventDefault()} onDrop={onDrop}>
           {plane && <div className="planebar" title="投影方向可以是轴，也可以是某个成员的方向（= 换一组基看同一批点）。拖动卡片 = 改它在这两个方向上的坐标">
             <b>空间</b>
             {['X', 'Y'].map((a, i) => <label key={a}>{a}<select value={plane.keys[i]} onChange={e => setSpaceAxes(m => { const k = [...plane.keys]; k[i] = e.target.value; return { ...m, [realScope]: k }; })}>
@@ -987,7 +1073,7 @@ export function Shell({ name, Canvas }) {
             {space.members.length < 2 ? <span className="hint">子节点写 vec: 才会出现在这里</span> :
               <span className="hint" title="成员两两余弦，|cos| 最大的一对：这两个其实差不多是一回事">最像：{(p => `${p.a}·${p.b} ${p.cos.toFixed(2)}`)(closestPairs(space, 1)[0])}</span>}
           </div>}
-          <Canvas key={realScope} theme={theme} view={view} layout={layout} selected={sel} images={images}
+          <Canvas key={realScope} theme={theme} view={view} layout={layout} selected={sel} images={images} seeLines={seeLines}
             plane={plane && { S: plane.S, labels: plane.labels, ids: plane.pts.map(p => p.id) }}
             pics={loosePics.map(p => ({ ...p, w: positions[p.id]?.w || 0, folded: !!picFold[p.id] }))}
             onSelect={setSelected} onDrill={drill} onConnect={connect} onMove={move} onContextMenu={onContextMenu} onEdgeMenu={onEdgeMenu} onRewire={rewire} onRemoveEdges={removeEdges}
@@ -995,6 +1081,7 @@ export function Shell({ name, Canvas }) {
           {mode === 'ws' && aiStatus?.ok && sel && !sel.startsWith('@') && graph.nodes.has(sel) &&
             <RelatedDock api={api} id={sel} label={graph.nodes.get(sel).label} onJump={jumpTo} onOpenFile={openFile} onLink={to => connect(sel, to)} />}
         </div>}
+        </div>
       </main>
       {propsOpen && <div className="resizer right" title="拖动调宽度" onPointerDown={e => dragPanel(e, 'right')} />}
       {propsOpen && sel && !sel.startsWith('@') && graph.nodes.has(sel) && (
@@ -1005,6 +1092,8 @@ export function Shell({ name, Canvas }) {
       )}
       {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（I 开关）</div></aside>}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+      {settingsOpen && mode === 'ws' && <SettingsModal api={api} onClose={() => setSettingsOpen(false)} onHelp={() => setHelpOpen(true)} />}
+      {filePick && mode === 'ws' && <FilePickModal api={api} tree={tree} setTree={setTree} onPick={addFileNodeFrom} onClose={() => setFilePick(false)} />}
       {lightbox && <div className="lightbox" onClick={() => setLightbox(null)}>
         <img src={lightbox.urls[lightbox.i]} onClick={e => e.stopPropagation()} />
         {lightbox.urls.length > 1 && <div className="lbcount">{lightbox.i + 1} / {lightbox.urls.length}（← →）</div>}
@@ -1021,12 +1110,12 @@ export function Shell({ name, Canvas }) {
           setSaveState('AI 指令已执行 ' + good.length + ' 步（Ctrl+Z 撤销）' + (d.warnings?.length ? ' ⚠ ' + d.warnings.join('；') + '（AI 下一轮会知道）' : ''));
         }} />}
       {aiOpen && <AiPanel api={api} status={aiStatus} onStatus={setAiStatus} onClose={() => setAiOpen(false)} />}
-      {finder && <SearchModal title={finder.mode === 'link' ? '连线：「' + graph.nodes.get(finder.from)?.label + '」→ 哪个节点？' : '跳到节点（Ctrl+F）'} items={searchItems} exclude={finder.from}
-        onClose={() => setFinder(null)} onPick={id => finder.mode === 'link' ? connect(finder.from, id) : jumpTo(id)} />}
+      {finder && <SearchModal title={finder.mode === 'link' ? '连线：「' + graph.nodes.get(finder.from)?.label + '」→ 哪个节点？' : '跳到节点（Ctrl+F）'} items={[...searchItems, ...fileItems]} exclude={finder.from}
+        onClose={() => setFinder(null)} onPick={id => id.startsWith('@file:') ? (finder.mode === 'link' ? linkToFile(finder.from, id.slice(6)) : openFile(id.slice(6))) : finder.mode === 'link' ? connect(finder.from, id) : jumpTo(id)} />}
       {scaffold && <ScaffoldModal items={scaffold} root={wsData?.root || ''} onClose={() => setScaffold(null)}
         onCreate={files => api('/scaffold', { method: 'POST', body: JSON.stringify({ files }) }).then(d => { setScaffold(null); setTree(null); setSaveState(d.made.length ? '已创建 ' + d.made.join('、') : '没有新建（都已存在）'); }).catch(e => setSaveState('❌ ' + e.message))} />}
       {fileView && <FilePanel file={fileView.text !== undefined || fileView.error || fileView.note ? fileView : null} onClose={() => setFileView(null)} hl={fileHl && fileHl.file === fileView.path ? fileHl : null} onSelMenu={mode === 'ws' ? (e, s) => setMenu({ x: e.clientX, y: e.clientY, sel: s }) : null} />}
-      {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), color: colors.get(menu.id), colorSet: getMeta(menu.id)?.color || null, patternSet: getMeta(menu.id)?.pattern || null, pattern: patterns.get(menu.id) || null, open: !!expanded[menu.id], descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
+      {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), color: colors.get(menu.id), colorSet: getMeta(menu.id)?.color || null, patternSet: getMeta(menu.id)?.pattern || null, pattern: patterns.get(menu.id) || null, open: !!expanded[menu.id], file: wsData?.nodes[menu.id]?.meta?.file || null, descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
         actions={{ ...menuActions, allOpen }} onClose={() => setMenu(null)} />}
       {exportText !== null && (
         <div className="modal" onClick={() => setExportText(null)}>
@@ -1051,14 +1140,15 @@ export const MOD = /调节|修改器|modifier|modulat/i; // 调节边：从下�
 // >v<🎨画布-边的颜色-线 = 出发节点的颜色（core/colors.js），离散 = 虚线，箭头标方向（👤 2026-10-08 去掉进出渐变）；
 // 选中节点时颜色不变：相连的线变实变粗，其余变淡；没选中时越长越淡、越灰（有下限）—— 临时拖远的节点（待办）连线自然退到背景里
 // near = 算作「选中」的一组 id（选中一个框时 = 框 + 框里的节点）；不给就只看 selected
-export function edgeLook(e, selected, near = null) {
+// boost = 「看清连线」模式：线更粗更亮、不按长度变淡（卡片那边变淡变小，见 shell.css .seelines）
+export function edgeLook(e, selected, near = null, boost = false) {
   const on = near ? near.has(e.to) || near.has(e.from) : e.to === selected || e.from === selected;
-  const w = (e.mod ? 1 : 1.5) + Math.log2(e.count) * 1.5, color = e.dropped ? PALETTE_IDLE : e.color || PALETTE_IDLE, dash = e.mod ? '2 4' : e.dashed ? '6 4' : undefined;
+  const w = (e.mod ? 1 : 1.5) + Math.log2(e.count) * 1.5 + (boost ? 1 : 0), color = e.dropped ? PALETTE_IDLE : e.color || PALETTE_IDLE, dash = e.mod ? '2 4' : e.dashed ? '6 4' : undefined;
   const mod = !!e.mod;
   if (e.dropped && !(selected && on)) return { hl: false, color, dash, mod, opacity: selected ? 0.08 : 0.2, width: w }; // 连着弃用节点的线：灰、更淡
-  if (!selected) return { hl: false, color, dash, mod, opacity: e.fadedPortal ? 0.2 : 0.6, width: w };
-  if (on) return { hl: true, color, dash, mod, opacity: 1, width: w + 1.5 };
-  return { hl: false, color, dash, mod, opacity: e.fadedPortal ? 0.06 : 0.14, width: w };
+  if (!selected) return { hl: false, boost, color, dash, mod, opacity: e.fadedPortal ? 0.2 : boost ? 0.95 : 0.6, width: w };
+  if (on) return { hl: true, boost, color, dash, mod, opacity: 1, width: w + 1.5 };
+  return { hl: false, boost, color, dash, mod, opacity: e.fadedPortal ? 0.06 : boost ? 0.3 : 0.14, width: w };
 }
 export const FADE = { near: 350, far: 1600, minOpacity: 0.3, minSat: 0.15 }; // 画布坐标长度；短于 near 不衰减，长于 far 到下限
 export function lengthFade(len) {
@@ -1119,11 +1209,12 @@ export function NodeCard({ node, img, dim, isSel }) {
           onClick={e => { e.stopPropagation(); cardActions.toggleText(node.id); }}>📄</span>}
         {node.children.length > 0 && <span className="kids" title="展开/收起子级（空格）；双击卡片钻进" onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.toggle(node.id); }}>{node.open ? '▾' : '▸'} {node.children.length}</span>}
-        {node.children.length > 0 && <span className="kids fr" title="原地展开成框（F）：子节点画在框里，线直连" onPointerDown={stop} onMouseDown={stop}
+        {node.children.length > 0 && <span className="kids fr" title="展开子图（F）：子节点画在框里，线直连" onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.toggleFrame(node.id); }}>⊞</span>}</div>
       {(node.sub || node.evidence) && <div className="sub">{node.evidence && <span className={'ev ev-' + (EVIDENCE[node.evidence] || 'x')} title="证据等级（evidence:）">{node.evidence}</span>}{node.sub}</div>}
       {node.props?.length > 0 && <div className="props">{node.props.slice(0, 4).map(([k, v]) => <div key={k} title={k + ': ' + v}><span className="pk">{k}</span>{String(v)}</div>)}
         {node.props.length > 4 && <div className="hint">… 还有 {node.props.length - 4} 条（I 看全部）</div>}</div>}
+      {node.file && <div className="sub filesub" title={'引用项目里的文件：' + node.file + '（双击打开）'}>📎 {node.file}</div>}
       {node.textOpen && node.body?.trim() && <div className="cardtext nodrag nowheel" onDoubleClick={e => e.stopPropagation()}><MdLite text={node.body} /></div>}
       {node.spaceAxes && <div className="axchips" title="空间节点：双击进去看成员的坐标投影">⊹ {node.spaceAxes.join(' · ')}</div>}
       {node.vec && <VecBars vec={node.vec} axes={node.vecAxes} />}
@@ -1199,7 +1290,7 @@ export function FrameCard({ node, dim, isSel }) {
       <div className="fhead" onDoubleClick={e => { e.stopPropagation(); cardActions.drill(node.id); }} title="双击钻进去">
         {node.status && <span className="st">{STATUS_ICON[node.status]}</span>}
         {node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
-        <span className="kids" title="收起框（F）" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggleFrame(node.id); }}>⊟</span>
+        <span className="kids" title="收起子图（F）" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggleFrame(node.id); }}>⊟</span>
       </div>
     </div>
   );

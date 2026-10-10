@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, Children } from 
 import { PALETTE } from './colors.js';
 import { PATTERNS, PATTERN_HINT } from './patterns.js';
 import { searchNodes, filterTree } from './search.js';
-import { KEYMAP } from './keymap.js';
+import { KEYMAP, comboFromKeyEvent, comboText, matchKey } from './keymap.js';
 const STATUS = [['done', '✅'], ['partial', '◐'], ['todo', '○'], ['dropped', '❌']];
 
 // >v<🎨画布-右键菜单-节点：属性/改名/状态/新建/展开/钻进/删除；空白处：新建/全部展开/上一层
@@ -49,7 +49,15 @@ export function ContextMenu({ menu, node, actions, onClose }) {
   if (!node) return (
     <div className="ctx" style={style}>
       {item('＋ 在这里新建节点', actions.addHere)}
-      {item(actions.allOpen ? '全部收起' : '全部展开', actions.toggleAll)}
+      {actions.pickFile && item('📎 引入外部文件…', actions.pickFile)}
+      <div className="mi sub" onPointerDown={e => e.stopPropagation()}>
+        <span>展开本页</span><kbd>▸</kbd>
+        <div className={'ctx submenu' + (style.left > innerWidth - 380 ? ' flip' : '')}>
+          {actions.expAll().map(x => <div key={x.k} className={'mi' + (x.none ? ' off' : '')} title={x.none ? '本页没有可展开的' + x.name : ''} onPointerDown={e => e.stopPropagation()} onClick={() => { if (x.none) return; onClose(); actions.expChange(x.k); }}>
+            <span>{x.any ? '收起' : '展开'}{x.name}</span>
+          </div>)}
+        </div>
+      </div>
       {actions.canUp && item('↑ 返回上一层', actions.up, { key: 'Alt+↑ · 顶栏 ↑', quiet: true })}
     </div>
   );
@@ -58,6 +66,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       <div className="mh">{node.label}</div>
       {item('属性…', () => actions.props(node.id), { key: 'I' })}
       {item('重命名', () => actions.rename(node.id), { key: 'F2' })}
+      {node.file && item('📎 打开引用的文件', () => actions.openProjectFile(node.file))}
       <div className="mi row" onPointerDown={e => e.stopPropagation()}>
         <span>状态</span>
         {STATUS.map(([s, ic]) => <button key={s} className={node.status === s ? 'on' : ''} onClick={() => { onClose(); actions.status(node.id, s); }}>{ic}</button>)}
@@ -90,8 +99,17 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       {item('＋ 新建同级', () => actions.addSibling(node.id), { key: 'Enter' })}
       {/* 画布 / 快捷键上能直接做的：灰色小字一组，右边的操作提示就是「直接怎么做」（菜单只当提示牌，不抢眼） */}
       <div className="msep" />
-      {node.children.length > 0 && item(node.open ? '▾ 收起子级' : '▸ 原地展开子级', () => actions.toggle(node.id), { key: '空格 · 点卡片 ▸N', quiet: true })}
-      {node.children.length > 0 && item(actions.isFramed(node.id) ? '⊟ 收起框' : '⊞ 展开成框', () => actions.frame(node.id), { key: 'F', quiet: true })}
+      {(() => { // 展开 ▸：鼠标移上去就弹出二级菜单（子级 / 属性 / 正文 / 成框），点一项翻转这个节点的那一种
+        const xs = actions.expItems(node.id);
+        return <div className="mi sub" onPointerDown={e => e.stopPropagation()}>
+          <span>展开</span><kbd>▸</kbd>
+          <div className={'ctx submenu' + (style.left > innerWidth - 380 ? ' flip' : '')}>
+            {xs.map(x => <div key={x.k} className={'mi' + (x.ok ? '' : ' off')} title={x.ok ? '' : '这个节点没有可展开的' + x.name} onPointerDown={e => e.stopPropagation()} onClick={() => { if (!x.ok) return; onClose(); actions.expToggle(node.id, x.k); }}>
+              <span>{x.open ? '收起' : '展开'}{x.name}</span>{x.k === 'kids' && <kbd>空格</kbd>}{x.k === 'frame' && <kbd>F</kbd>}
+            </div>)}
+          </div>
+        </div>;
+      })()}
       {item('→ 钻进去', () => actions.drill(node.id), { key: '双击', quiet: true })}
       <div className="msep" />
       {actions.hasFile(node.id) && item('看 md 原文', () => actions.openMd(node.id))}
@@ -476,35 +494,115 @@ const KEY_HUE = { 选择与查看: ['👆', '#4d9bff'], AI: ['🤖', '#a97cff'],
 export { KEYMAP };
 // >v<🔎搜索-搜索框-Ctrl+F 跳到节点 / 右键「连线到…」选目标：同一个框（↑↓ 选，Enter 确定，Esc 关）
 export function SearchModal({ title, items, exclude, onPick, onClose }) {
-  const [q, setQ] = useState(''), [i, setI] = useState(0);
-  const res = useMemo(() => searchNodes(items, q).filter(r => r.id !== exclude), [items, q, exclude]);
-  useEffect(() => setI(0), [q]);
+  const [q, setQ] = useState(''), [i, setI] = useState(0), [tab, setTab] = useState('node');
+  // 「连线到…」里除了节点还有项目文件（id 以 @file: 开头）：分成两个页签，文件太多不和节点混在一起；点页签或按 Tab 切
+  const nodeItems = useMemo(() => items.filter(x => !String(x.id).startsWith('@file:')), [items]);
+  const fileItems = useMemo(() => items.filter(x => String(x.id).startsWith('@file:')), [items]);
+  const hasFiles = fileItems.length > 0; // 文件列表还没读出来 / 没有文件时，「项目文件」页签灰着
+  const resN = useMemo(() => searchNodes(nodeItems, q).filter(r => r.id !== exclude), [nodeItems, q, exclude]);
+  const resF = useMemo(() => hasFiles ? searchNodes(fileItems, q) : [], [fileItems, q, hasFiles]);
+  const res = hasFiles && tab === 'file' ? resF : resN;
+  useEffect(() => setI(0), [q, tab]);
   const pick = r => r && (onClose(), onPick(r.id));
+  const flip = () => setTab(t => t === 'node' ? 'file' : 'node');
   return (
     <div className="modal" onPointerDown={onClose}>
       <div className="finder" onPointerDown={e => e.stopPropagation()}>
-        <div className="bar"><b>{title}</b><span className="hint">名字 / 属性 / 正文，空格分开多个词 · ↑↓ Enter · Esc</span></div>
-        <input autoFocus value={q} placeholder="搜索节点…" onChange={e => setQ(e.target.value)}
-          onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') onClose(); else if (e.key === 'ArrowDown') { e.preventDefault(); setI(x => Math.min(res.length - 1, x + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setI(x => Math.max(0, x - 1)); } else if (e.key === 'Enter') pick(res[i]); }} />
+        <div className="bar"><b>{title}</b><span className="hint">名字 / 属性 / 正文 · Tab</span></div>
+        <div className="ftabs">
+          <a className={tab === 'node' ? 'on' : ''} onClick={() => setTab('node')}>节点{q.trim() ? ' ' + resN.length : ''}</a>
+          <a className={(tab === 'file' ? 'on' : '') + (hasFiles ? '' : ' off')} onClick={() => hasFiles && setTab('file')}>📎 项目文件{q.trim() && hasFiles ? ' ' + resF.length : ''}</a>
+        </div>
+        <input autoFocus value={q} placeholder={tab === 'file' ? '搜项目文件…' : '搜索节点…'} onChange={e => setQ(e.target.value)}
+          onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') onClose(); else if (e.key === 'Tab') { e.preventDefault(); if (hasFiles) flip(); } else if (e.key === 'ArrowDown') { e.preventDefault(); setI(x => Math.min(res.length - 1, x + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setI(x => Math.max(0, x - 1)); } else if (e.key === 'Enter') pick(res[i]); }} />
         <ul>{res.map((r, k) => (
           <li key={r.id} className={k === i ? 'on' : ''} onMouseEnter={() => setI(k)} onClick={() => pick(r)}>
             <b>{r.label}</b><span className="fp">{r.path.split('/').slice(0, -1).join(' / ')}</span>{r.where !== '名字' && <span className="fw">{r.where}</span>}
             {r.snippet && <div className="fs">{r.snippet}</div>}
           </li>))}
-          {q.trim() && !res.length && <li className="hint">没找到</li>}</ul>
+          {q.trim() && !res.length && <li className="hint">没找到{hasFiles && (tab === 'node' ? resF.length : resN.length) ? '（' + (tab === 'node' ? '「项目文件」页' : '「节点」页') + '有 ' + (tab === 'node' ? resF.length : resN.length) + ' 个）' : ''}</li>}</ul>
       </div>
     </div>
   );
 }
 
+// ⚙ 设置：Synapsis 目录根的 settings.yaml（进 git）。现在只有「init 生成哪些」；快捷键自定义下一步；以后别的设置慢慢往里加
+export function SettingsModal({ api, onClose, onHelp }) {
+  const [d, setD] = useState(null), [err, setErr] = useState('');
+  useEffect(() => { api('/settings').then(setD).catch(e => setErr(e.message)); }, []);
+  const set = (sec, k, v) => { setD(x => ({ ...x, settings: { ...x.settings, [sec]: { ...x.settings[sec], [k]: v } } })); api('/settings', { method: 'PUT', body: JSON.stringify({ [sec]: { [k]: v } }) }).then(setD).catch(e => setErr(e.message)); };
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="settings" onClick={e => e.stopPropagation()}>
+        <div className="bar"><b>⚙ 设置</b><span className="hint" style={{ flex: 1 }}>改了立刻存进 settings.yaml</span><button onClick={onClose}>✕</button></div>
+        <div className="sbody">
+          {err && <div className="warn">{err}</div>}
+          {!d && !err && <div className="hint">读取中…</div>}
+          {d && Object.entries(d.schema).map(([sec, { title, keys }]) => (
+            <section key={sec}><h4>{title}</h4>
+              <div className="hint" style={{ marginBottom: 4 }}>在界面里给一个文件夹挂上 Synapsis（或命令行 init）时，勾上的才会生成；已有的文件不会被覆盖。</div>
+              {Object.entries(keys).map(([k, [, name, desc]]) => (
+                <label key={k} className="srow"><input type="checkbox" checked={!!d.settings[sec]?.[k]} onChange={e => set(sec, k, e.target.checked)} /><b>{name}</b><span className="hint">{desc}</span></label>
+              ))}
+            </section>
+          ))}
+          <section><h4>快捷键</h4>
+            <div className="hint">自定义键位：下一步做。现在的键位表在 <a onClick={() => { onClose(); onHelp(); }}>⌨ 快捷键</a>（可以搜）。</div>
+          </section>
+          {d && <div className="hint spath" title={d.path}>设置文件：{d.path}（进 git，调好了直接分享；也可以手动改）</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 引入外部文件：列项目里 __synapsis 以外的所有文件，打字过滤，点一个就建成节点（只是引用，不复制、不改原文件）
+export function FilePickModal({ api, tree, setTree, onPick, onClose }) {
+  const [q, setQ] = useState('');
+  useEffect(() => { if (!tree) api('/tree').then(setTree).catch(e => setTree({ tree: [], error: e.message })); }, []);
+  const files = useMemo(() => { const out = []; const walk = items => { for (const it of items || []) { if (it.dir) walk(it.children); else if (!(it.path === '__synapsis' || it.path.startsWith('__synapsis/'))) out.push(it.path); } }; walk(tree?.tree); return out; }, [tree]);
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = files.filter(f => words.every(w => f.toLowerCase().includes(w))).slice(0, 80);
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="filepick" onClick={e => e.stopPropagation()}>
+        <div className="bar"><b>📎 引入外部文件</b><span className="hint" style={{ flex: 1 }}>项目里 __synapsis 以外的文件 → 建成一个节点（只引用，不复制、不改原文件）</span><button onClick={onClose}>✕</button></div>
+        <input autoFocus placeholder="打字过滤（路径里含这些词）…" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') onClose(); if (e.key === 'Enter' && shown.length) onPick(shown[0]); }} />
+        <ul>{shown.map(f => <li key={f} onClick={() => onPick(f)} title={f}><b>{f.split('/').pop()}</b><span className="fp">{f.split('/').slice(0, -1).join(' / ')}</span></li>)}
+          {!tree && <li className="hint">读取文件列表…</li>}
+          {tree && !shown.length && <li className="hint">没有符合的文件</li>}</ul>
+      </div>
+    </div>
+  );
+}
+
+// 两个搜索框（都要满足）：左边「按一下键」= 查键位（组合键直接按；只按修饰键就在抬起时记；Backspace / Delete 清除，留白 = 不按键位筛）；右边打字搜说明文字
 export function HelpModal({ onClose }) {
+  const [combo, setCombo] = useState(null), [tq, setTq] = useState('');
+  const pendingMod = useRef(null);
+  const onKeyDown = e => {
+    if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) return; // 光按 Tab = 正常移走焦点
+    if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
+    e.preventDefault(); e.stopPropagation();
+    if (e.key === 'Backspace' || e.key === 'Delete') { setCombo(null); return; }
+    const c = comboFromKeyEvent(e);
+    if (c) { pendingMod.current = null; setCombo(c); } else pendingMod.current = { mods: [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Win'].filter(Boolean), key: null };
+  };
+  const onKeyUp = e => { if (pendingMod.current && pendingMod.current.mods.length) setCombo(pendingMod.current); else if (pendingMod.current) pendingMod.current = null; };
+  const t = tq.trim().toLowerCase();
+  const groups = KEYMAP.map(([g, rows]) => [g, rows.filter(([k, v]) => matchKey(k, combo) && (!t || (k + ' ' + v).toLowerCase().includes(t)))]).filter(([, rows]) => rows.length);
   return (
     <div className="modal" onClick={onClose}>
       <div className="help" onClick={e => e.stopPropagation()}>
-        <div className="bar"><b>⌨️ 快捷键</b><span className="hint" style={{ flex: 1 }}>暂不可改；以后要改从这张表接配置</span><button onClick={onClose}>✕</button></div>
-        <div className="helpgrid">{KEYMAP.map(([g, rows]) => (
+        <div className="bar"><b>⌨️ 快捷键</b>
+          <input className="hkey" readOnly value={comboText(combo)} placeholder="按一下键查键位…" title="按一下键（组合键直接按）= 查哪些条目用到它；Backspace 清除，留白 = 不按键位筛" onKeyDown={onKeyDown} onKeyUp={onKeyUp} />
+          {combo && <a className="hclear" onClick={() => setCombo(null)} title="清除键位">✕</a>}
+          <input className="htext" value={tq} onChange={e => setTq(e.target.value)} placeholder="搜文字…" title="搜说明文字；和左边的键位一起用 = 两个都要满足" />
+          <span className="grow" /><button onClick={onClose}>✕</button></div>
+        <div className="helpgrid">{groups.map(([g, rows]) => (
           <section key={g} style={{ '--hue': KEY_HUE[g]?.[1] }}><h4>{KEY_HUE[g]?.[0] || '•'} {g}</h4><table><tbody>{rows.map(([k, v]) => <tr key={k}><td><kbd>{k}</kbd></td><td>{v}</td></tr>)}</tbody></table></section>
-        ))}</div>
+        ))}
+        {!groups.length && <div className="hint" style={{ padding: 16 }}>没有符合的条目。</div>}</div>
       </div>
     </div>
   );

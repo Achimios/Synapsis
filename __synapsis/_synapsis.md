@@ -29,7 +29,7 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
 3. **一次写很多节点用 `batch`**（一个 JSON 文件，一个进程跑完），别每个节点 spawn 好几次。`add` 撞名会报错；脚本可能重跑就加 `--if-missing`（batch 里是 `{"ifMissing":true}`）。
 4. **小结构改动可以直接做**（加子节点、连线、改错字）。**大改**（删分组、改名一片、重新分层）先问人。
    - **图里写的是意图，代码是实现。做不到节点里写的意图时，把差距报告给人，别回头改意图节点去迁就实现。** 想改意图，是人的决定（可以提议，但要说清「这是在改意图」）。
-5. **删除不真删**：`rm` 把文件移进 `__synapsis/_过期的/`。手动删文件也照此办理。
+5. **删除不真删**：`rm` 把文件移进 `__synapsis/.junk/`（临时的：Synapsis 窗口关掉时整个送系统回收站，不进 git）。要长期留着的旧东西，自己放 `__synapsis/_过期的/`。手动删文件也照此办理。
 6. **别碰**：`_layout.json`（人摆的位置）、`.synapsis/`（本机视图状态）。
 7. 说法要分清证据：`set <id> evidence=实测|设计|估计|未验`（界面卡片上会显示成标签）。
    - 标 `evidence=实测` 时，如果节点有 `code:`，会顺手记下那个文件的内容快照（`evidence_hash`，机器记的，别手改）。之后文件变了，`check` 给一条 info「实测之后 … 改过，结论可能要重验」——**只提示，不作废**。你重新验过，就再 `set <id> evidence=实测` 刷新快照。先写 `code=`、后标 `实测`，或者同一条 `set` 里一起写，都行。
@@ -50,7 +50,7 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
   get <节点id>                 单个节点：属性 + 入边/出边 + 正文
   find <关键词>                在名字 / 属性 / 正文里找
   check                        悬空边、无状态、code 指向不存在的文件 / 符号
-写（每条都是原子的一小步；删除一律进 _过期的/，不真删）：
+写（每条都是原子的一小步；删除一律进 .junk/（关窗口时才清，期间能撤销），不真删）：
   add <父id|.> <名字> [--after <兄弟id>] [--if-missing]
                                新建节点，打印新 id；同级已有同名 → 报错（--if-missing 则直接返回已有 id）
                                根用 . （Git Bash 会把单独的 / 改写成 Git 安装目录）
@@ -75,7 +75,7 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
 
 ## 5. 文件格式（文件夹 = 层级）
 - 叶子节点 `名字.md`；有子节点的 `名字/_node.md`。
-- 以 `_` 或 `.` 开头的都不是节点：`_Blackboard.md`（讨论区）、`_配色.md`（自动配色的词表）、`_图案.md`（自动底纹的词表）、`_layout.json`（坐标）、`_过期的/`（删掉的）、`_pics_名字/`（这个节点的图片）、`_pics/`（这一页的散图）、`_synapsis.md`（本手册）。
+- 以 `_` 或 `.` 开头的都不是节点：`_Blackboard.md`（讨论区）、`_配色.md`（自动配色的词表）、`_图案.md`（自动底纹的词表）、`_layout.json`（坐标）、`_过期的/`（人手放的旧东西）、`.junk/`（程序删掉的，临时）、`_pics_名字/`（这个节点的图片）、`_pics/`（这一页的散图）、`_synapsis.md`（本手册）。
 - 名字里有 `/` 等非法字符时，文件名用全角，原名写在 frontmatter 的 `label:` 里。
 ```
 ---

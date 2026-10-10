@@ -39,7 +39,7 @@ function sizeFrames(nodes) {
 function FlowEdge({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data }) {
   const [path, lx, ly] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
   const { look, idx, text, mat } = data;
-  const f = look.hl ? { opacity: 1, sat: 1 } : lengthFade(Math.hypot(targetX - sourceX, targetY - sourceY));
+  const f = look.hl || look.boost ? { opacity: 1, sat: 1 } : lengthFade(Math.hypot(targetX - sourceX, targetY - sourceY));
   const op = look.opacity * f.opacity, col = look.hl ? look.color : desat(look.color, f.sat), mid = 'em' + idx;
   return (<>
     <defs>
@@ -110,7 +110,7 @@ function FlowBridge() {
 }
 
 // >v<🎨画布-ReactFlow-显示 view + 回报选择/拖动/连线/视图
-function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], plane, onSelect, onDrill, onConnect, onMove, onContextMenu, onEdgeMenu, onRewire, onRemoveEdges, viewport, onViewport }) {
+function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], plane, seeLines, onSelect, onDrill, onConnect, onMove, onContextMenu, onEdgeMenu, onRewire, onRemoveEdges, viewport, onViewport }) {
   // >v<🎨画布-改接连线-按住 Alt 在连线身上任意处按下 = 拿起离鼠标近的那一端（👤 2026-10-08：端点处常叠着好几条线，只能从线身上挑）
   //   放到别的节点 = 改接（标签 / 类型跟过去），放到画布空白 = 删除，拖着时右键 / Esc = 取消，放到画布外（面板上）= 取消
   const [alt, setAlt] = useState(false);
@@ -196,7 +196,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   const near = selected && view.parentOf?.size ? new Set([selected, ...view.nodes.filter(n => { for (let f = n.frame; f != null; f = view.parentOf.get(f)) if (f === selected) return true; return false; }).map(n => n.id)]) : null;
   const edges = view.edges.map((e, idx) => ({
     id: e.id, source: e.from, target: e.to, type: 'flow', selectable: false, ...(e.mod ? { sourceHandle: 'mo', targetHandle: 'mi' } : {}),
-    data: { look: rw?.id === e.id ? { ...edgeLook(e, selected, near), opacity: 0.2 } : edgeLook(e, selected, near), idx, text: e.text || '', mat: e.mat || null },
+    data: { look: rw?.id === e.id ? { ...edgeLook(e, selected, near, seeLines), opacity: 0.2 } : edgeLook(e, selected, near, seeLines), idx, text: e.text || '', mat: e.mat || null },
   }));
 
   // >v<🎨画布-锁轴拖动-拖卡片时按住 Shift = 只横移或只竖移（看从起点算哪个方向挪得多；👤 2026-10-08）
@@ -243,7 +243,8 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   // 刚展开成框：框比原来的卡大，压住的顶层卡片挪到框右边（只在展开那一刻做一次；打开页面时已经展开的不动）
   const seenFrames = useRef(null);
   useEffect(() => {
-    const frames = shown.filter(n => n.type === 'frame' && !n.parentId);
+    // 「看」临时展开的子图（data.node.tempFrame）不算：不挪周边卡片、不存坐标；等它变成真展开（「改」）时才当作刚展开
+    const frames = shown.filter(n => n.type === 'frame' && !n.parentId && !n.data?.node?.tempFrame);
     if (seenFrames.current === null) { seenFrames.current = new Set(frames.map(f => f.id)); return; }
     const kidsReady = f => shown.filter(n => n.parentId === f.id).every(n => n.measured?.width);
     const fresh = frames.filter(f => !seenFrames.current.has(f.id) && kidsReady(f));

@@ -1,0 +1,13 @@
+# Synapsis 设置（进 git，团队共享）。在界面左上角 ⚙ 里改，也可以直接改这个文件。
+# 没有的项 = 用默认值。格式：段名: 下面缩进两格写「键: 值」（true / false）。
+
+# init：给新项目挂上 Synapsis 时生成哪些东西
+init:
+  manual: true         # AI 接入手册  __synapsis/_synapsis.md
+  blackboard: true     # 黑板  __synapsis/_Blackboard.md
+  colorWords: true     # 配色词表  __synapsis/_配色.md
+  patternWords: true   # 图案词表  __synapsis/_图案.md
+  launcher: true       # 启动快捷方式（项目根目录 .lnk + .synapsis/ 兜底脚本）
+
+# 快捷键自定义：下一步做（现在的键位见界面里的 ⌨ 快捷键）
+# keys: {}

@@ -420,7 +420,9 @@ for (const kind of ['reactflow']) {
   await page.mouse.up(); await sleep(1800);
   const sensePics = join(ws, '__synapsis', '游戏AI', '感知', '_pics_感知'); // 感知是分组 → 图在它自己的文件夹里
   ok(existsSync(sensePics) && readdirSync(sensePics).length === 1 && readdirSync(looseDir).length === 0 && !(await page.$('.loosepic')), '散图拖到「感知」上 → 归给它（进 _pics_感知/）');
-  await page.dragAndDrop('.react-flow__node[data-id="游戏AI/感知"] .pics img', '.react-flow__pane', { targetPosition: { x: 120, y: 520 } }); await sleep(1800);
+  // 找一块真正的空白（画布变窄后固定坐标可能落在别的卡片上）
+  const blank = await page.evaluate(() => { const r = document.querySelector('.react-flow__pane').getBoundingClientRect(); const clear = (x, y) => [-130, 0, 130].every(dx => [-130, 0, 130].every(dy => { const el = document.elementFromPoint(r.left + x + dx, r.top + y + dy); return el && el.classList.contains('react-flow__pane'); })); for (let y = r.height * 0.55; y > 150; y -= 30) for (let x = r.width * 0.45; x < r.width - 160; x += 30) if (clear(x, y)) return { x, y }; for (let y = r.height * 0.55; y > 150; y -= 30) for (let x = r.width * 0.45; x > 160; x -= 30) if (clear(x, y)) return { x, y }; return { x: 120, y: 520 }; });
+  await page.dragAndDrop('.react-flow__node[data-id="游戏AI/感知"] .pics img', '.react-flow__pane', { targetPosition: blank }); await sleep(1800);
   ok(readdirSync(looseDir).length === 1 && readdirSync(sensePics).length === 0 && (await page.$$('.loosepic')).length === 1, '卡片里的图拖到空白 → 又变成这一页的散图');
   lb = await (await page.$('.loosepic')).boundingBox();
   await page.mouse.click(lb.x + lb.width / 2, lb.y + lb.height / 2); await sleep(200);
@@ -760,7 +762,7 @@ for (const kind of ['reactflow']) {
   const lay = () => JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'));
   await page.mouse.click(...mid(await (await lab('组')).boundingBox())); await sleep(300);
   await page.mouse.click(...mid(await (await lab('组')).boundingBox()), { button: 'right' }); await sleep(300);
-  ok(!!(await page.$('.ctx .mi.quiet:has-text("展开成框")')), '右键菜单有「⊞ 展开成框」（灰色小字一组）');
+  ok(!!(await page.$('.ctx .mi.sub .submenu .mi:has-text("展开子图")')), '右键菜单「展开 ▸」二级里有「展开子图」');
   await page.keyboard.press('Escape'); await page.mouse.click(...mid(await (await lab('组')).boundingBox())); await sleep(300);
   if (!(await page.$('.card.sel'))) await page.mouse.click(...mid(await (await lab('组')).boundingBox()));
   await page.keyboard.press('f'); await sleep(1500);
@@ -968,10 +970,10 @@ for (const kind of ['reactflow']) {
   ok(JSON.parse(readFileSync(join(ws, '.synapsis', 'view.json'), 'utf8')).textOpen?.['传感器'] === true, '展开状态记进 view.json');
   await page.click('.card .textbadge'); await sleep(400);
   ok(!(await page.$('.card .cardtext')), '再点 → 收起');
-  await page.click('button:has-text("展开正文")'); await sleep(400);
-  ok((await page.$$('.card .cardtext')).length === 1 && !!(await page.$('button:has-text("收起正文")')), '顶栏「📄 展开正文」→ 本页带正文的全展开');
-  await page.click('button:has-text("收起正文")'); await sleep(400);
-  ok(!(await page.$('.card .cardtext')), '「📄 收起正文」→ 全收起');
+  await page.click('.expbar .expmore'); await sleep(150); await page.click('.expmenu .mi:has-text("本页正文")'); await sleep(400);
+  ok((await page.$$('.card .cardtext')).length === 1, '竖栏 ⋯ →「展开本页正文」→ 本页带正文的全展开');
+  await page.click('.expbar .expmore'); await sleep(150); await page.click('.expmenu .mi:has-text("本页正文")'); await sleep(400);
+  ok(!(await page.$('.card .cardtext')), '再点「改」→ 全收起');
   // Shift + 拖 = 锁轴（斜着拖只横移）
   const y0 = JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'))['吓坏了'].y;
   const hb = await (await lab('吓坏了')).boundingBox(), hs = mid(hb);
@@ -1022,6 +1024,279 @@ for (const kind of ['reactflow']) {
   await page.close(); srv.close();
   rmSync(ws, { recursive: true, force: true });
 }
+// —— 🔍 看清连线（👤 2026-10-09）：卡片缩成标题 + 变淡，线变粗变亮；选中的和相连的不淡；记进 view.json ——
+{
+  console.log('== 看清连线');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-see-ui-')); noAi(ws);
+  saveOutline(ws, '甲 -> 乙\n乙\n丙');
+  writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 甲: { x: 0, y: 0 }, 乙: { x: 300, y: 0 }, 丙: { x: 600, y: 0 } }));
+  setNodeMeta(ws, '甲', { owner: '某某' });
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
+  const card = async l => { for (const c of await page.$$('.card')) { const t = await c.$('.lab'); if (t && (await t.textContent()) === l) return c; } };
+  const op = async l => Number(await (await card(l)).evaluate(e => getComputedStyle(e).opacity));
+  const sw = () => page.$eval('.react-flow__edge path.react-flow__edge-path', p => parseFloat(getComputedStyle(p).strokeWidth));
+  const w0 = await sw();
+  ok(!!(await page.$('.expbar button.linebtn')) && !(await page.$('.canvas.seelines')), '左边竖栏有「🔍线」，默认关');
+  await page.click('.expbar button.linebtn'); await sleep(500);
+  ok(!!(await page.$('.canvas.seelines')) && (await op('丙')) < 0.5, '打开 → 没选中时所有卡片变淡 ' + (await op('丙')));
+  ok((await sw()) > w0, '连线变粗 ' + w0 + ' → ' + (await sw()));
+  await (await card('甲')).click(); await sleep(500);
+  ok((await op('甲')) === 1 && (await op('乙')) === 1 && (await op('丙')) < 0.3, '选中甲 → 甲和相连的乙不淡，无关的丙更淡 ' + [await op('甲'), await op('乙'), await op('丙')]);
+  await sleep(900);
+  ok(JSON.parse(readFileSync(join(ws, '.synapsis', 'view.json'), 'utf8')).seeLines === true, '开关记进 view.json');
+  await page.reload(); await sleep(2200);
+  ok(!!(await page.$('.canvas.seelines')), '刷新后仍是开着的');
+  await page.click('.expbar button.linebtn'); await sleep(400);
+  ok(!(await page.$('.canvas.seelines')) && (await op('丙')) === 1, '再点 → 恢复');
+  await page.mouse.click(1000, 700); await page.keyboard.press('q'); await sleep(400);
+  ok(!!(await page.$('.canvas.seelines')), '按 Q → 打开');
+  await page.keyboard.press('q'); await sleep(400);
+  ok(!(await page.$('.canvas.seelines')), '再按 Q → 关');
+  const tf = await page.$('.ofilter'); if (tf) { await tf.click(); await page.keyboard.type('q'); await sleep(300); ok(!(await page.$('.canvas.seelines')), '在输入框里打字 q → 不触发'); await tf.fill(''); }
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
+// —— 展开竖栏（👤 2026-10-10）：四种展开 × 「改」（真改、进 Ctrl+Z）/「看」（本页临时盖一层，不改节点）；右键「展开 ▸」悬停二级菜单 ——
+{
+  console.log('== 展开竖栏');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-exp-ui-')); noAi(ws);
+  saveOutline(ws, '甲\n  乙\n  丙\n丁\n戊');
+  writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 甲: { x: 0, y: 0 }, 丁: { x: 400, y: 0 }, 戊: { x: 800, y: 0 } }));
+  setNodeBody(ws, '丁', '丁的正文');
+  setNodeMeta(ws, '戊', { owner: '某某' });
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
+  const view = () => JSON.parse(readFileSync(join(ws, '.synapsis', 'view.json'), 'utf8'));
+  const row = k => `.expbar .exprow:has-text("${k}")`;
+  const chg = async k => { await page.click('.expbar .expmore'); await sleep(150); await page.click(`.expmenu .mi:has-text("本页${k}")`); };
+  const nText = () => page.$$eval('.card .cardtext', e => e.length), nKids = () => page.$$eval('.card .kidlist', e => e.length), nProps = () => page.$$eval('.card .props', e => e.length);
+  ok((await page.$$('.expbar .exprow')).length === 4 && !(await page.$('.bar.top button:has-text("展开正文")')), '画布左侧有 4 行展开竖栏，顶栏旧的展开按钮没了');
+  ok(!!(await page.$('.expbar .expmore')) && (await page.$$eval('.expbar .exprow', e => e.map(x => x.textContent).join())) === '子图,子级,属性,正文', '最上面一个 ⋯，下面四行 子图 / 子级 / 属性 / 正文');
+  ok((await nProps()) === 1, '默认卡片上显示属性（戊有 owner）');
+  // 改：正文（丁）
+  await chg('正文'); await sleep(500);
+  ok((await nText()) === 1, '正文 改 → 展开');
+  await sleep(900); ok(view().textOpen?.['丁'] === true, '改 = 真改，记进 view.json');
+  await chg('正文'); await sleep(500);
+  ok((await nText()) === 0, '再点改 → 全收起');
+  // Ctrl+Z 撤销「改」
+  await page.mouse.click(1000, 750); await page.keyboard.press('Control+z'); await sleep(900);
+  ok((await nText()) === 1, 'Ctrl+Z → 回到展开');
+  await page.keyboard.press('Control+z'); await sleep(900);
+  ok((await nText()) === 0, '再 Ctrl+Z → 回到最初的收起');
+  // 改：子级（甲有子级）+ 属性
+  await chg('子级'); await sleep(500);
+  ok((await nKids()) === 1, '子级 改 → 甲展开子级列表');
+  await chg('属性'); await sleep(500);
+  ok((await nProps()) === 0, '属性 改 → 先全部收起（原来是显示的）');
+  await chg('属性'); await sleep(500);
+  ok((await nProps()) === 1, '再点 → 全部展开');
+  await chg('子级'); await sleep(400);
+  // 看：不接管 → 展开 → 收起 → 不接管，节点自己的状态不动
+  const see = row('正文');
+  await page.click(see); await sleep(500);
+  ok((await nText()) === 1, '正文 看 → 临时展开');
+  await sleep(900); const v1 = view();
+  ok(!v1.textOpen?.['丁'] && v1.seeModes && Object.values(v1.seeModes).some(m => m.text === 'on'), '看 不改节点自己的状态，只按页记 seeModes ' + JSON.stringify(v1.seeModes));
+  await page.click(see); await sleep(500);
+  ok((await nText()) === 0, '再点 → 临时收起');
+  await chg('正文'); await sleep(500);
+  ok((await nText()) === 0, '临时收起时，真改成展开也看不见（被盖着）');
+  await page.click(see); await sleep(500);
+  ok((await nText()) === 1, '第三次点 → 不接管，露出节点自己的状态（展开）');
+  await chg('正文'); await sleep(400);
+  // 看 · 子图：临时展开不挪别的卡、不写坐标（👤 2026-10-10「看」不能影响节点位置）
+  const layoutFile = () => readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8');
+  const posOf = async l => { for (const c of await page.$$('.react-flow__node')) { const t = await c.$('.lab'); if (t && (await t.textContent()) === l) { const b = await c.boundingBox(); return [Math.round(b.x), Math.round(b.y)].join(','); } } };
+  await sleep(900); const L0 = layoutFile(), dp0 = await posOf('丁');
+  await page.click(row('子图')); await sleep(1800);
+  ok(!!(await page.$('.react-flow__node-frame')), '子图 看 → 甲临时展开成框');
+  await sleep(900);
+  ok(layoutFile() === L0, '看 · 子图 → _layout.json 一个字都没变（不存坐标）');
+  ok((await posOf('丁')) === dp0, '看 · 子图 → 旁边的卡没被挪走 ' + dp0 + ' / ' + (await posOf('丁')));
+  await page.click(row('子图')); await page.click(row('子图')); await sleep(900);
+  ok(!(await page.$('.react-flow__node-frame')) && layoutFile() === L0, '再点两次 → 回到不接管，框没了，坐标文件还是原样');
+  // 右键「展开 ▸」悬停弹二级
+  await page.mouse.click(...(m => [m.x + m.width / 2, m.y + m.height / 2])(await (await page.$('.card .lab')).boundingBox()), { button: 'right' }); await sleep(300);
+  ok(!(await page.$eval('.ctx .mi.sub .submenu', e => getComputedStyle(e).display !== 'none')), '二级菜单默认不显示');
+  await page.hover('.ctx .mi.sub'); await sleep(250);
+  ok(await page.$eval('.ctx .mi.sub .submenu', e => getComputedStyle(e).display !== 'none'), '鼠标移上去 → 弹出二级');
+  const subs = await page.$$eval('.ctx .submenu .mi', e => e.map(x => x.textContent));
+  ok(subs.length >= 1 && subs.some(t => t.includes('子级')), '二级里有子级 ' + subs);
+  await page.click('.ctx .submenu .mi:has-text("子级")'); await sleep(500);
+  ok((await nKids()) === 1, '二级里点「展开子级」→ 展开');
+  await page.mouse.click(600, 720, { button: 'right' }); await sleep(300);
+  ok(!!(await page.$('.ctx .mi.sub:has-text("展开本页")')) && (await page.$$('.ctx .submenu .mi')).length === 4, '空白处右键 →「展开本页 ▸」里有 子图 / 子级 / 属性 / 正文 四项');
+  await page.keyboard.press('Escape'); await sleep(200);
+  // 做不了的项灰着、不隐藏：丁 没有子级，只有正文
+  const c丁 = await (async () => { for (const t of await page.$$('.card .lab')) if ((await t.textContent()) === '丁') return t; })();
+  const b丁 = await c丁.boundingBox(); await page.mouse.click(b丁.x + b丁.width / 2, b丁.y + b丁.height / 2, { button: 'right' }); await sleep(300);
+  const items = await page.$$eval('.ctx .submenu .mi', e => e.map(x => [x.textContent.replace(/空格|F$/, ''), x.classList.contains('off')]));
+  ok(items.length === 4 && items.find(x => x[0].includes('子级'))[1] && items.find(x => x[0].includes('子图'))[1] && !items.find(x => x[0].includes('正文'))[1], '节点右键「展开 ▸」：四项都在，没有的灰着（丁：子图 / 子级 灰，正文可点） ' + JSON.stringify(items));
+  await page.hover('.ctx .mi.sub'); await sleep(250); await page.click('.ctx .submenu .mi.off'); await sleep(200);
+  ok(!!(await page.$('.ctx')), '点灰的项没反应（菜单不关）');
+  await page.keyboard.press('Escape'); await sleep(200);
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
+// —— 📎 外部文件节点（👤 2026-10-10）：右键空白「引入外部文件」→ 选文件 → 建一个带 file: 的普通节点；双击打开原文件；撤销 ——
+{
+  console.log('== 外部文件节点');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-fn-ui-')); noAi(ws);
+  saveOutline(ws, '甲\n乙');
+  mkdirSync(join(ws, 'docs'), { recursive: true });
+  writeFileSync(join(ws, 'docs', '设计笔记.md'), '# 笔记\n笔记正文XYZ');
+  writeFileSync(join(ws, 'docs', '数据.json'), '{"a":1}');
+  writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 甲: { x: 0, y: 0 }, 乙: { x: 300, y: 0 } }));
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
+  await page.mouse.click(600, 720, { button: 'right' }); await sleep(300);
+  ok(!!(await page.$('.ctx .mi:has-text("引入外部文件")')), '右键空白有「📎 引入外部文件…」');
+  await page.click('.ctx .mi:has-text("引入外部文件")'); await sleep(600);
+  ok(!!(await page.$('.filepick')), '弹出选文件的小窗');
+  const listed = await page.$$eval('.filepick li b', e => e.map(x => x.textContent));
+  ok(listed.includes('设计笔记.md') && listed.includes('数据.json') && !listed.includes('甲.md') && !listed.includes('乙.md'), '列出项目文件，不列 __synapsis 里的节点 ' + listed.join('|'));
+  await page.fill('.filepick input', '笔记'); await sleep(300);
+  ok((await page.$$('.filepick li')).length === 1, '打字过滤 → 只剩一个');
+  await page.click('.filepick li'); await sleep(1500);
+  const card = (await page.$$('.card')).length === 3;
+  ok(card && !!(await page.$('.card .filesub:has-text("docs/设计笔记.md")')), '画布上多了一张卡，带 📎 路径小字');
+  const nodeMd = join(ws, '__synapsis', '设计笔记.md.md');
+  ok(existsSync(nodeMd) && /file: docs\/设计笔记\.md/.test(readFileSync(nodeMd, 'utf8')) && !/status/.test(readFileSync(nodeMd, 'utf8')), '节点 md 里写了 file:，没有 status');
+  ok(readFileSync(join(ws, 'docs', '设计笔记.md'), 'utf8') === '# 笔记\n笔记正文XYZ', '原文件一个字没动');
+  // 双击 → 打开原文件
+  const lb = await (await page.$('.card:has(.filesub) .lab')).boundingBox();
+  await page.mouse.dblclick(lb.x + lb.width / 2, lb.y + lb.height / 2); await sleep(1200);
+  ok((await page.textContent('body')).includes('笔记正文XYZ'), '双击这张卡 → 打开那个文件的内容');
+  // 右键 → 打开引用的文件
+  await page.keyboard.press('Escape'); await sleep(200);
+  await page.mouse.click(lb.x + lb.width / 2, lb.y + lb.height / 2, { button: 'right' }); await sleep(300);
+  ok(!!(await page.$('.ctx .mi:has-text("打开引用的文件")')), '右键这张卡有「📎 打开引用的文件」');
+  await page.keyboard.press('Escape'); await sleep(200);
+  // 撤销
+  await page.mouse.click(600, 720); await page.keyboard.press('Control+z'); await sleep(1500);
+  ok((await page.$$('.card')).length === 2 && existsSync(join(ws, 'docs', '设计笔记.md')), 'Ctrl+Z → 卡片没了，原文件还在');
+  // Ctrl+F 跳转：同样两个页签，Tab 切到项目文件，选一个 = 打开那个文件的预览
+  await page.mouse.click(600, 720); await page.keyboard.press('Control+f'); await sleep(700);
+  ok(!!(await page.$('.finder .ftabs')) && (await page.textContent('.finder .bar')).includes('Tab') && !(await page.textContent('.finder .bar')).includes('Esc'), 'Ctrl+F：页签永远在，提示只留「名字 / 属性 / 正文 · Tab」');
+  await page.fill('.finder input', '设计笔记'); await page.keyboard.press('Tab'); await sleep(400);
+  await page.click('.finder li:has-text("设计笔记.md")'); await sleep(1200);
+  ok((await page.textContent('body')).includes('笔记正文XYZ'), 'Ctrl+F → 项目文件页选文件 → 打开预览');
+  await page.keyboard.press('Escape'); await sleep(200);
+  // 连线到… 也能选外部文件：自动引成节点再连线
+  const c甲 = await (async () => { for (const t of await page.$$('.card .lab')) if ((await t.textContent()) === '甲') return t; })();
+  const b甲 = await c甲.boundingBox(); await page.mouse.click(b甲.x + b甲.width / 2, b甲.y + b甲.height / 2); await sleep(300);
+  await page.keyboard.press('l'); await sleep(800);
+  ok(!!(await page.$('.finder')) && !!(await page.$('.finder .ftabs')) && !(await page.textContent('.finder .bar')).includes('也能选'), 'L → 连线搜索框，有「节点 / 项目文件」页签，标题不啰嗦');
+  await page.fill('.finder input', '数据'); await sleep(500);
+  ok(!!(await page.$('.finder .ftabs')) && (await page.textContent('.finder .ftabs a.on')).includes('节点'), '有「节点 / 项目文件」两个页签，默认在节点页');
+  ok(!(await page.$$eval('.finder li b', e => e.map(x => x.textContent))).some(t => t.includes('数据.json')), '文件不混进节点页');
+  await page.keyboard.press('Tab'); await sleep(300);
+  ok((await page.textContent('.finder .ftabs a.on')).includes('项目文件') && (await page.$$eval('.finder li b', e => e.map(x => x.textContent))).some(t => t.includes('数据.json')), '按 Tab → 切到「项目文件」页，搜「数据」→ 列出 数据.json');
+  await page.keyboard.press('Tab'); await sleep(200);
+  ok((await page.textContent('.finder .ftabs a.on')).includes('节点'), '再按 Tab → 切回节点页');
+  await page.click('.finder .ftabs a:has-text("项目文件")'); await sleep(300);
+  ok((await page.textContent('.finder .ftabs a.on')).includes('项目文件'), '点页签也能切');
+  await page.click('.finder li:has-text("数据.json")'); await sleep(2500);
+  ok(existsSync(join(ws, '__synapsis', '数据.json.md')) && /file: docs\/数据\.json/.test(readFileSync(join(ws, '__synapsis', '数据.json.md'), 'utf8')), '选中 → 自动建了带 file: 的节点');
+  ok(/数据\.json/.test(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8')) && /to:/.test(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8')), '并且 甲 连到了它');
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
+// —— 跨项目复制（👤 2026-10-10）：复制时剪贴板里带来源项目路径；在另一个项目里粘贴 = 服务端按来源路径读节点（连子孙 / 正文 / 属性 / 内部边）——
+{
+  console.log('== 跨项目复制');
+  const A = mkdtempSync(join(tmpdir(), 'syn-xsrc-')), B = mkdtempSync(join(tmpdir(), 'syn-xdst-')); noAi(A); noAi(B);
+  saveOutline(A, '组\n  甲 -> 乙\n  乙');
+  setNodeBody(A, '组/甲', '甲的正文XYZ');
+  saveOutline(B, '丙');
+  writeFileSync(join(B, '__synapsis', '_layout.json'), JSON.stringify({ 丙: { x: 0, y: 0 } }));
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(B)}`); await sleep(2200);
+  const payload = 'synapsis-nodes:' + JSON.stringify({ ids: ['组'], src: A });
+  await page.mouse.click(600, 720); await sleep(200);
+  await page.evaluate(txt => { const dt = new DataTransfer(); dt.setData('text/plain', txt); window.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); }, payload);
+  await sleep(2200);
+  const outlineB = readFileSync(join(B, '__synapsis', '组', '_node.md'), 'utf8');
+  ok(existsSync(join(B, '__synapsis', '组', '甲.md')) && existsSync(join(B, '__synapsis', '组', '乙.md')), '另一个项目的「组」连子孙粘贴进来了');
+  ok(readFileSync(join(B, '__synapsis', '组', '甲.md'), 'utf8').includes('甲的正文XYZ'), '正文跟着');
+  ok(/乙/.test(readFileSync(join(B, '__synapsis', '组', '甲.md'), 'utf8')), '内部的边保留（甲 → 乙）');
+  ok((await page.$$('.card .lab')).length >= 2 && (await page.textContent('body')).includes('已从另一个项目粘贴'), '界面提示「已从另一个项目粘贴」');
+  ok(existsSync(join(A, '__synapsis', '组', '甲.md')), '来源项目没动');
+  // 来源路径不存在 → 报错提示，不崩
+  const bad = 'synapsis-nodes:' + JSON.stringify({ ids: ['组'], src: join(tmpdir(), 'syn-nonexistent-zzz') });
+  await page.evaluate(txt => { const dt = new DataTransfer(); dt.setData('text/plain', txt); window.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); }, bad);
+  await sleep(1200);
+  ok((await page.textContent('body')).includes('粘贴失败'), '来源项目找不到 → 提示失败');
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  for (const d of [A, B]) rmSync(d, { recursive: true, force: true });
+}
+// —— ⚙ 设置（👤 2026-10-10）：左上角 ⚙ → init 生成哪些（存 Synapsis 目录的 settings.yaml）。测试会改真文件 → 先备份、测完写回 ——
+{
+  console.log('== 设置');
+  const SF = join(process.cwd(), '..', 'settings.yaml'), had = existsSync(SF), backup = had ? readFileSync(SF, 'utf8') : null;
+  const ws = mkdtempSync(join(tmpdir(), 'syn-set-ui-')); noAi(ws);
+  saveOutline(ws, '甲\n乙');
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  try {
+    await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
+    ok(!!(await page.$('.bar.tabs a.gear')), '左栏最左上有 ⚙');
+    await page.click('.bar.tabs a.gear'); await sleep(700);
+    const rows = await page.$$eval('.settings .srow b', e => e.map(x => x.textContent));
+    ok(rows.length === 5 && rows.includes('AI 接入手册') && rows.includes('启动快捷方式'), '设置窗里列出 init 的 5 项 ' + rows.join('|'));
+    const first = '.settings .srow:has-text("黑板") input';
+    const was = await page.isChecked(first);
+    await page.click(first); await sleep(900);
+    ok((await page.isChecked(first)) === !was, '点一下 → 勾选翻转');
+    ok(new RegExp('blackboard: ' + !was).test(readFileSync(SF, 'utf8')), '立刻写进 settings.yaml');
+    await page.click(first); await sleep(900);
+    ok(new RegExp('blackboard: ' + was).test(readFileSync(SF, 'utf8')), '再点回来');
+    await page.click('.settings .bar button'); await sleep(300);
+    ok(!(await page.$('.settings')), '✕ 关掉');
+  } finally {
+    if (had) writeFileSync(SF, backup); else if (existsSync(SF)) rmSync(SF);
+  }
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
+// —— ⌨ 快捷键页双搜索（👤 2026-10-10）：左边按一下键查键位，右边搜文字，两个都要满足 ——
+{
+  console.log('== 快捷键搜索');
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?demo`); await sleep(1800);
+  await page.click('button:has-text("快捷键")'); await sleep(400);
+  const all = (await page.$$('.helpgrid tr')).length;
+  ok(all > 40 && !!(await page.$('.help input.hkey')) && !!(await page.$('.help input.htext')), '快捷键页有两个搜索框，默认显示全部 ' + all);
+  await page.click('.help input.hkey'); await page.keyboard.press('Control+z'); await sleep(300);
+  const v1 = await page.$eval('.help input.hkey', e => e.value), n1 = (await page.$$('.helpgrid tr')).length;
+  ok(v1 === 'Ctrl+Z' && n1 > 0 && n1 < all && (await page.$$eval('.helpgrid tr', r => r.some(x => x.textContent.includes('撤销')))), '按 Ctrl+Z → 框里记下 Ctrl+Z，只剩用到它的条目 ' + n1);
+  ok(await page.$$eval('.helpgrid section', s => s.length) < 14, '没有匹配的分组整个隐藏');
+  await page.fill('.help input.htext', '重做'); await sleep(300);
+  const n2 = (await page.$$('.helpgrid tr')).length;
+  ok(n2 > 0 && n2 <= n1 && n2 < 4, '再搜「重做」→ 两个条件取交集 ' + n2);
+  await page.fill('.help input.htext', '一定没有这个词'); await sleep(300);
+  ok((await page.$$('.helpgrid tr')).length === 0 && !!(await page.$('.helpgrid .hint')), '没有符合的 → 提示');
+  await page.fill('.help input.htext', ''); await page.click('.help input.hkey'); await page.keyboard.press('Backspace'); await sleep(300);
+  ok((await page.$eval('.help input.hkey', e => e.value)) === '' && (await page.$$('.helpgrid tr')).length === all, 'Backspace 清掉键位 → 回到全部');
+  await page.keyboard.press('Shift+Tab'); await page.click('.help input.hkey'); await page.keyboard.press('q'); await sleep(300);
+  ok((await page.$$eval('.helpgrid tr', r => r.some(x => x.textContent.includes('看清连线') || x.textContent.includes('竖栏')))), '按 Q → 能找到看清连线那一条');
+  await page.keyboard.press('Escape'); await sleep(300);
+  ok(!(await page.$('.help')), '在键位框里按 Esc → 关掉快捷键页');
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+}
 // —— 📌 钉子（👤 2026-10-09）：右键钉到… → 反引号开窗 → ☐ / 双击跳转 / 清空 / 删组 → 撤销 → 改名后钉子跟着走 → 刷新还在 ——
 {
   console.log('== 钉子');
@@ -1036,7 +1311,7 @@ for (const kind of ['reactflow']) {
   const hk = () => JSON.parse(readFileSync(join(ws, '.synapsis', 'pins.json'), 'utf8'));
   const names = () => hk().groups.map(g => g.name + ':' + g.items.map(i => i.node).join('+')).join(' | ');
   const rclick = async l => { await page.mouse.click(...mid(await (await lab(l)).boundingBox()), { button: 'right' }); await sleep(300); };
-  ok(!!(await page.$('button:has-text("📌 钉子")')) && !(await page.$('.pinbox')), '顶栏有 📌 钉子 按钮，窗口默认不开');
+  ok(!!(await page.$('.expbar button.pinbtn')) && !(await page.$('.pinbox')), '左边竖栏有 📌钉 按钮，窗口默认不开');
   // 右键 甲 → 还没有组 → 只有「钉到新组」
   await rclick('甲');
   ok(!!(await page.$('.ctx .mi:has-text("钉到新组")')) && !(await page.$('.ctx .mi:has-text("钉到「")')), '还没有组 → 右键只有「📌 钉到新组」');

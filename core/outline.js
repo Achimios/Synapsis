@@ -239,13 +239,14 @@ export function withNode(g, parent, after = null, base = '新节点') {
 
 // >v<🌳大纲模型-复制节点-把 ids（连同子孙、状态、它们之间的边）复制到 parent 下；同名加「 2」「 3」。
 // 返回 {text, map: [[旧id, 新id]…], roots: [新的顶层 id…]}；属性 / 正文 / 图片由 workspace.pasteNodes 跟着拷
-export function withCopies(g, ids, parent) {
-  if (!g.nodes.has(parent)) return null;
+// dest = 粘到另一张图里（跨项目）：g 是来源图，dest 是目标图，parent 是 dest 里的节点；不给 = 同一张图
+export function withCopies(g, ids, parent, dest = g) {
+  if (!dest.nodes.has(parent)) return null;
   const inSet = new Set(ids.filter(id => g.nodes.has(id) && id !== ROOT));
   const under = id => { for (let x = g.nodes.get(id).parent; x != null; x = g.nodes.get(x).parent) if (inSet.has(x)) return true; return false; };
   const roots = [...inSet].filter(id => !under(id));
   if (!roots.length) return null;
-  const h = cloneGraph(g), map = new Map(), newRoots = [];
+  const h = cloneGraph(dest), map = new Map(), newRoots = [];
   const taken = new Set(h.nodes.get(parent).children.map(c => h.nodes.get(c).label));
   const clone = (old, newParent, label) => {
     const id = newParent === ROOT ? label : newParent + '/' + label;

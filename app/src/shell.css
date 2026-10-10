@@ -61,7 +61,23 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .save-wrap { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .save { color: var(--ok); font-size: 11px; }
 .save.bad { color: var(--bad); }
-.canvas { flex: 1; position: relative; min-height: 0; background: var(--bg); }
+.cwrap { flex: 1; display: flex; min-height: 0; min-width: 0; }
+.canvas { flex: 1; position: relative; min-height: 0; min-width: 0; background: var(--bg); }
+/* 展开竖栏（画布左侧，常驻）：每行 = 2 字名 + 「改」+「看」；宽一点没关系，省高度 */
+.expbar { flex: none; position: relative; display: flex; flex-direction: column; gap: 4px; padding: 6px 4px; border-right: 1px solid var(--line); background: var(--panel); align-items: stretch; }
+.expbar button { padding: 1px 3px; line-height: 1.4; font-size: 11px; color: var(--dim); }
+.expbar button.expmore { color: var(--dim); letter-spacing: 1px; margin-bottom: 4px; }
+.expbar button.see.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.expbar button.see.off { background: color-mix(in srgb, var(--warn, #e0b84d) 35%, var(--panel2)); border-color: var(--warn, #e0b84d); color: var(--text); text-decoration: line-through; }
+.expbar button.none { opacity: .4; }
+.expbar .expsep { height: 1px; background: var(--line); margin: 4px 0; }
+.expbar button.tool.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.expbar .expmenu { position: absolute; left: 100%; top: 4px; margin-left: 2px; white-space: nowrap; z-index: 50; }
+/* 右键「展开 ▸」二级菜单：悬停弹出（离开 .sub 才收，不加延迟；放不下就翻到左边） */
+.ctx .mi.sub { position: relative; }
+.ctx .mi.sub > .submenu { display: none; position: absolute; left: 100%; top: -4px; min-width: 120px; margin-left: 2px; }
+.ctx .mi.sub:hover > .submenu { display: block; }
+.ctx .mi.sub > .submenu.flip { left: auto; right: 100%; margin-left: 0; margin-right: 2px; }
 
 /* 卡片：扁、细边、状态用左边一条色带 */
 .card { background: var(--panel2); border: 1px solid var(--line2); border-left-width: 3px; border-radius: 3px; padding: 6px 11px; min-width: 120px; max-width: 220px; font-size: 14px; transition: opacity .15s; color: var(--text); }
@@ -71,6 +87,11 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .card .title .lab { color: color-mix(in srgb, var(--c) 35%, var(--text)); }
 .card.sel { border-color: var(--sel); box-shadow: 0 0 0 1px var(--sel), 0 0 10px color-mix(in srgb, var(--c) 60%, transparent); }
 .card.dim { opacity: .25; }
+/* 看清连线（顶栏 🔍）：卡片缩成只剩标题、变淡，让线露出来；有选中时，选中的和它相连的保持原样（它们不带 .dim），其余更淡；悬停时恢复 */
+.seelines .card:not(.sel):not(.portal) .props, .seelines .card:not(.sel) .pics, .seelines .card:not(.sel) .cardtext, .seelines .card:not(.sel) .sub, .seelines .card:not(.sel) .axchips { display: none; }
+.seelines:not(.hassel) .card:not(.sel), .seelines.hassel .card.dim { opacity: .45; }
+.seelines.hassel .card.dim { opacity: .18; }
+.seelines .card:not(.sel):hover { opacity: .95; }
 /* 展开成框的分组：半透明底框，子节点画在里面 */
 .frame { width: 100%; height: 100%; box-sizing: border-box; border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--c) 7%, transparent); transition: opacity .15s; }
 .frame.sel { border-color: var(--sel); box-shadow: 0 0 0 1px var(--sel); }
@@ -211,11 +232,13 @@ pre.raw { margin: 0; white-space: pre-wrap; word-break: break-word; font: var(--
 .orow input { flex: 1; min-width: 0; font: inherit; background: var(--panel2); color: #fff; border: 1px solid var(--accent); border-radius: 2px; padding: 0 3px; outline: none; }
 /* 快捷键页 */
 .modal > div.help { width: min(880px, 94vw); }
-.helpgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; padding: 10px 14px 14px; overflow: auto; }
+.helpgrid { columns: 2; column-gap: 18px; padding: 10px 14px 14px; overflow: auto; } /* 瀑布式两列：一张卡片高了不会把同行另一张撑高 */
+.helpgrid section { break-inside: avoid; margin-bottom: 10px; }
 .helpgrid h4 { margin: 6px 0 4px; font-size: 11px; color: var(--dim); letter-spacing: 1px; }
 .helpgrid table { border-collapse: collapse; width: 100%; }
 .helpgrid td { padding: 2px 4px; border-top: 1px solid var(--line); vertical-align: top; }
-.helpgrid td:first-child { white-space: nowrap; width: 1%; }
+.helpgrid td:first-child { width: 42%; overflow-wrap: anywhere; line-height: 1.7; } /* 键名可以换行（长的不再把说明挤成窄条） */
+.helpgrid kbd { white-space: normal; }
 .helpgrid kbd { font: 11px Consolas, monospace; background: var(--panel2); border: 1px solid var(--line2); border-radius: 3px; padding: 0 4px; color: #fff; }
 .hint.keys { cursor: pointer; }
 .side .bar.tabs .hint { border: 0; border-radius: 0; width: auto; height: auto; display: block; flex: 1; cursor: default; }
@@ -366,6 +389,10 @@ button.aibtn.off { opacity: .7; }
 .helpgrid section { background: color-mix(in srgb, var(--hue, var(--accent)) 7%, var(--panel)); border: 1px solid color-mix(in srgb, var(--hue, var(--accent)) 18%, var(--line)); border-radius: 6px; padding: 4px 10px 8px; }
 .helpgrid h4 { font-size: 14px !important; color: color-mix(in srgb, var(--hue, var(--accent)) 55%, var(--text)) !important; letter-spacing: 0 !important; margin: 4px 0 6px !important; }
 .help .bar b { font-size: 15px; }
+.help .bar input.hkey { width: 150px; margin-left: 10px; text-align: center; cursor: default; }
+.help .bar input.htext { width: 170px; margin-left: 6px; }
+.help .bar input.hkey:focus { border-color: var(--accent); }
+.help .bar .hclear { cursor: pointer; margin-left: 4px; color: var(--dim); }
 button.themebtn { padding: 1px 6px; }
 
 /* 拖到别的卡片上 = 放进去：目标高亮 */
@@ -488,3 +515,33 @@ button.patsw { width: 26px; height: 18px; background-color: color-mix(in srgb, v
 .pinbox li.pinask .cand.dim { color: var(--dim); }
 /* >v<📌钉子-原文视图-跳过来的那一行高亮（RawText，panels.jsx） */
 pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shadow: 0 0 0 1px rgba(77,155,255,.55); }
+
+/* 引入外部文件的选择小窗 + 卡片上的文件路径小字 */
+.modal > .filepick { width: min(620px, 92vw); max-height: 78vh; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line2); border-radius: 6px; overflow: hidden; }
+.filepick input { margin: 8px 10px 4px; padding: 5px 8px; }
+.filepick ul { list-style: none; margin: 0; padding: 2px 0 8px; overflow: auto; }
+.filepick li { display: flex; gap: 10px; align-items: baseline; padding: 3px 12px; cursor: pointer; }
+.filepick li:hover { background: var(--selbg); }
+.filepick li .fp { color: var(--dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .filesub { color: var(--accent); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ⚙ 设置 */
+.bar.tabs a.gear { margin-right: 4px; font-size: 14px; cursor: pointer; color: var(--dim); }
+.bar.tabs a.gear:hover { color: var(--strong); }
+.modal > .settings { width: min(640px, 92vw); max-height: 80vh; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line2); border-radius: 6px; overflow: hidden; }
+.settings .sbody { overflow: auto; padding: 4px 14px 12px; }
+.settings section { margin: 10px 0; padding: 6px 10px 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; }
+.settings h4 { margin: 2px 0 6px; font-size: 13px; }
+.settings .srow { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; cursor: pointer; }
+.settings .srow b { min-width: 96px; font-weight: 600; }
+.settings .spath { margin-top: 6px; word-break: break-all; }
+
+/* 连线到… 搜索框的两个页签：节点 / 项目文件 */
+.finder .ftabs { display: flex; gap: 2px; padding: 6px 10px 0; }
+.finder .ftabs a { padding: 3px 12px; border: 1px solid var(--line2); border-bottom: none; border-radius: 4px 4px 0 0; color: var(--dim); cursor: pointer; font-size: 12px; }
+.finder .ftabs a.on { color: var(--strong); background: var(--panel2); border-color: var(--accent); }
+
+/* 做不了的菜单项：灰着、不高亮、点了没反应（不要隐藏，免得新人找不到） */
+.ctx .mi.off { color: var(--faint); cursor: default; }
+.ctx .mi.off:hover { background: none; }
+.finder .ftabs a.off { opacity: .4; cursor: default; }

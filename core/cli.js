@@ -38,6 +38,7 @@ import { fileURLToPath } from 'node:url';
 import { loadWorkspace, workspaceOutline, checkWorkspace, groupStatus, saveOutline, ensureWorkspaceReadme, setNodeMeta, setNodeBody, setEdgeLabel, findNodes, moveNodes, ensureGitignore, MANUAL_MARK, DIR } from './workspace.js';
 import { spaceInfo, closestPairs } from './space.js';
 import { ensureLauncher, PROJECT_LNK } from './launcher.js';
+import { loadSettings } from './settings.js';
 import { exportForLLM, withNode, withLabel, withStatus, withEdge, withoutEdge, withoutNode, ROOT } from './outline.js';
 
 const HOME = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -96,20 +97,21 @@ function spaceText(g, id) {
 }
 
 // >v<🚀启停-init-给项目挂上 Synapsis（已有的文件不覆盖）
-export function init(root) {
+export function init(root, home = HOME) {
+  const S = loadSettings(home).init; // settings.yaml 的 init 段：生成哪些（没有这个文件 = 全生成）
   const made = [];
   const put = (rel, content) => { const f = join(root, rel); if (existsSync(f)) return; mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, content); made.push(rel); };
   mkdirSync(join(root, DIR), { recursive: true });
-  if (ensureWorkspaceReadme(root, manualText(root))) made.push(DIR + '/_synapsis.md（AI 接入手册）');
-  if (blackboardName(root) === '_Blackboard.md') put(DIR + '/_Blackboard.md', BLACKBOARD);
-  put(DIR + '/' + WORDS_FILE, DEFAULT_WORDS);
-  put(DIR + '/' + PATTERN_FILE, DEFAULT_PATTERN_WORDS);
+  if (S.manual && ensureWorkspaceReadme(root, manualText(root))) made.push(DIR + '/_synapsis.md（AI 接入手册）');
+  if (S.blackboard && blackboardName(root) === '_Blackboard.md') put(DIR + '/_Blackboard.md', BLACKBOARD);
+  if (S.colorWords) put(DIR + '/' + WORDS_FILE, DEFAULT_WORDS);
+  if (S.patternWords) put(DIR + '/' + PATTERN_FILE, DEFAULT_PATTERN_WORDS);
   ensureGitignore(root);
   put('.synapsis/.gitignore', '# 本机状态（视图、缓存），不进 git\n*\n');
   // 启动器是生成物：根目录一个带图标的快捷方式 + 藏在 .synapsis/ 的兜底 vbs（core/launcher.js；Synapsis 搬家后重跑 init 即可修好）
-  made.push(...ensureLauncher(root, { force: true }));
+  if (S.launcher) made.push(...ensureLauncher(root, { force: true }));
   console.log(made.length ? '已创建：\n  ' + made.join('\n  ') : '都已存在，没动');
-  console.log('双击 ' + join(root, PROJECT_LNK) + ' 打开');
+  if (S.launcher) console.log('双击 ' + join(root, PROJECT_LNK) + ' 打开');
 }
 
 // >v<🤖LLM接口-写命令-add/rename/status/link/unlink/body/set/rm：都走「改大纲文本 → saveOutline」同一条路，和界面一致
