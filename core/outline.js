@@ -149,7 +149,21 @@ export function breadcrumb(graph, scope) {
 
 // 给 LLM 的结构化文本（节点卡，简版；完整规范见需求文档 §0.6）
 // >v<📤LLM导出-节点卡-当前范围导出成带 id 的结构化文本
-export function exportForLLM(graph, scope = ROOT) {
+// info(id) → {meta, body}（可选）：界面里的 graph 只有大纲，属性 / 正文从工作区数据补；CLI 的 graph 节点自带 meta / body。
+//   👤 2026-10-11：导出也标出 传送门 / UI 框 / 引用文件 / 人加的属性 / 正文字数，不然 LLM 不知道这些卡是什么
+const EXPORT_SKIP = new Set(['status', 'order', 'to', 'label', 'color', 'pattern', 'ui', 'w', 'h', 'ref', 'file', 'evidence_hash', 'picw', 'img']);
+const exportTags = (m = {}, body = '') => {
+  const t = [];
+  if (m.ref) t.push(`传送门 → [${m.ref}]（只是入口，不是内容）`);
+  if (m.ui !== undefined && m.ui !== '' && String(m.ui) !== 'false') t.push(`UI 框 ${m.w || 220}×${m.h || 140}`);
+  if (m.file) t.push(`引用文件 ${m.file}`);
+  const ps = Object.entries(m).filter(([k, v]) => !EXPORT_SKIP.has(k) && v != null && typeof v !== 'object').map(([k, v]) => `${k}=${v}`);
+  if (ps.length) t.push('属性: ' + ps.join('；'));
+  const n = String(body || '').trim().length;
+  if (n) t.push(`正文 ${n} 字`);
+  return t;
+};
+export function exportForLLM(graph, scope = ROOT, info = null) {
   const ins = new Map(), outs = new Map();
   for (const e of graph.edges) {
     (outs.get(e.from) || outs.set(e.from, []).get(e.from)).push(e.to);
@@ -160,6 +174,8 @@ export function exportForLLM(graph, scope = ROOT) {
     const n = graph.nodes.get(id);
     if (id !== scope) {
       lines.push(`${'#'.repeat(Math.min(depth + 1, 6))} [${id}] ${n.label}  状态:${n.status ? STATUS_CH[n.status] : '未标'}`);
+      const x = info ? info(id) || {} : n;
+      for (const t of exportTags(x.meta, x.body)) lines.push(t);
       if (ins.get(id)) lines.push('输入(←): ' + ins.get(id).map(x => `[${x}]`).join(' | '));
       if (outs.get(id)) lines.push('输出(→): ' + outs.get(id).map(x => `[${x}]`).join(' | '));
       if (n.children.length) lines.push('包含: ' + n.children.map(c => graph.nodes.get(c).label).join('、'));
