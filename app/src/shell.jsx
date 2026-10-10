@@ -152,9 +152,9 @@ export function Shell({ name, Canvas }) {
   const patterns = useMemo(() => patternMap(graph, getMeta, wsData?.patternWords, semPats), [graph, getMeta, wsData?.patternWords, semPats]);
   // 边标签 / 节点副标题来自工作区文件（大纲里没有）
   const sm = seeModes[realScope] || {};
-  const eff = (m, own) => m === 'on' ? true : m === 'off' ? false : own; // 本页「看」盖一层：展开 / 收起；不接管 = 用节点自己的
+  const eff = (m, own, id) => m === 'deep' || (m === 'on' && (graph.nodes.get(id)?.parent ?? ROOT) === realScope) ? true : own; // 本页「看」盖一层：on = 只展开本页直接的节点；deep = 子孙也一起（Shift+数字）；没开 = 用节点自己的
   const uiId = id => isUi(wsData?.nodes[id]?.meta); // 👤 2026-10-10 UI 框不跟「预览展开」的全局三态，只认自己的 ▸ / ⊞
-  const expE = id => uiId(id) ? !!expanded[id] : eff(sm.kids, !!expanded[id]), frmE = id => uiId(id) ? !!framed[id] : eff(sm.frame, !!framed[id]), txtE = id => eff(sm.text, !!textOpen[id]), prpE = id => eff(sm.props, !propsShut[id]);
+  const expE = id => uiId(id) ? !!expanded[id] : eff(sm.kids, !!expanded[id], id), frmE = id => uiId(id) ? !!framed[id] : eff(sm.frame, !!framed[id], id), txtE = id => eff(sm.text, !!textOpen[id], id), prpE = id => eff(sm.props, !propsShut[id], id);
   const view = useMemo(() => {
     const v = projectView(graph, realScope, space ? null : new Set([...graph.nodes.keys()].filter(k => graph.nodes.get(k)?.children.length && frmE(k))));
     const lab = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.label]));
@@ -804,6 +804,7 @@ export function Shell({ name, Canvas }) {
       setSelected(from); setSaveState('已把文件「' + rel + '」引成节点并连线（Ctrl+Z 撤销，两步）');
     } catch (e) { setSaveState('❌ 连到文件失败：' + e.message); }
   };
+  const EXP_KEY = { frame: '1', kids: '2', props: '3', text: '4' };
   const [expMore, setExpMore] = useState(false); // 竖栏最上面的 ⋯ 菜单（「改」放这里，用得少）
   useEffect(() => { if (!expMore) return; const c = e => { if (!e.target.closest?.('.expmore, .expmenu')) setExpMore(false); }; window.addEventListener('pointerdown', c, true); return () => window.removeEventListener('pointerdown', c, true); }, [expMore]);
   const expIds = k => view.nodes.filter(EXP[k].ok).map(n => n.id);
@@ -818,7 +819,7 @@ export function Shell({ name, Canvas }) {
     restoreVS(next);
   };
   // 看：不接管 → 展开 → 收起 → 不接管。只改本页的临时覆盖，不进历史
-  const expSee = k => setSeeModes(m => { const cur = m[realScope] || {}, nx = { undefined: 'on', on: 'off', off: undefined }[cur[k]]; const o = { ...cur }; if (nx) o[k] = nx; else delete o[k]; const r = { ...m }; if (Object.keys(o).length) r[realScope] = o; else delete r[realScope]; return r; });
+  const expSee = (k, deep) => setSeeModes(m => { const cur = m[realScope] || {}, want = deep ? 'deep' : 'on', nx = cur[k] === want ? undefined : want; const o = { ...cur }; if (nx) o[k] = nx; else delete o[k]; const r = { ...m }; if (Object.keys(o).length) r[realScope] = o; else delete r[realScope]; return r; });
 
   // >v<🧭导航-快捷键-Enter 同级 / Insert·Ctrl+Enter 子级 / Tab 左栏开关 / Esc / Alt+W/A/D / 鼠标侧键 上一层后退前进
   // 画布快捷键（焦点在输入框里时不触发）
@@ -844,10 +845,11 @@ export function Shell({ name, Canvas }) {
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyW') { e.preventDefault(); e.stopPropagation(); up(); } // 👤 2026-10-10 Alt+W/A/D = 上一层 / 后退 / 前进（单手）
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyA') { e.preventDefault(); e.stopPropagation(); back(); }
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyD') { e.preventDefault(); e.stopPropagation(); fwd(); }
-      else if (/^Digit[1-4]$/.test(e.code) && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && mode === 'ws' && !e.repeat) { // 👤 2026-10-10 1 2 3 4 = 子图 / 子级 / 属性 / 正文：选中了就切这张卡自己的，没选中 = 本页「看」
+      else if (/^Digit[1-4]$/.test(e.code) && !e.ctrlKey && !e.altKey && !e.metaKey && mode === 'ws' && !e.repeat) { // 👤 2026-10-10 1 2 3 4 = 子图 / 子级 / 属性 / 正文：选中了就切这张卡自己的，没选中 = 本页预览展开（只本页）；Shift+数字 = 预览展开并递进到子孙
         e.preventDefault(); e.stopPropagation();
         const k = ['frame', 'kids', 'props', 'text'][+e.code.slice(5) - 1];
-        if (sel && !sel.startsWith('@')) { const n = graph.nodes.get(sel); if (n && EXP[k].ok({ id: sel, children: n.children })) menuActions.expToggle(sel, k); }
+        if (e.shiftKey) expSee(k, true);
+        else if (sel && !sel.startsWith('@')) { const n = graph.nodes.get(sel); if (n && EXP[k].ok({ id: sel, children: n.children })) menuActions.expToggle(sel, k); }
         else expSee(k);
       }
       else if (e.key === 'Escape') setSelected(null);
@@ -1111,7 +1113,7 @@ export function Shell({ name, Canvas }) {
           {leftTab === 'outline' && <a className={'groupbtn' + (outlineGroup ? ' on' : '')} onClick={() => setOutlineGroup(v => !v)} title={outlineGroup ? '分组视图：按连线连在一起的分组，组内按流向排（上游在前）。点一下回到正常次序' : '按连线分组：连在一起的一组，组内按流向排，没有连线的放最后一组'}>⛓</a>}
           {leftTab === 'outline' && mode === 'ws' && <a className="sortbtn" onClick={() => { setAgentPreset({ text: '把「' + (realScope === ROOT ? '根' : graph.nodes.get(realScope)?.label) + '」这一层的节点在大纲里按合理的先后顺序排好（只调次序，不改层级、不改连线）', n: Date.now() }); setAgentOpen(true); }} title="让 AI 把这一层按合理的先后排序：打开 AI 指令框并写好一句话，你改改再 Enter；执行后 Ctrl+Z 能撤">⇅</a>}
           {leftTab === 'outline' && <a className={'lockbtn' + (outlineLock ? ' on' : '')} onClick={() => setOutlineLock(l => l ? null : { root: realScope, scope: realScope, selected })} title={outlineLock ? '大纲已锁住：导航到别的页，列表不动，可以拖里面的节点过来。点一下解锁' : '锁住大纲：之后导航到别的页，列表还停在这里，可以拖里面的节点到别的页'}>{outlineLock ? '🔒' : '🔓'}</a>}
-          {leftTab === 'outline' && <a className={'herebtn' + (hereMode ? ' on' : '')} onClick={() => setOutlineHere((hereMode + 1) % 3)} title={['现在显示完整大纲；点一下 → 只显示本节点和它的上一层', '现在显示本节点和它的上一层（同级的也在）；点一下 → 只显示本节点里面', '现在只显示当前进入的节点里的子节点；点一下 → 回到完整大纲'][hereMode]}>{['◎', '◎²', '◎¹'][hereMode]}</a>}
+          {leftTab === 'outline' && <a className={'herebtn' + (hereMode ? ' on' : '')} onClick={() => setOutlineHere((hereMode + 1) % 3)} title={['↑∞ 现在显示完整大纲；点一下 → ↑1 只显示本层和上一层', '↑1 现在显示本层和上一层（同级的也在）；点一下 → ↓ 只显示本层里面', '↓ 现在只显示当前进入的节点里的子节点；点一下 → ↑∞ 回到完整大纲'][hereMode]}>{['↑∞', '↑1', '↓'][hereMode]}</a>}
           {leftTab !== 'text' && <a className={'colsbtn' + (leftCols > 1 ? ' on' : '')} onClick={() => setLeftCols(v => v % 3 + 1)} title={`内容排成 ${leftCols} 列（点一下切到 ${leftCols % 3 + 1} 列；宽度自己拖）`}>▥{leftCols > 1 ? leftCols : ''}</a>}
         </div>
         <TextFind active={leftTab === 'text'} taRef={taRef} text={text} inputRef={findRef}>
@@ -1157,8 +1159,8 @@ export function Shell({ name, Canvas }) {
           <div className="exphead" title="预览展开：只在本页临时盖一层，节点自己的状态不动、不进历史、切页不继承。要真的展开，点上面的 ⋯">预览展开</div>
           {Object.entries(EXP).map(([k, E]) => {
             const m = sm[k], none = !expIds(k).length;
-            return <button key={k} className={'exprow see' + (m === 'on' ? ' on' : m === 'off' ? ' off' : '') + (none ? ' none' : '')}
-              title={`${E.name}（${E.tip}）\n看：只在本页临时盖一层，节点自己的状态不动，切页不继承\n现在：${m === 'on' ? '临时展开（再点 = 临时收起）' : m === 'off' ? '临时收起（再点 = 不接管）' : '不接管（点一下 = 临时全部展开）'}`} onClick={() => expSee(k)}>{E.name}</button>;
+            return <button key={k} className={'exprow see' + (m === 'on' ? ' on' : m === 'deep' ? ' on deep' : '') + (none ? ' none' : '')}
+              title={`${E.name}（${E.tip}）\n预览展开：只在本页临时盖一层，节点自己的状态不动，切页不继承\n点一下 = 只展开本页的节点（快捷键 ${EXP_KEY[k]}）；Shift+点 = 连子孙一起（Shift+${EXP_KEY[k]}）\n现在：${m === 'on' ? '预览展开中' : m === 'deep' ? '预览展开中（含子孙）' : '没开'}`} onClick={e => expSee(k, e.shiftKey)}>{E.name}{m === 'deep' ? '∞' : ''}</button>;
           })}
           <div className="expsep" />
           {mode === 'ws' && <button className={'tool pinbtn' + (pinsOpen ? ' on' : '')} title={'钉子：临时翻阅用的书签组（右键卡片 → 📌 钉到…；反引号 ` 开关）' + (pins.groups.some(g => g.items.length) ? '\n现有 ' + pins.groups.reduce((s, g) => s + g.items.length, 0) + ' 个钉子' : '')} onClick={() => setPinsOpen(o => !o)}>📌钉</button>}
@@ -1174,6 +1176,9 @@ export function Shell({ name, Canvas }) {
             <span className={Math.abs(plane.angle - 90) > 1 ? 'warn' : 'hint'} title="两根投影方向的夹角；不是 90° = 这组基不正交，图上的距离被拉歪了">夹角 {plane.angle.toFixed(0)}°</span>
             {space.members.length < 2 ? <span className="hint">子节点写 vec: 才会出现在这里</span> :
               <span className="hint" title="成员两两余弦，|cos| 最大的一对：这两个其实差不多是一回事">最像：{(p => `${p.a}·${p.b} ${p.cos.toFixed(2)}`)(closestPairs(space, 1)[0])}</span>}
+          </div>}
+          {Object.keys(sm).length > 0 && <div className="seebanner" title="点一下关掉本页所有预览展开" onClick={() => setSeeModes(m => { const r = { ...m }; delete r[realScope]; return r; })}>
+            预览展开中：{Object.entries(sm).map(([k, v]) => EXP[k]?.name + (v === 'deep' ? '（含子孙）' : '')).filter(Boolean).join(' · ')}<span>节点自己没变 · 点这里关闭</span>
           </div>}
           <Canvas key={realScope} theme={theme} view={view} layout={layout} selected={sel} images={images} seeLines={seeLines} multiSel={multiIds} onMultiSel={setMultiIds}
             plane={plane && { S: plane.S, labels: plane.labels, ids: plane.pts.map(p => p.id) }}

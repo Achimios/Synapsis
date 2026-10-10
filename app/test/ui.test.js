@@ -1146,7 +1146,7 @@ for (const kind of ['reactflow']) {
   await page.keyboard.press('Escape'); await sleep(150); await page.click('.card .kids:not(.fr)'); await sleep(500);
   ok((await nKids()) === 1, '点卡片标题上的 ▸ → 子级展开');
   await page.mouse.click(600, 720, { button: 'right' }); await sleep(300);
-  ok(!!(await page.$('.ctx .mi.sub:has-text("展开本页")')) && (await page.$$('.ctx .submenu .mi')).length === 4, '空白处右键 →「展开本页 ▸」里有 子图 / 子级 / 属性 / 正文 四项');
+  ok(!(await page.$('.ctx .mi.sub:has-text("展开本页")')), '空白处右键里没有「展开本页」了（真展开只在竖栏 ⋯ 里）');
   await page.keyboard.press('Escape'); await sleep(200);
   // 做不了的项灰着、不隐藏：丁 没有子级，只有正文
   const c丁 = await (async () => { for (const t of await page.$$('.card .lab')) if ((await t.textContent()) === '丁') return t; })();
@@ -1168,8 +1168,9 @@ for (const kind of ['reactflow']) {
     await page.keyboard.press('Escape'); await sleep(200);
     await page.keyboard.press('Digit4'); await sleep(500);
     ok((await nText()) !== n0, '没选中按 4 → 本页「看」正文');
-    await page.keyboard.press('Digit4'); await sleep(300); await page.keyboard.press('Digit4'); await sleep(500);
-    ok((await nText()) === n0, '看 三态轮一圈 → 回到不接管'); }
+    ok(!!(await page.$('.seebanner')), '预览展开时画布上有大字提示条');
+    await page.keyboard.press('Digit4'); await sleep(500);
+    ok((await nText()) === n0 && !(await page.$('.seebanner')), '看 两态：再按 4 → 回到不接管，提示条消失'); }
   // WASD 跳到最近的卡；Alt+S 钻进去
   { const sel1 = () => page.$eval('.card.sel .lab', e => e.textContent).catch(() => '');
     await page.keyboard.press('Escape'); await sleep(200);

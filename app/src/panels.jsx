@@ -52,14 +52,6 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       {item('＋ 在这里新建节点', actions.addHere)}
       {actions.addUiHere && item('▭ 新建 UI 框', actions.addUiHere)}
       {actions.pickFile && item('📎 引入…', actions.pickFile)}
-      <div className="mi sub" onPointerDown={e => e.stopPropagation()}>
-        <span>展开本页</span><kbd>▸</kbd>
-        <div className={'ctx submenu' + (style.left > innerWidth - 380 ? ' flip' : '')}>
-          {actions.expAll().map(x => <div key={x.k} className={'mi' + (x.none ? ' off' : '')} title={x.none ? '本页没有可展开的' + x.name : ''} onPointerDown={e => e.stopPropagation()} onClick={() => { if (x.none) return; onClose(); actions.expChange(x.k); }}>
-            <span>{x.any ? '收起' : '展开'}{x.name}</span>
-          </div>)}
-        </div>
-      </div>
       {actions.canUp && item('↑ 返回上一层', actions.up, { key: 'Alt+↑ · 顶栏 ↑', quiet: true })}
     </div>
   );
@@ -476,6 +468,11 @@ export function OutlineTree({ graph, rootId = '', selected, scope, renaming, sta
           {n.children.length > 0 && renaming !== n.id && <span className="odrill" title="钻进这一层（画布显示它的子节点）" onClick={e => { e.stopPropagation(); onDrill(n.id); }}>→</span>}
         </div>
   );
+  const byTop = (list, info = null) => { // 同一棵顶层子树的行装进一个盒子：多列排版时整棵不拆开，子级留在节点下面，不会被挤到隔壁列
+    const out = []; let cur = null;
+    for (const r of list) { if (!cur || cur.top !== r.top) { cur = { top: r.top, rows: [] }; out.push(cur); } cur.rows.push(r); }
+    return out.map(g => <div key={g.top} className="otop">{g.rows.map(r => renderRow(r, info))}</div>);
+  };
   return (
     <>
     <div className="otools">
@@ -488,7 +485,7 @@ export function OutlineTree({ graph, rootId = '', selected, scope, renaming, sta
       onPointerDown={() => { byClick.current = true; setTimeout(() => { byClick.current = false; }, 300); }}
 >
       {flt && !rows.length && <div className="hint" style={{ padding: 6 }}>没有名字含「{q}」的节点（Ctrl+F 可以搜属性和正文）</div>}
-      {grouped ? blocks.map(b => <div key={'g' + b.gi} className="ogroup" data-g={b.gi}><div className="ogh">{b.loose ? '无连线' : '组 ' + (b.gi + 1)} · {b.n}</div>{rows.slice(b.from, b.to).map(r => renderRow(r, b.info))}</div>) : rows.map(r => renderRow(r))}
+      {grouped ? blocks.map(b => <div key={'g' + b.gi} className="ogroup" data-g={b.gi}><div className="ogh">{b.loose ? '无连线' : '组 ' + (b.gi + 1)} · {b.n}</div>{byTop(rows.slice(b.from, b.to), b.info)}</div>) : byTop(rows)}
     </div>
     </>
   );
