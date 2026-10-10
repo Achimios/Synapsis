@@ -762,7 +762,7 @@ for (const kind of ['reactflow']) {
   const lay = () => JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'));
   await page.mouse.click(...mid(await (await lab('组')).boundingBox())); await sleep(300);
   await page.mouse.click(...mid(await (await lab('组')).boundingBox()), { button: 'right' }); await sleep(300);
-  ok(!!(await page.$('.ctx .mi.sub .submenu .mi:has-text("展开子图")')), '右键菜单「展开 ▸」二级里有「展开子图」');
+  ok(!!(await page.$('.ctx .expchips button:has-text("子图")')), '右键菜单最上面有「展开：子图 / 子级 / 属性 / 正文」小按钮');
   await page.keyboard.press('Escape'); await page.mouse.click(...mid(await (await lab('组')).boundingBox())); await sleep(300);
   if (!(await page.$('.card.sel'))) await page.mouse.click(...mid(await (await lab('组')).boundingBox()));
   await page.keyboard.press('f'); await sleep(1500);
@@ -1120,24 +1120,25 @@ for (const kind of ['reactflow']) {
   ok((await posOf('丁')) === dp0, '看 · 子图 → 旁边的卡没被挪走 ' + dp0 + ' / ' + (await posOf('丁')));
   await page.click(row('子图')); await page.click(row('子图')); await sleep(900);
   ok(!(await page.$('.react-flow__node-frame')) && layoutFile() === L0, '再点两次 → 回到不接管，框没了，坐标文件还是原样');
-  // 右键「展开 ▸」悬停弹二级
+  // 右键卡片：最上面「展开」四个小按钮；新建 / 钻进去收进悬停二级
   await page.mouse.click(...(m => [m.x + m.width / 2, m.y + m.height / 2])(await (await page.$('.card .lab')).boundingBox()), { button: 'right' }); await sleep(300);
-  ok(!(await page.$eval('.ctx .mi.sub .submenu', e => getComputedStyle(e).display !== 'none')), '二级菜单默认不显示');
+  ok((await page.$$eval('.ctx .expchips button', e => e.map(x => x.textContent).join())) === '子图,子级,属性,正文' && await page.$eval('.ctx > .mi:nth-child(2)', e => e.classList.contains('expchips')), '节点右键：「展开」四个小按钮在最上面（标题下第一行）');
+  ok(!(await page.$eval('.ctx .mi.sub .submenu', e => getComputedStyle(e).display !== 'none')), '「新建 / 钻进去」二级默认不显示');
   await page.hover('.ctx .mi.sub'); await sleep(250);
-  ok(await page.$eval('.ctx .mi.sub .submenu', e => getComputedStyle(e).display !== 'none'), '鼠标移上去 → 弹出二级');
-  const subs = await page.$$eval('.ctx .submenu .mi', e => e.map(x => x.textContent));
-  ok(subs.length >= 1 && subs.some(t => t.includes('子级')), '二级里有子级 ' + subs);
-  await page.click('.ctx .submenu .mi:has-text("子级")'); await sleep(500);
-  ok((await nKids()) === 1, '二级里点「展开子级」→ 展开');
+  const sub2 = await page.$$eval('.ctx .submenu .mi', e => e.map(x => x.textContent));
+  ok(sub2.length === 3 && sub2.some(t => t.includes('新建子节点')) && sub2.some(t => t.includes('新建同级')) && sub2.some(t => t.includes('钻进去')), '鼠标移上去 → 弹出 新建子节点 / 新建同级 / 钻进去 ' + sub2);
+  await page.mouse.move(600, 300); await sleep(150);
+  await page.click('.ctx .expchips button:has-text("子级")'); await sleep(500);
+  ok((await nKids()) === 1, '点「子级」小按钮 → 展开');
   await page.mouse.click(600, 720, { button: 'right' }); await sleep(300);
   ok(!!(await page.$('.ctx .mi.sub:has-text("展开本页")')) && (await page.$$('.ctx .submenu .mi')).length === 4, '空白处右键 →「展开本页 ▸」里有 子图 / 子级 / 属性 / 正文 四项');
   await page.keyboard.press('Escape'); await sleep(200);
   // 做不了的项灰着、不隐藏：丁 没有子级，只有正文
   const c丁 = await (async () => { for (const t of await page.$$('.card .lab')) if ((await t.textContent()) === '丁') return t; })();
   const b丁 = await c丁.boundingBox(); await page.mouse.click(b丁.x + b丁.width / 2, b丁.y + b丁.height / 2, { button: 'right' }); await sleep(300);
-  const items = await page.$$eval('.ctx .submenu .mi', e => e.map(x => [x.textContent.replace(/空格|F$/, ''), x.classList.contains('off')]));
-  ok(items.length === 4 && items.find(x => x[0].includes('子级'))[1] && items.find(x => x[0].includes('子图'))[1] && !items.find(x => x[0].includes('正文'))[1], '节点右键「展开 ▸」：四项都在，没有的灰着（丁：子图 / 子级 灰，正文可点） ' + JSON.stringify(items));
-  await page.hover('.ctx .mi.sub'); await sleep(250); await page.click('.ctx .submenu .mi.off'); await sleep(200);
+  const chips = await page.$$eval('.ctx .expchips button', e => e.map(x => [x.textContent, x.classList.contains('off')]));
+  ok(chips.length === 4 && chips.find(x => x[0] === '子级')[1] && chips.find(x => x[0] === '子图')[1] && !chips.find(x => x[0] === '正文')[1], '节点右键：四个按钮都在，没有的灰着（丁：子图 / 子级 灰，正文可点） ' + JSON.stringify(chips));
+  await page.click('.ctx .expchips button.off'); await sleep(200);
   ok(!!(await page.$('.ctx')), '点灰的项没反应（菜单不关）');
   await page.keyboard.press('Escape'); await sleep(200);
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
@@ -1482,6 +1483,12 @@ for (const kind of ['reactflow']) {
   ok(L2b === L2 + 2 && (await page.$eval('pre.raw .ln.hl', e => e.dataset.ln).catch(() => '')) === String(L2b), '文件上面插了两行 → 双击钉子，原文页高亮到新位置（第 ' + L2b + ' 行）');
   ok((await page.$eval('pre.raw .ln.hl', e => e.textContent).catch(() => '')).startsWith('第二行'), '高亮的就是那一行');
   ok(items()[0].line === L2b, '钉子里的行号顺手更新成新的 ' + items()[0].line);
+  ok((await page.$eval('.pinbox li:nth-child(1) .hlab.two .hsub', e => e.textContent).catch(() => '')).includes('甲') && (await page.$eval('.pinbox li:nth-child(1) .hlab.two .htxt', e => e.textContent).catch(() => '')) === items()[0].label && items()[0].label.length > 3, '文字钉两行：第一行灰字节点名 + 行号，第二行是钉的那段文字');
+  ok((await page.$eval('.pinbox li:nth-child(1) .hlab', e => getComputedStyle(e).cursor)) === 'pointer', '鼠标在钉子上是手指（不是文字光标）');
+  ok(!!(await page.$('.react-flow__node[data-id="甲"] .cardtext')), '双击文字钉 → 画布上那个节点的卡片展开了正文');
+  { const nb = await (await page.$('.react-flow__node[data-id="甲"]')).boundingBox(), pb = await (await page.$('.react-flow__pane')).boundingBox();
+    ok(Math.abs(nb.x + nb.width / 2 - (pb.x + pb.width / 2)) < pb.width * 0.3 && Math.abs(nb.y + nb.height / 2 - (pb.y + pb.height / 2)) < pb.height * 0.35, '双击文字钉 → 画布把那个节点移到视野中间 ' + JSON.stringify([Math.round(nb.x + nb.width / 2 - pb.x - pb.width / 2), Math.round(nb.y + nb.height / 2 - pb.y - pb.height / 2)])); }
+  ok((await page.$eval('.react-flow__node[data-id="甲"] .cardtext .pinflash', e => e.textContent).catch(() => '')).startsWith('第二行'), '卡片里滚到那一行，并闪一下高亮');
   // 4) 行中间被改了几个字 → 照样认得出
   writeFileSync(mdFile, readFileSync(mdFile, 'utf8').replace('按二十个字一段做探针', '按二十个字一段做【改动】'));
   await page.dblclick('.pinbox li:nth-child(1) .hlab'); await sleep(1000);

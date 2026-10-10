@@ -549,3 +549,21 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 
 /* 展开正文 / 属性时，那一块用实底盖住底纹（图案只留在标题那一条），免得斜纹横纹穿过文字（👤 2026-10-10） */
 .card .cardtext, .card .props { background: color-mix(in srgb, var(--c) 9%, var(--panel2)); }
+
+/* 钉子窗口：文字钉 = 两行（灰字节点名 + 行号，下面是那行文字）；鼠标在条目上是手指，不是文字光标 */
+.pinbox li, .pinbox .hlab, .pinbox .hgname { cursor: pointer; user-select: none; }
+.pinbox li { align-items: flex-start; }
+.pinbox li input[type=checkbox] { margin-top: 3px; }
+.pinbox .hlab.two { display: flex; flex-direction: column; min-width: 0; }
+.pinbox .hlab.two .hsub { font-size: 10px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pinbox .hlab.two .htxt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 卡片里展开的正文：滚动条亮一点（带卡片的颜色，亮暗主题都看得见） */
+.card .cardtext { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--c) 50%, #9a9a9a) transparent; }
+.card .cardtext::-webkit-scrollbar { width: 9px; }
+.card .cardtext::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--c) 50%, #9a9a9a); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+.card .cardtext::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--c) 65%, #bbb); background-clip: padding-box; }
+.card .cardtext .pinflash { background: color-mix(in srgb, #ffd54a 40%, transparent); border-radius: 2px; transition: background 1.2s; }
+/* 右键菜单：展开四个小按钮（高频，放最上面）；做不了的灰着 */
+.ctx .mi.expchips { gap: 4px; }
+.ctx .mi.expchips button.on { background: var(--selbg); border-color: var(--accent); }
+.ctx .mi.expchips button.off { opacity: .4; cursor: default; }

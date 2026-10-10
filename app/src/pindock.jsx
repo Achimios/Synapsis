@@ -51,7 +51,9 @@ export function PinDock({ doc, graph, edit, view, jump, ask, onChoose, onIgnore,
                       <li key={i.id} className={ok ? '' : 'miss'}
                         title={line ? `${i.file} 第 ${i.line} 行（双击跳过去）` : n ? i.node.split('/').join(' / ') + '（双击跳过去）' : '找不到这个节点：被删了，或在外面改过名。Ctrl+Z 撤销删除后会重新对上'}>
                         <input type="checkbox" checked={i.checked} onChange={() => edit(toggleItem(doc, g.id, i.id), `${i.checked ? '取消勾' : '勾上'}钉子「${label}」`)} />
-                        <span className={'hlab' + (i.checked ? ' done' : '')} onDoubleClick={() => ok && jump(g.id, i)}>{line && <span className="hline">📄 </span>}{label}{!ok && ' （找不到）'}{line && <span className="hint hline"> {i.file.split('/').pop()}:{i.line}</span>}</span>
+                        {line
+          ? <span className={'hlab two' + (i.checked ? ' done' : '')} onDoubleClick={() => ok && jump(g.id, i)}><span className="hsub">📄 {(i.node && graph.nodes.get(i.node)?.label) || i.file.split('/').pop()} · 第 {i.line} 行</span><span className="htxt">{label}</span></span>
+          : <span className={'hlab' + (i.checked ? ' done' : '')} onDoubleClick={() => ok && jump(g.id, i)}>{label}{!ok && ' （找不到）'}</span>}
                         <a className="hx" onClick={() => edit(removeItem(doc, g.id, i.id), `删除钉子「${label}」`)} title="删掉这个钉子">✕</a>
                       </li>,
                       asking && <li key={i.id + '?'} className="pinask">

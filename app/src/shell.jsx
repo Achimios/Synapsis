@@ -618,9 +618,36 @@ export function Shell({ name, Canvas }) {
     if (nid && graph.nodes.has(nid)) { jumpTo(nid); setPropsTab('raw'); setRawHl(hl); } // 节点的 md → 右栏「原文」页
     else { setFileHl(hl); openFile(file); } // 别的文件 → 文件预览
   };
+  // 钉的是节点 md 里的一行：画布跳到那个节点，卡片里把正文展开，并滚到那一行（找渲染出来的文字，不靠行号；只是展开卡片，不挪别的节点）
+  const peekCardBody = (nid, item) => {
+    if (!nid || !wsData?.nodes?.[nid]?.body?.trim()) return;
+    setTextOpen(x => x[nid] ? x : { ...x, [nid]: true });
+    const clean = t => String(t || '').replace(/^[\s>#*+\-|]+(\d+[.)]\s*)?/, '').replace(/[*_`~|]/g, '').replace(/\s+/g, ' ').trim();
+    const seg = clean(String(item.text || '').slice((item.seg || 0) * 20, (item.seg || 0) * 20 + 20)), whole = clean(item.text);
+    const probes = [seg.length >= 4 ? seg : whole, whole.slice(0, 12), whole.slice(0, 6)].filter(p => p.length >= 3);
+    const tryScroll = n => {
+      const box = document.querySelector('.react-flow__node[data-id="' + CSS.escape(nid) + '"] .cardtext');
+      if (!box) { if (n < 40) setTimeout(() => tryScroll(n + 1), 50); return; }
+      let hit = null;
+      for (const p of probes) {
+        for (const el of box.querySelectorAll('p, li, td, th, h1, h2, h3, h4, h5, h6, blockquote, pre, div, span')) {
+          if (!(el.textContent || '').replace(/\s+/g, ' ').includes(p)) continue;
+          if ([...el.children].some(c => (c.textContent || '').replace(/\s+/g, ' ').includes(p))) continue; // 取最里面那层
+          hit = el; break;
+        }
+        if (hit) break;
+      }
+      if (!hit) return;
+      const zoom = box.offsetHeight ? box.getBoundingClientRect().height / box.offsetHeight : 1;
+      box.scrollTop += (hit.getBoundingClientRect().top - box.getBoundingClientRect().top - box.clientHeight * zoom / 2) / zoom;
+      hit.classList.add('pinflash'); setTimeout(() => hit.classList.remove('pinflash'), 2200);
+    };
+    setTimeout(() => cardActions.centerOn?.(nid, true), 160); // 正文展开后卡片变高了，再居中一次
+    setTimeout(() => tryScroll(0), 260);
+  };
   const jumpPin = async (gid, item) => {
     if (item.kind === 'node') return jumpTo(item.node);
-    const nid = item.node && wsData?.nodes?.[item.node] ? item.node : null; // 节点 md 跟着改过名 → 按节点取现在的路径
+    const nid = (item.node && wsData?.nodes?.[item.node] ? item.node : null) || nodeOfFile(item.file); // 节点 md 跟着改过名 → 按节点取现在的路径
     let file = nid ? wsData.nodes[nid].file : item.file;
     const get = f => api('/raw?p=' + encodeURIComponent(f)).catch(() => null);
     let r = await get(file);
@@ -641,11 +668,13 @@ export function Shell({ name, Canvas }) {
     setPinAsk(null);
     if (loc.how !== 'exact' || file !== item.file) viewPins(updateItem(pinsRef.current, gid, item.id, { line: loc.line, text: lines[loc.line - 1].replace(/\r$/, '').slice(0, 2000), file }));
     showFile(file, loc.line, nid);
+    if (nid && file === wsData.nodes[nid]?.file) peekCardBody(nid, { ...item, text: lines[loc.line - 1] });
   };
   const choosePinLine = c => {
     const a = pinAsk; if (!a) return;
     viewPins(updateItem(pinsRef.current, a.gid, a.iid, { line: c.line, text: c.text.slice(0, 2000), file: a.file }));
     setPinAsk(null); showFile(a.file, c.line, a.nid);
+    if (a.nid && a.file === wsData.nodes[a.nid]?.file) peekCardBody(a.nid, { text: c.text, seg: 0 });
   };
   const saveMeta = (id, patch, opt = {}) => {
     const old = wsData?.nodes[id]?.meta || {};

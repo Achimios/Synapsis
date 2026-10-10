@@ -64,6 +64,14 @@ export function ContextMenu({ menu, node, actions, onClose }) {
   return (
     <div className="ctx" style={style}>
       <div className="mh">{node.label}</div>
+      {(() => { // 展开：子图 / 子级 / 属性 / 正文，四个小按钮一排（高频，放最上面）；亮 = 现在是展开的，灰 = 这个节点没有
+        const xs = actions.expItems(node.id);
+        return <div className="mi row expchips" onPointerDown={e => e.stopPropagation()}>
+          <span>展开</span>
+          {xs.map(x => <button key={x.k} className={x.ok ? (x.open ? 'on' : '') : 'off'} title={x.ok ? (x.open ? '点一下收起' : '点一下展开') : '这个节点没有可展开的' + x.name}
+            onClick={() => { if (!x.ok) return; onClose(); actions.expToggle(node.id, x.k); }}>{x.name}</button>)}
+        </div>;
+      })()}
       {item('属性…', () => actions.props(node.id), { key: 'I' })}
       {item('重命名', () => actions.rename(node.id), { key: 'F2' })}
       {node.file && item('📎 打开引用的文件', () => actions.openProjectFile(node.file))}
@@ -95,22 +103,15 @@ export function ContextMenu({ menu, node, actions, onClose }) {
           {h.cur && item('＋ 钉到新组', () => h.pin('new'), { quiet: true })}
         </>;
       })()}
-      {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'Tab' })}
-      {item('＋ 新建同级', () => actions.addSibling(node.id), { key: 'Enter' })}
-      {/* 画布 / 快捷键上能直接做的：灰色小字一组，右边的操作提示就是「直接怎么做」（菜单只当提示牌，不抢眼） */}
-      <div className="msep" />
-      {(() => { // 展开 ▸：鼠标移上去就弹出二级菜单（子级 / 属性 / 正文 / 成框），点一项翻转这个节点的那一种
-        const xs = actions.expItems(node.id);
-        return <div className="mi sub" onPointerDown={e => e.stopPropagation()}>
-          <span>展开</span><kbd>▸</kbd>
-          <div className={'ctx submenu' + (style.left > innerWidth - 380 ? ' flip' : '')}>
-            {xs.map(x => <div key={x.k} className={'mi' + (x.ok ? '' : ' off')} title={x.ok ? '' : '这个节点没有可展开的' + x.name} onPointerDown={e => e.stopPropagation()} onClick={() => { if (!x.ok) return; onClose(); actions.expToggle(node.id, x.k); }}>
-              <span>{x.open ? '收起' : '展开'}{x.name}</span>{x.k === 'kids' && <kbd>空格</kbd>}{x.k === 'frame' && <kbd>F</kbd>}
-            </div>)}
-          </div>
-        </div>;
-      })()}
-      {item('→ 钻进去', () => actions.drill(node.id), { key: '双击', quiet: true })}
+      <div className="mi sub" onPointerDown={e => e.stopPropagation()}>
+        <span>新建 / 钻进去</span><kbd>▸</kbd>
+        <div className={'ctx submenu' + (style.left > innerWidth - 380 ? ' flip' : '')}>
+          {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'Tab' })}
+          {item('＋ 新建同级', () => actions.addSibling(node.id), { key: 'Enter' })}
+          {item('→ 钻进去', () => actions.drill(node.id), { key: '双击' })}
+        </div>
+      </div>
+
       <div className="msep" />
       {actions.hasFile(node.id) && item('看 md 原文', () => actions.openMd(node.id))}
       {actions.hasFile(node.id) && item('在资源管理器中显示', () => actions.reveal(node.id))}
