@@ -365,6 +365,21 @@ button.aibtn.off { opacity: .7; }
 .agentbox .logrow .head .t { color: var(--dim); font: var(--mono); }
 .agentbox .logrow pre { white-space: pre-wrap; font: var(--mono); font-size: 11px; max-height: 260px; overflow: auto; background: var(--bg); padding: 6px; margin: 2px 0 6px; }
 .agentbox .bad { color: var(--bad); }
+/* 附图：输入框上面一排缩略图（单击放大，✕ 去掉）；对话里那一轮的小图 */
+.agentbox .askimgs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 10px 2px; border-top: 1px solid var(--line); }
+.agentbox .askimgs span:has(img) { position: relative; }
+.agentbox .askimgs img, .agentbox .timgs img { height: 48px; max-width: 96px; object-fit: cover; border: 1px solid var(--line2); border-radius: 3px; cursor: zoom-in; display: block; }
+.agentbox .askimgs a { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; line-height: 16px; text-align: center; font-size: 10px; border-radius: 50%; background: var(--panel); border: 1px solid var(--line2); color: var(--dim); cursor: pointer; }
+.agentbox .askimgs a:hover { color: var(--bad); }
+.agentbox .timgs { display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle; } .agentbox .timgs img { height: 32px; }
+/* 压缩记忆：压进摘要的轮次变淡，最后一轮下面一条可展开的「以上已压缩」 */
+.agentbox .turn.squashed { opacity: .45; }
+.agentbox .sumline { margin: 8px 0 2px; padding: 4px 8px; border: 1px dashed var(--line2); border-radius: 4px; font-size: 12px; color: var(--dim); opacity: 1; }
+.agentbox .sumline summary { cursor: pointer; }
+.agentbox .turn.squashed:has(.sumline) { opacity: 1; } .agentbox .turn.squashed:has(.sumline) > :not(.sumline) { opacity: .45; }
+.aipanel .memrow { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin: 6px 0; }
+.aipanel .memrow input[type=number] { width: 72px; background: var(--bg); color: var(--text); border: 1px solid var(--line2); border-radius: 3px; padding: 2px 4px; font: inherit; }
+.aipanel .memrow .hint { flex-basis: 100%; }
 
 /* 卡片上的属性 */
 .card .props { margin-top: 3px; font-size: 11px; line-height: 1.4; color: var(--dim); border-top: 1px dashed color-mix(in srgb, var(--c) 30%, var(--line)); padding-top: 2px; }

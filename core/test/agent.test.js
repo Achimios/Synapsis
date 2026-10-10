@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadSkills, pageContext, parseReply, applyPlan, runAgent, loadChat, clearChat, systemPrompt, loosePrompt, isLoose, isQuestion, isFollowup, estimateContext, estTokens } from '../agent.js';
+import { loadSkills, pageContext, parseReply, applyPlan, runAgent, loadChat, clearChat, systemPrompt, loosePrompt, isLoose, isQuestion, isFollowup, estimateContext, estTokens, memoryOf, compactChat, needCompact } from '../agent.js';
 import { validateAction, planMoves, VALIDATORS } from '../plan.js';
 import { saveOutline, loadWorkspace, workspaceOutline, DIR } from '../workspace.js';
 import { parseOutline } from '../outline.js';
@@ -155,7 +155,7 @@ try {
   srv = createServer((req, res) => { let s = ''; req.on('data', c => s += c); req.on('end', () => {
     const j = JSON.parse(s); calls++; lastMsgs = j.messages;
     const last = j.messages.at(-1).content;
-    const content = j.messages[0].content.includes('使用说明助手') ? '- 按 Ctrl+Z 撤销\n- Ctrl+Y 重做' : calls === 1 ? '好的我来帮你' : '{"say":"选上了","actions":[{"do":"select","ids":["n1","n9"]},{"do":"delete","ids":["n1"]}]}';
+    const content = j.messages[0].content.includes('使用说明助手') ? '- 按 Ctrl+Z 撤销\n- Ctrl+Y 重做' : j.messages[0].content.includes('记忆摘要') ? '- 摘要内容：人在整理页面' : calls === 1 ? '好的我来帮你' : '{"say":"选上了","actions":[{"do":"select","ids":["n1","n9"]},{"do":"delete","ids":["n1"]}]}';
     res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 700, completion_tokens: 30, total_tokens: 730 } }));
   }); });
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
@@ -182,6 +182,32 @@ try {
   ok(est.total > 1200 && est.parts.系统提示词 > 300 && est.parts.短记忆 > 0, '没问之前能估这次大概占多少 ' + JSON.stringify(est.parts));
   ok(estTokens('一二三四') === 4 && estTokens('abcdefg') === 2, '粗估：中文 1 字 ≈ 1 token，英文 3.5 字符 ≈ 1 token');
   ok(isQuestion('怎么连线？') && isQuestion('有哪些快捷键') && isQuestion('能撤销吗') && !isQuestion('把这几个左对齐') && !isQuestion('观测做完了') && !isQuestion('在决策后面加一个执行'), '问句判断：问用法 vs 交代事');
+  // 在线（假服务）：附图 = 文字 + image_url；短记忆只记张数；压缩记忆（👤 2026-10-11）
+  process.env.SYNAPSIS_ONLINE_URL = `http://127.0.0.1:${srv.address().port}`; process.env.DEEPSEEK_API_KEY = 'sk-test';
+  try {
+    const ocfg = { ...cfg, agentSrc: 'online', memLimit: 1000, memKeep: 1, autoCompact: true };
+    clearChat(root);
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAA=';
+    await runAgent(root, { scope: '', selected: [], text: '看这张图', images: [PNG] }, ocfg);
+    const lu = lastMsgs.at(-1).content;
+    ok(Array.isArray(lu) && lu[0].type === 'text' && lu[1].image_url.url === PNG, '附图：最后一条 = 文字 + image_url');
+    ok(loadChat(root).at(-1).imgs === 1 && !JSON.stringify(loadChat(root)).includes('iVBOR'), '短记忆只记张数，不存图');
+    ok(!readFileSync(cfg.log, 'utf8').includes('iVBOR') && readFileSync(cfg.log, 'utf8').includes('[图片 1 张]'), '日志不存 base64，只写「图片 N 张」');
+    await runAgent(root, { scope: '', selected: [], text: '再来' }, ocfg);
+    ok(lastMsgs.some(m => typeof m.content === 'string' && m.content.includes('附了 1 张图')) && !lastMsgs.some(m => Array.isArray(m.content)), '下一轮：历史里只说附过图，图不重发');
+    let threw = ''; try { await runAgent(root, { text: 'x', images: [PNG] }, cfg); } catch (e) { threw = e.message; }
+    ok(/本地模型看不了图/.test(threw), '本地 + 图 → 明说看不了');
+    for (const k of ['一', '二', '三']) await runAgent(root, { scope: '', selected: [], text: '第' + k + '句' + '很长'.repeat(300) }, ocfg);
+    ok(needCompact(root, true, ocfg) && !needCompact(root, true, { ...ocfg, autoCompact: false }), '原文超过 memLimit → 该压了（关掉自动就不压）');
+    const cp = await compactChat(root, true, ocfg), mm = memoryOf(root, true);
+    ok(cp.ok && cp.n === 4 && mm.summary.includes('摘要内容') && mm.turns.length === 1 && mm.turns[0].user.startsWith('第三句'), '压缩：旧的 4 轮进摘要，保留最近 1 轮原文 ' + cp.n);
+    ok(loadChat(root).length === 5 && !needCompact(root, true, ocfg), '原文不删；压完不再触发');
+    await runAgent(root, { scope: '', selected: [], text: '接着' }, ocfg);
+    ok(lastMsgs[1].content.includes('记忆摘要') && lastMsgs[1].content.includes('摘要内容') && !lastMsgs.some(m => typeof m.content === 'string' && m.content.startsWith('第一句')), '下一轮先喂摘要，压掉的原文不再发');
+    ok(estimateContext(root, { loose: true }).parts.短记忆 < 1000, '估算也按「摘要 + 之后的原文」算');
+    clearChat(root);
+    ok(!memoryOf(root, true).summary, '清空记忆连摘要一起清');
+  } finally { delete process.env.SYNAPSIS_ONLINE_URL; delete process.env.DEEPSEEK_API_KEY; }
   clearChat(root);
 } finally {
   if (srv) { srv.closeAllConnections(); await new Promise(r => srv.close(r)); }

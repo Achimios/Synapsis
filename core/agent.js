@@ -124,12 +124,48 @@ export function parseReply(raw, max = 1200) {
 // —— 短记忆 ——
 const chatFile = root => join(root, '.synapsis', 'ai_chat.json');
 export const loadChat = root => { try { return JSON.parse(readFileSync(chatFile(root), 'utf8')); } catch { return []; } };
-export const clearChat = root => { try { mkdirSync(dirname(chatFile(root)), { recursive: true }); writeFileSync(chatFile(root), '[]'); } catch { /* */ } };
+export const clearChat = root => { try { mkdirSync(dirname(chatFile(root)), { recursive: true }); writeFileSync(chatFile(root), '[]'); writeFileSync(join(root, '.synapsis', 'ai_chat_summary.json'), '{}'); } catch { /* */ } }; // 摘要一起清
 // >v<🤖AI指令-短记忆-只喂「和这次同一种模式」的历史（2026-10-08 实测：在线模型读到严格版时代留下的「手册里没写，我不能编」，照着学，拒绝演明日香）。
 //   每轮记下 mode（loose 在线宽松版 | strict 本地严格版和问答）；没有 mode 的旧记录算 strict。界面里仍然全部显示，只是不喂给另一种模式的模型
 export const recentTurns = (root, loose, n = 8) => loadChat(root).filter(t => (t.mode || 'strict') === (loose ? 'loose' : 'strict')).slice(-n);
 const saveChat = (root, h) => { mkdirSync(dirname(chatFile(root)), { recursive: true }); writeFileSync(chatFile(root), JSON.stringify(h, null, 1)); };
-const pushChat = (root, turn) => saveChat(root, [...loadChat(root), turn].slice(-30));
+// 存 200 轮给界面看；喂给模型的见 memoryOf。t 保证严格递增（摘要靠「t 在 upto 之后」切原文，同一毫秒的两轮会切错）
+const pushChat = (root, turn) => { const h = loadChat(root), last = h.at(-1)?.t; if (last && turn.t <= last) turn = { ...turn, t: new Date(Date.parse(last) + 1).toISOString() }; saveChat(root, [...h, turn].slice(-200)); };
+
+// >v<🤖AI指令-压缩记忆-👤 2026-10-11：短记忆 = 【摘要】+ 摘要之后的原文。原文超过 memLimit token → 让模型把「除了最近 memKeep 轮」的旧原文连同旧摘要
+//   重新写成一份摘要（滚动，摘要永远只有一份）。原文不删（界面照样显示、日志照样有），只是不再喂。按模式（loose / strict）各一份。
+//   摘要存 .synapsis/ai_chat_summary.json：{ loose: { text, upto: 最后一轮被压进去的 t }, strict: {…} }
+const sumFile = root => join(root, '.synapsis', 'ai_chat_summary.json');
+export const loadSummary = root => { try { return JSON.parse(readFileSync(sumFile(root), 'utf8')); } catch { return {}; } };
+const saveSummary = (root, s) => { mkdirSync(dirname(sumFile(root)), { recursive: true }); writeFileSync(sumFile(root), JSON.stringify(s, null, 1)); };
+export const MEM_DEFAULTS = { memLimit: 8000, memKeep: 4, autoCompact: true };
+const memCfg = cfg => ({ ...MEM_DEFAULTS, ...Object.fromEntries(Object.entries({ memLimit: cfg?.memLimit, memKeep: cfg?.memKeep, autoCompact: cfg?.autoCompact }).filter(([, v]) => v != null)) });
+const turnText = t => t.user + JSON.stringify({ say: t.say, actions: t.actions || [] });
+// 这次要喂的短记忆：摘要 + 摘要之后的原文（在线最多 40 轮兜底：压缩一直失败时别无限长；本地 8B 上下文小，照旧只喂最近 8 轮）
+export function memoryOf(root, loose) {
+  const mode = loose ? 'loose' : 'strict', s = loadSummary(root)[mode];
+  const turns = loadChat(root).filter(t => (t.mode || 'strict') === mode && (!s?.upto || t.t > s.upto)).slice(loose ? -40 : -8);
+  return { summary: s?.text || '', upto: s?.upto || null, turns };
+}
+export const memTokens = m => estTokens(m.summary) + m.turns.reduce((a, t) => a + estTokens(turnText(t)), 0);
+// 自动压缩只给在线（👤 本地基本不用了）；本地要压就点 🗜 手动
+export const needCompact = (root, loose, cfg) => { const c = memCfg(cfg), m = memoryOf(root, loose); return loose && c.autoCompact && m.turns.length > c.memKeep && memTokens(m) > c.memLimit; };
+export const SUMMARY_PROMPT = `你在给一段人和 AI 搭档（Synapsis 节点图工具里的助手）的对话写「记忆摘要」，以后的对话只看这份摘要，看不到原文。
+保留：人的目标和正在做的事；定下来的决定和偏好（包括人给 AI 定的人设、语气、称呼）；AI 提议过、人确认执行了的改动（和执行后发现的问题）；人没执行或否掉的提议（一句带过）；还没做完、说好下次做的事。
+丢掉：寒暄、重复的话、被否掉方案的细节、已经过时的中间状态。
+节点编号（n1、n2…）每页都会变，不要记编号，记节点名字。
+写成简洁的中文要点（- 开头），不超过 600 字，不要 JSON，不要代码块。有旧摘要就把它和新内容合并成一份新的。`;
+// 压一次：除了最近 keep 轮，旧原文 + 旧摘要 → 新摘要。返回 { ok, n: 这次压进去几轮, text }
+export async function compactChat(root, loose, cfg, { keep } = {}) {
+  const c = memCfg(cfg), k = keep ?? c.memKeep, mode = loose ? 'loose' : 'strict', m = memoryOf(root, loose);
+  const old = m.turns.slice(0, Math.max(0, m.turns.length - k));
+  if (!old.length) return { ok: false, n: 0, text: m.summary, why: `原文只有 ${m.turns.length} 轮（保留最近 ${k} 轮），没什么可压的` };
+  const body = old.map(t => `人：${t.user}${t.imgs ? `（附了 ${t.imgs} 张图）` : ''}\nAI：${t.say}${t.executed?.length ? `\n（人确认执行了：${t.executed.join('；')}${t.warnings?.length ? '；执行后检查：' + t.warnings.join('；') : ''}）` : t.done?.length ? '\n（提议的动作人没执行）' : ''}`).join('\n\n');
+  const text = (await chat(cfg, SUMMARY_PROMPT, `${m.summary ? '【旧摘要】\n' + m.summary + '\n\n' : ''}【要压进去的对话（${old.length} 轮）】\n${body}`, 1200, { kind: '压缩记忆', temperature: 0.2 })).replace(/^```\w*\n?|```$/g, '').trim();
+  if (!text) throw new Error('模型没给出摘要');
+  const all = loadSummary(root); all[mode] = { text, upto: old.at(-1).t, at: new Date().toISOString() }; saveSummary(root, all);
+  return { ok: true, n: old.length, text };
+}
 
 // >v<🤖AI指令-结果-历史里分清「提议了」和「执行了」（2026-10-08）：done 只是提议时校验通过的动作；人确认执行后 applyPlan 回写 executed / warnings。
 //   喂给模型的是下一轮消息里的一行【上一轮结果】：执行了什么（和执行后检查出的问题）/ 人没执行。提议里没有可执行动作的轮次不写。
@@ -166,8 +202,8 @@ export const estTokens = s => { const t = String(s); const cjk = (t.match(/[㐀-
 export const isLoose = cfg => !!cfg && /^\w+:/.test(chatModel(cfg) || ''); // 在线模型 → 宽松版
 export function estimateContext(root, { scope = ROOT, selected = [], loose = false } = {}) {
   const ws = loadWorkspace(root), ctx = pageContext(ws, scope, selected, {}, { rich: loose });
-  const hist = recentTurns(root, loose).map(t => t.user + JSON.stringify({ say: t.say, actions: t.actions || [] })).join('');
-  const parts = { 系统提示词: estTokens(loose ? loosePrompt() : systemPrompt()), 当前页: estTokens(ctx.text), 短记忆: estTokens(hist), 回答上限: 1200 };
+  const m = memoryOf(root, loose);
+  const parts = { 系统提示词: estTokens(loose ? loosePrompt() : systemPrompt()), 当前页: estTokens(ctx.text), 短记忆: memTokens(m), 回答上限: 1200 };
   return { parts, total: Object.values(parts).reduce((a, b) => a + b, 0) };
 }
 
@@ -215,14 +251,20 @@ export function lookAt(root, ctx, items) {
 
 // >v<🤖AI指令-问模型-返回 {say, actions: [{ok, why?, desc, …}], raw}；不执行。输出不合格式 → 把错误告诉它重来一次
 // opts.home = Synapsis 目录（用户级记忆在那儿）；给了才有长期记忆（只给宽松版 / 在线模型用）
-export async function runAgent(root, { scope = ROOT, selected = [], text, boxes = {} }, cfg, opts = {}) {
-  if (!text || !String(text).trim()) throw new Error('说点什么');
+export async function runAgent(root, { scope = ROOT, selected = [], text, boxes = {}, images = [] }, cfg, opts = {}) {
+  // 图片只跟这一轮走（每次调用都带上：重试、查看几跳都要看得到），不进短记忆：短记忆只记「附了几张」
+  images = (Array.isArray(images) ? images : []).filter(u => typeof u === 'string' && /^data:image\//.test(u)).slice(0, 6);
+  if ((!text || !String(text).trim()) && !images.length) throw new Error('说点什么');
+  text = String(text || '').trim() || '（看图）';
   const ws = loadWorkspace(root), loose = isLoose(cfg), ctx = pageContext(ws, scope, selected, boxes, { rich: loose });
+  if (images.length && !loose) throw new Error('本地模型看不了图：AI 设置里把「AI 指令框」切到 ☁ 在线');
   // 历史里的回答按规定格式原样放回（以前存成 {say, done}，8B 会照着学、把 actions 丢掉 —— 2026-10-08 实测）；编号是当时那一页的，可能已变
-  const recent = recentTurns(root, loose);
+  // 短记忆 = 摘要（有的话，当作最前面的一问一答）+ 摘要之后的原文（见 memoryOf / compactChat）
+  const mem = memoryOf(root, loose), recent = mem.turns;
+  const sumPair = mem.summary ? [{ role: 'user', content: `【之前对话的记忆摘要】（更早的原文已经压缩掉了）\n${mem.summary}` }, { role: 'assistant', content: JSON.stringify({ say: '好的，我记得这些。', actions: [] }) }] : [];
   // 记忆索引附在那一轮的人话后面、跟着历史走：8 轮之内模型都看得见；滚出去了（或新对话 / 清空后）再附一次
   // 上一轮的结果（执行了 / 没执行 / 执行后检查出的问题）写在「下一轮的人话」前面，不写在 assistant 那条里 —— 免得 8B 学着在 JSON 后面加废话
-  const history = recent.flatMap((t, i) => { const pre = outcomeNote(recent[i - 1]); return [{ role: 'user', content: (pre ? pre + '\n\n' : '') + t.user + (t.memNote ? '\n\n' + t.memNote : '') }, { role: 'assistant', content: JSON.stringify({ say: t.say, actions: t.actions || [] }) }]; });
+  const history = [...sumPair, ...recent.flatMap((t, i) => { const pre = outcomeNote(recent[i - 1]); return [{ role: 'user', content: (pre ? pre + '\n\n' : '') + t.user + (t.imgs ? `\n（这一轮附了 ${t.imgs} 张图，图没有保存，现在看不到）` : '') + (t.memNote ? '\n\n' + t.memNote : '') }, { role: 'assistant', content: JSON.stringify({ say: t.say, actions: t.actions || [] }) }]; })];
   // 问用法（怎么 / 如何 / 哪 / 快捷键 / 问号…）→ 走问答：单独的提示词 + 挑出来的软件知识，纯文本回答、不出动作。
   //   和做事混在一个 JSON 提示词里时，8B 会给「将切换到白色主题」+ 乱编动作、或者知识就在眼前还说「手册里没写」（2026-10-08 实测）
   const know = pickKnowledge(text), usage = {}; // usage = LM Studio 报的 token 用量（prompt / completion / total），界面显示「已用 / 容量」
@@ -239,9 +281,9 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   const lastNote = outcomeNote(recent.at(-1));
   let user = `${ctx.text}\n\n${lastNote ? lastNote + '\n\n' : ''}人说：${String(text).trim()}${memNote ? '\n\n' + memNote : ''}`;
   const out = loose ? 3000 : 1200, temp = loose ? 0.6 : 0.1; // 宽松版：话可以长、温度高些（有个性）
-  let raw = await chat(cfg, sys, user, out, { kind: 'AI 指令', history, usage, temperature: temp }), reply;
+  let raw = await chat(cfg, sys, user, out, { kind: 'AI 指令', history, usage, temperature: temp, images }), reply;
   try { reply = parseReply(raw, out); } catch (e) {
-    raw = await chat(cfg, sys, user + `\n\n（你上一次的输出不合格：${e.message}。只输出一个 JSON 对象。）`, out, { kind: 'AI 指令（重试）', history, usage, temperature: 0.1 });
+    raw = await chat(cfg, sys, user + `\n\n（你上一次的输出不合格：${e.message}。只输出一个 JSON 对象。）`, out, { kind: 'AI 指令（重试）', history, usage, temperature: 0.1, images });
     try { reply = parseReply(raw, out); } catch (e2) { reply = { say: '（模型的回答不是规定格式，没法执行：' + e2.message + '）', actions: [], read: [], look: [] }; }
   }
   // 它要看记忆全文 / 查看别的信息 → 附上再问一轮，最多 LOOK_MAX 跳（只给在线宽松版；每跳在日志里一条）
@@ -260,7 +302,7 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
       add += `\n\n【查看结果】\n${l.text}`;
     }
     user += add + (hops >= LOOK_MAX ? '\n\n（不能再查看了，现在必须回答：输出 {"say": …, "actions": […]}）' : `\n\n（已附上。还缺信息可以再 look / read，最多还能 ${LOOK_MAX - hops} 次；够了就正常回答：输出 {"say": …, "actions": […]}）`);
-    raw = await chat(cfg, sys, user, out, { kind: reply.look.length ? `AI 指令（查看：${looked.slice(-3).join('、')}）` : 'AI 指令（读记忆后）', history, usage, temperature: temp });
+    raw = await chat(cfg, sys, user, out, { kind: reply.look.length ? `AI 指令（查看：${looked.slice(-3).join('、')}）` : 'AI 指令（读记忆后）', history, usage, temperature: temp, images });
     try { reply = parseReply(raw, out); } catch (e) { reply = { say: '（查看之后的回答不是规定格式：' + e.message + '）', actions: [], read: [], look: [] }; }
   }
   if (loose && (reply.look.length || (opts.home && reply.read.length)) && !reply.say) reply.say = '（查看次数用完了，模型还在要信息，没有给出回答）';
@@ -270,7 +312,7 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   const actions = reply.actions.map(a => validateAction(a, { refs: ctx.refs, graph: g, scope: ctx.scope }));
   // 嘴上说做了、手上没给动作（8B 实测会这样）→ 明说，别让人以为做了
   if (!actions.some(a => a.ok) && (loose ? /^已(经)?(将|把|为|创建|新建|标记|改|连|设|排|对齐|选|挪|收紧)/ : /^(已|将|会|我会|我将)|已(经)?(将|把|为|创建|新建|标记|删除|改|连|设|完成|排|对齐|选)/).test(reply.say)) reply.say += /删/.test(text) ? '（⚠ 删除节点不归 AI 做：请右键节点 → 删除）' : '（⚠ 模型没有给出能执行的动作，实际什么都没做）';
-  pushChat(root, { t: new Date().toISOString(), mode: loose ? 'loose' : 'strict', scope: ctx.scope, user: String(text).trim(), say: reply.say, actions: reply.actions, done: actions.filter(a => a.ok).map(a => a.desc), ...(memNote ? { memNote } : {}), ...(memRead.length ? { memRead } : {}), ...(looked.length ? { looked } : {}) });
+  pushChat(root, { t: new Date().toISOString(), mode: loose ? 'loose' : 'strict', scope: ctx.scope, user: String(text).trim(), ...(images.length ? { imgs: images.length } : {}), say: reply.say, actions: reply.actions, done: actions.filter(a => a.ok).map(a => a.desc), ...(memNote ? { memNote } : {}), ...(memRead.length ? { memRead } : {}), ...(looked.length ? { looked } : {}) });
   return { say: reply.say, actions, raw, knowledge: loose ? [] : know.map(c => c.src), usage, mode: loose ? 'loose' : 'strict', memRead, looked, memIndex: !!memNote };
 }
 

@@ -995,6 +995,7 @@ export function Shell({ name, Canvas }) {
   });
   useEffect(() => {
     const onPaste = e => {
+      if (e.target.closest?.('.agentbox')) return; // AI 指令框里贴图 = 附给 AI（框自己处理），不是贴进卡片
       const txt = e.clipboardData?.getData('text/plain') || '';
       if (txt.startsWith(CUT) && !e.target.closest?.('textarea, input, [contenteditable="true"]')) {
         e.preventDefault(); e.stopPropagation();
@@ -1227,7 +1228,7 @@ export function Shell({ name, Canvas }) {
       </div>}
       {pinsOpen && mode === 'ws' && <PinDock doc={pins} graph={graph} edit={editPins} view={viewPins} jump={jumpPin} ask={pinAsk} onChoose={choosePinLine} onIgnore={() => setPinAsk(null)} onClose={() => setPinsOpen(false)} />}
       {agentOpen && mode === 'ws' && <AgentBox preset={agentPreset} api={api} scope={realScope} boxes={() => cardActions.boxes?.() || {}} selected={cardActions.multi?.length ? cardActions.multi : sel ? [sel] : []}
-        onPreview={ids => ids.length && cardActions.select?.(ids)} onClose={() => setAgentOpen(false)}
+        onPreview={ids => ids.length && cardActions.select?.(ids)} onClose={() => setAgentOpen(false)} onZoom={(urls, i) => setLightbox({ urls, i })}
         onWordsApplied={d => { setWsData(d); setSaveState('配色词表已更新：' + d.file); }}
         onApplied={async good => {
           const d = await api('/ai/apply', { method: 'POST', body: JSON.stringify({ actions: good, boxes: cardActions.boxes?.() || {} }) });

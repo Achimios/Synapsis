@@ -13,7 +13,8 @@ import { isDropped } from './outline.js';
 
 // agentSrc = AI 指令框 / 问答 / 生成词表 / 「?」关系说明 用本地还是在线；bulkSrc = 高频后台（潜在关联重排、语义配色归类），默认本地（👤「高频调用的默认不用在线」）
 export const AI_DEFAULTS = { url: 'http://127.0.0.1:1234/v1', embed: 'text-embedding-qwen3-embedding-0.6b', chat: 'qwen3-8b', semColors: true,
-  agentSrc: 'local', bulkSrc: 'local', onlineModel: 'deepseek-flash', onlineEffort: 'off' };
+  agentSrc: 'local', bulkSrc: 'local', onlineModel: 'deepseek-flash', onlineEffort: 'off',
+  memLimit: 8000, memKeep: 4, autoCompact: true }; // 短记忆：原文超过 memLimit token 自动压成摘要，保留最近 memKeep 轮原文（core/agent.js compactChat）
 export const EFFORTS = ['off', 'low', 'high', 'max']; // off = 不思考（默认：快、省钱）；其余 = DeepSeek 的 reasoning_effort
 const cfgFile = home => join(home, '.synapsis', 'ai.json');
 
@@ -152,7 +153,11 @@ const cacheOf = root => join(root, '.synapsis', 'embed.json');
 // opts.bulk = 高频后台调用（潜在关联重排、语义配色归类）→ 按 cfg.bulkSrc 选本地 / 在线，其余按 cfg.agentSrc
 export async function chat(cfg, system, user, maxTokens = 300, opts = {}) {
   const model = chatModel(cfg, opts.task || (opts.bulk ? 'rerank' : 'agent')), on = onlineOf(model);
-  const messages = [{ role: 'system', content: system }, ...(opts.history || []), { role: 'user', content: on ? user : user + '\n/no_think' }];
+  // opts.images = 这一句附的图（dataURL）：OpenAI 兼容的多段 content（文字 + image_url）。只给在线；日志里换成「[图片 N 张]」，不存 base64
+  const imgs = opts.images || [];
+  if (imgs.length && !on) throw new Error('本地模型看不了图：AI 设置里把这个用途切到 ☁ 在线');
+  const messages = [{ role: 'system', content: system }, ...(opts.history || []), { role: 'user', content: imgs.length ? [{ type: 'text', text: user }, ...imgs.map(url => ({ type: 'image_url', image_url: { url } }))] : on ? user : user + '\n/no_think' }];
+  const logMsgs = imgs.length ? messages.map((m, i) => i === messages.length - 1 ? { role: 'user', content: user + `\n[图片 ${imgs.length} 张]` } : m) : messages;
   const t0 = Date.now(), u = opts.usage || {}; // u = 这次的 token 用量（调用方没传就自己攒一份，用来记总用量）
   let raw = '', err = null;
   try {
@@ -169,7 +174,7 @@ export async function chat(cfg, system, user, maxTokens = 300, opts = {}) {
     raw = r.choices?.[0]?.message?.content || '';
     if (r.usage) Object.assign(u, r.usage);
   } catch (e) { err = e; }
-  aiLog(cfg, { kind: opts.kind || 'chat', model, effort: on ? cfg.onlineEffort : undefined, ms: Date.now() - t0, messages, raw, error: err?.message, usage: Object.keys(u).length ? u : undefined });
+  aiLog(cfg, { kind: opts.kind || 'chat', model, effort: on ? cfg.onlineEffort : undefined, ms: Date.now() - t0, messages: logMsgs, raw, error: err?.message, usage: Object.keys(u).length ? u : undefined });
   addUsage(cfg, { online: !!on, kind: opts.kind || 'chat', usage: u });
   if (err) throw err;
   return raw.replace(/<think>[\s\S]*?<\/think>/g, '').trim();

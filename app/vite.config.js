@@ -10,7 +10,7 @@ import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText } from '../core/cli.js';
 import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, suggestPatternWords, applyPatternWords, readAiLog, readUsage } from '../core/ai.js';
 import { lmsEstimate, lmsReload } from '../core/lmstudio.js';
-import { runAgent, applyPlan, loadChat, clearChat, estimateContext, isLoose } from '../core/agent.js';
+import { runAgent, applyPlan, loadChat, clearChat, estimateContext, isLoose, loadSummary, compactChat, needCompact } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
 const STASH = new Map(); // 工作区 → 界面暂存（见 /ui/stash）
 const SESSION_START = Date.now() - 2000; // 这次服务进程（= 托盘）启动的时刻（留 2 秒余量：.junk 里的时间戳只到秒）。.junk/ 里比这更早的 = 上次没正常退出留下的
@@ -122,8 +122,15 @@ function workspaceApi() {
             if (url.pathname === '/ai/status') return send(200, await aiStatus(cfg));
             if (url.pathname === '/ai/usage') return send(200, readUsage(cfg));
             if (url.pathname === '/ai/log') return send(200, { entries: cfg.log ? readAiLog(cfg.log, Number(url.searchParams.get('n')) || 60) : [] });
-            if (url.pathname === '/ai/chat' && req.method === 'GET') return send(200, { turns: loadChat(root) });
-            if (url.pathname === '/ai/chat' && req.method === 'DELETE') { clearChat(root); return send(200, { turns: [] }); }
+            // summary = 各模式的记忆摘要 {loose|strict: {text, upto}}（界面在 upto 那一轮下面画「以上已压缩」）；compacting = 后台正在压
+            if (url.pathname === '/ai/chat' && req.method === 'GET') return send(200, { turns: loadChat(root), summary: loadSummary(root), compacting: !!(STASH.get(root) || {}).compacting });
+            if (url.pathname === '/ai/chat' && req.method === 'DELETE') { clearChat(root); return send(200, { turns: [], summary: {} }); }
+            // 🗜 手动压缩：除了最近 keep 轮（默认按设置），旧原文 + 旧摘要 → 新摘要
+            if (url.pathname === '/ai/chat/compact' && req.method === 'POST') {
+              const b = await body(req);
+              try { const r = await compactChat(root, isLoose(cfg), cfg, { keep: b.keep }); return send(200, { ...r, turns: loadChat(root), summary: loadSummary(root) }); }
+              catch (e) { return send(503, { error: '压缩失败：' + (e.cause?.code === 'ECONNREFUSED' ? '连不上模型' : e.message) }); }
+            }
             // 上下文：这次大概要占多少（估）+ 对话模型加载时设的上下文长度（LM Studio /api/v0/models 的 loaded_context_length）
             if (url.pathname === '/ai/context') {
               const est = existsSync(join(root, DIR)) ? estimateContext(root, { scope: url.searchParams.get('scope') || '', selected: (url.searchParams.get('selected') || '').split('\n').filter(Boolean), loose: isLoose(cfg) }) : null;
@@ -145,6 +152,8 @@ function workspaceApi() {
                 try {
                   const r = await runAgent(root, b, cfg, { home: SYN_HOME });
                   if (r.actions.length) st.plan = r; else delete st.plan;
+                  // 短记忆超了 → 后台压缩（不等它：这一轮的回答先回去，下一轮用上新摘要）
+                  if (!st.compacting && needCompact(root, isLoose(cfg), cfg)) { st.compacting = true; r.compacting = true; compactChat(root, isLoose(cfg), cfg).catch(() => {}).finally(() => { delete st.compacting; }); }
                   if (String(st['agent.text'] || '').trim() === String(b.text || '').trim()) delete st['agent.text']; // 发出去了 = 输入框该空了
                   return send(200, r);
                 } finally { delete st.thinking; }

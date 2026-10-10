@@ -35,6 +35,7 @@
 - ✅ **已修 1（Opus）**：Shift+1 时 UI 框里的子图又被裁。原因有两个：① `tempDeep` 要求 `!framed[id]`，一级子节点自己真展开过子图就不算，于是被裁；② 裁剪在 `build()` 时按当时的 measured 算并存进节点 style，子图被递进撑大后裁剪还停在旧尺寸。改法：裁剪挪到 `main.jsx` 的 `clipUi`，每次渲染按当前坐标和 measured 现算、不存进 nodes（`shown = clipUi(sizeFrames(nodes))`）；view 节点改带 `seeDeep`（本页开着 Shift+1），有子图的那层不裁。playwright 复现过、修后验过（开 = 不裁，关 = 按新尺寸裁回）。
 - ✅ **已修 2（Opus）**：真的展开本页改用 `underUi(id)`，沿 graph 父级一路往上查到本页为止，任一祖先是 UI 框就不动。验过：UI 框里三层真展开状态在展开 / 收起本页时都不变。
 - ✅ **贴图进撤销（Opus）**：`{op:'pics'}`，贴进节点 / 散图，撤销 = 挪进 .junk/（`/pic-remove`，`core/workspace.js removePic`），重做 = `/restore` 搬回并写回坐标；删散图也能撤销。改了 `vite.config.js` 和 core → **托盘要重启**才生效。
+- ✅ **AI 指令框：压缩记忆 + 发图（Opus）**：短记忆 = 摘要 + 摘要之后的原文（`core/agent.js` `memoryOf / compactChat / needCompact`，摘要存 `.synapsis/ai_chat_summary.json`）；在线模式原文超过 `memLimit`（默认 8000 token）回答后后台自动压，保留最近 `memKeep`（4）轮，参数在 AI 设置「通用」；🗜 手动压；本地照旧只喂 8 轮、不自动压。图：Ctrl+V / 拖进框 → 缩略图（单击放大、✕），`chat()` 发成 文字 + image_url，只给在线；短记忆只记张数，日志写「[图片 N 张]」。**没用真 DeepSeek 验过图片格式**（假服务验的），用户实测；报错会原样显示。
 - 待决：框内缩放 / 平移要不要存盘（用户问「存盘会有冲突？」：我的回答是不会，只是几个数；会和外部 CLI/AI 改布局放在同一文件里。倾向存到 `view.json` 而不是 `_layout.json`，就不会冲突）。
 - 用户要求：快捷键页（`core/keymap.js`）已补；`_开发进度.md` / vault 节点还没更新到最近几批（框内画布、⛶、compact、大纲三态、托盘重启、中键平移、图案词表、预览展开两态）。
 - 托盘需重启一次：新菜单项「重启 Synapsis」和 `/ai/words` 路由才生效。
