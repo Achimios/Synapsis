@@ -65,13 +65,13 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       {node.ui && item('▭ 复制 UI 布局', () => actions.copyUiLayout(node.id))}
       <div className="mi row" onPointerDown={e => e.stopPropagation()}>
         <span>状态</span>
-        {STATUS.map(([s, ic]) => <button key={s} className={node.status === s ? 'on' : ''} onClick={() => { onClose(); actions.status(node.id, s); }}>{ic}</button>)}
-        <button title="清除状态（不标）" onClick={() => { onClose(); actions.status(node.id, null); }}>—</button>
+        {STATUS.map(([s, ic]) => <button key={s} className={node.status === s ? 'on' : ''} onClick={() => { actions.status(node.id, s); }}>{ic}</button>)}
+        <button title="清除状态（不标）" onClick={() => { actions.status(node.id, null); }}>—</button>
       </div>
       {actions.color && <div className="mi row swatches" onPointerDown={e => e.stopPropagation()}>
         <span>颜色</span>
-        {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={String(node.colorSet || '').split('/')[0] === k ? 'on' : ''} style={{ background: c }} onClick={() => { onClose(); actions.color(node.id, k); }} />)}
-        <button title="自动（按分组 / 名字配色，子节点跟着父节点）" className={!node.colorSet ? 'on auto' : 'auto'} onClick={() => { onClose(); actions.color(node.id, null); }}>自动</button>
+        {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={String(node.colorSet || '').split('/')[0] === k ? 'on' : ''} style={{ background: c }} onClick={() => { actions.color(node.id, k); }} />)}
+        <button title="自动（按分组 / 名字配色，子节点跟着父节点）" className={!node.colorSet ? 'on auto' : 'auto'} onClick={() => { actions.color(node.id, null); }}>自动</button>
         {actions.colorWords && <button title="自动配色按名字里的词认颜色：打开这个工作区的词表 __synapsis/_配色.md（没有就按默认建一份）" className="auto" onClick={() => { onClose(); actions.colorWords(); }}>配色词表…</button>}
       </div>}
       {actions.color && (() => { // 饱和度档（👤 2026-10-10）：在颜色上调 25 / 50 / 75 / 100%；自动色也能调（按现在看到的颜色写成手动色）
@@ -79,14 +79,14 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         return <div className="mi row swatches sat" onPointerDown={e => e.stopPropagation()}>
           <span>饱和</span>
           {[25, 50, 75, 100].map(p => <button key={p} disabled={!hex} title={hex ? p + '%' + (b0 ? '' : '（自动色会变成手动色）') : '没有可调的颜色'} className={hex && b0 && pct === p ? 'on' : ''} style={{ background: hex ? satHex(hex, p) : 'var(--line2)', opacity: hex ? 1 : .35 }}
-            onClick={() => { onClose(); actions.color(node.id, p === 100 ? base : base + '/' + p); }}>{p}</button>)}
+            onClick={() => { actions.color(node.id, p === 100 ? base : base + '/' + p); }}>{p}</button>)}
         </div>;
       })()}
       {actions.pattern && <div className="mi row swatches pats" onPointerDown={e => e.stopPropagation()}>
         <span>图案</span>
-        {Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (node.patternSet === k ? ' on' : !node.patternSet && node.pattern === k ? ' auto-on' : '')} style={{ '--c': node.color }} onClick={() => { onClose(); actions.pattern(node.id, k); }} />)}
-        <button title="自动（按图案词表 / AI 归类）" className={!node.patternSet ? 'on auto' : 'auto'} onClick={() => { onClose(); actions.pattern(node.id, null); }}>自动</button>
-        <button title="不要底纹" className={node.patternSet === '无' ? 'on auto' : 'auto'} onClick={() => { onClose(); actions.pattern(node.id, '无'); }}>无</button>
+        {Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (node.patternSet === k ? ' on' : !node.patternSet && node.pattern === k ? ' auto-on' : '')} style={{ '--c': node.color }} onClick={() => { actions.pattern(node.id, k); }} />)}
+        <button title="自动（按图案词表 / AI 归类）" className={!node.patternSet ? 'on auto' : 'auto'} onClick={() => { actions.pattern(node.id, null); }}>自动</button>
+        <button title="不要底纹" className={node.patternSet === '无' ? 'on auto' : 'auto'} onClick={() => { actions.pattern(node.id, '无'); }}>无</button>
         {actions.patternWords && <button title="打开图案词表 __synapsis/_图案.md" className="auto" onClick={() => { onClose(); actions.patternWords(); }}>图案词表…</button>}
       </div>}
       <div className="msep" />

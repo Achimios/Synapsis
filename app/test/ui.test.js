@@ -1562,16 +1562,22 @@ for (const kind of ['reactflow']) {
   ok(!!(await page.$('.ctx .mi:has-text("钉到新组")')) && !(await page.$('.ctx .mi:has-text("钉到「")')), '还没有组 → 右键只有「📌 钉到新组」');
   await page.click('.ctx .mi:has-text("钉到新组")'); await sleep(900);
   ok(names() === '组 1:甲', '钉到新组 → 写进 .synapsis/pins.json ' + names());
+  ok(!!(await page.$('.pinbox')), '钉完自动弹出钉子窗口（👤 2026-10-11）');
+  const shut = async () => { if (await page.$('.pinbox')) { await page.mouse.click(700, 800); await page.keyboard.press('Backquote'); await sleep(300); } }; // 自动弹出的窗口会挡住卡片，后面的右键先收起
+  await shut();
   // 再右键 乙 → 第一项 = 钉到「组 1」（当前），另有灰字「钉到新组」
   await rclick('乙');
   ok(!!(await page.$('.ctx .mi:has-text("钉到「组 1」")')) && !!(await page.$('.ctx .mi.quiet:has-text("钉到新组")')), '有组了 → 第一项是当前组「组 1」，灰字「＋ 钉到新组」');
   await page.click('.ctx .mi:has-text("钉到「组 1」")'); await sleep(900);
   ok(names() === '组 1:甲+乙', '钉到当前组 ' + names());
+  await shut();
   await rclick('乙'); await page.click('.ctx .mi:has-text("钉到「组 1」")'); await sleep(700);
   ok(names() === '组 1:甲+乙', '同一个节点在同一组里不重复');
+  await shut();
   // 再建一个新组钉 丙；它成为当前组，右键里 组 1 变成灰字
   await rclick('丙'); await page.click('.ctx .mi.quiet:has-text("钉到新组")'); await sleep(900);
   ok(names() === '组 1:甲+乙 | 组 2:丙' && hk().current === hk().groups[1].id, '钉到新组 → 组 2，成为当前组 ' + names());
+  await shut();
   await rclick('甲');
   ok(!!(await page.$('.ctx .mi:has-text("钉到「组 2」")')) && !!(await page.$('.ctx .mi.quiet:has-text("钉到「组 1」")')), '右键：第一项 = 当前组（组 2），其他组灰字');
   await page.keyboard.press('Escape'); await sleep(200);
@@ -1719,7 +1725,7 @@ for (const kind of ['reactflow']) {
   ok(await page.evaluate(() => window.__ctxPrevented) === false && !(await page.$('.ctx')), '没选中文字 → 不拦右键');
   // 3) 文件在外面被改：上面插了两行 → 双击钉子，高亮到新位置，钉子里的行号更新
   writeFileSync(mdFile, readFileSync(mdFile, 'utf8').replace('开头一行', '新加的一行\n又一行\n开头一行'));
-  await page.mouse.click(700, 800); await page.keyboard.press('Backquote'); await sleep(500);
+  if (!(await page.$('.pinbox'))) { await page.mouse.click(700, 800); await page.keyboard.press('Backquote'); await sleep(500); } // 钉完已自动弹出
   await page.dblclick('.pinbox li:nth-child(1) .hlab'); await sleep(1200);
   const L2b = lineOf('第二行');
   ok(L2b === L2 + 2 && (await page.$eval('pre.raw .ln.hl', e => e.dataset.ln).catch(() => '')) === String(L2b), '文件上面插了两行 → 双击钉子，原文页高亮到新位置（第 ' + L2b + ' 行）');

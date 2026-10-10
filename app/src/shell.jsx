@@ -633,6 +633,7 @@ export function Shell({ name, Canvas }) {
   const pinNodes = (ids, gid) => {
     ids = ids.filter(id => graph.nodes.has(id) && id !== ROOT);
     if (!ids.length) return;
+    setPinsOpen(true); // 👤 2026-10-11 钉完自动弹出钉子窗口，看得到钉进去了
     const labs = ids.length > 2 ? `${graph.nodes.get(ids[0]).label} 等 ${ids.length} 个` : ids.map(id => graph.nodes.get(id).label).join('、');
     pinInto(gid, (doc, g) => addNodes(doc, g, ids.map(id => ({ node: id, label: graph.nodes.get(id).label }))), labs);
   };
@@ -640,6 +641,7 @@ export function Shell({ name, Canvas }) {
   //   正文框里的文字没有 frontmatter，行号要到真文件里对一下；选中跨了几行就只钉第一行
   const nodeOfFile = file => Object.keys(wsData?.nodes || {}).find(id => wsData.nodes[id].file === file) || null;
   const pinSelection = async (sel, gid) => {
+    setPinsOpen(true);
     const { line, start, text: lineText } = lineAt(sel.text, sel.start);
     let ln = line;
     if (sel.from === 'body') {
