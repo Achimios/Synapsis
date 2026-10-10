@@ -546,3 +546,6 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 .ctx .mi.off { color: var(--faint); cursor: default; }
 .ctx .mi.off:hover { background: none; }
 .finder .ftabs a.off { opacity: .4; cursor: default; }
+
+/* 展开正文 / 属性时，那一块用实底盖住底纹（图案只留在标题那一条），免得斜纹横纹穿过文字（👤 2026-10-10） */
+.card .cardtext, .card .props { background: color-mix(in srgb, var(--c) 9%, var(--panel2)); }
