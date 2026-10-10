@@ -68,7 +68,7 @@ export function Shell({ name, Canvas }) {
   const [viewports, setViewports] = useState(() => DEMO ? load('syn.vp.' + name, {}) : {});
   const [leftHidden, setLeftHidden] = useState(() => DEMO ? load('syn.lh', false) : false);
   const [propsOpen, setPropsOpen] = useState(() => DEMO ? load('syn.po', true) : true);
-  // >v<🧭导航-历史-Alt+←/→ 后退前进，Alt+↑ 上一层
+  // >v<🧭导航-历史-Alt+A/D 后退前进，Alt+W 上一层
   // 导航历史：像浏览器一样 Alt+← / Alt+→
   const hist = useRef({ back: [], fwd: [] });
   const taRef = useRef(null), findRef = useRef(null);
@@ -763,7 +763,7 @@ export function Shell({ name, Canvas }) {
   // 看：不接管 → 展开 → 收起 → 不接管。只改本页的临时覆盖，不进历史
   const expSee = k => setSeeModes(m => { const cur = m[realScope] || {}, nx = { undefined: 'on', on: 'off', off: undefined }[cur[k]]; const o = { ...cur }; if (nx) o[k] = nx; else delete o[k]; const r = { ...m }; if (Object.keys(o).length) r[realScope] = o; else delete r[realScope]; return r; });
 
-  // >v<🧭导航-快捷键-Enter 同级 / Insert·Ctrl+Enter 子级 / Tab 左栏开关 / Esc / Alt+方向 / 鼠标侧键 后退前进
+  // >v<🧭导航-快捷键-Enter 同级 / Insert·Ctrl+Enter 子级 / Tab 左栏开关 / Esc / Alt+W/A/D / 鼠标侧键 上一层后退前进
   // 画布快捷键（焦点在输入框里时不触发）
   useEffect(() => {
     const onKey = e => {
@@ -781,15 +781,20 @@ export function Shell({ name, Canvas }) {
       else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); setLeftHidden(h => !h); } // 👤 Tab = 侧栏开关
       else if ((e.key === 'Insert' || (e.key === 'Enter' && e.ctrlKey)) && sel) { e.preventDefault(); e.stopPropagation(); addNode(true); }
       else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); addNode(false); }
-      else if (e.key === 'ArrowUp' && e.altKey) { e.preventDefault(); up(); }
-      else if (e.key === 'ArrowLeft' && e.altKey) { e.preventDefault(); back(); }
-      else if (e.key === 'ArrowRight' && e.altKey) { e.preventDefault(); fwd(); }
+      else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyW') { e.preventDefault(); e.stopPropagation(); up(); } // 👤 2026-10-10 Alt+W/A/D = 上一层 / 后退 / 前进（单手）
+      else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyA') { e.preventDefault(); e.stopPropagation(); back(); }
+      else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyD') { e.preventDefault(); e.stopPropagation(); fwd(); }
+      else if (/^Digit[1-4]$/.test(e.code) && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && mode === 'ws' && !e.repeat) { // 👤 2026-10-10 1 2 3 4 = 子图 / 子级 / 属性 / 正文：选中了就切这张卡自己的，没选中 = 本页「看」
+        e.preventDefault(); e.stopPropagation();
+        const k = ['frame', 'kids', 'props', 'text'][+e.code.slice(5) - 1];
+        if (sel && !sel.startsWith('@')) { const n = graph.nodes.get(sel); if (n && EXP[k].ok({ id: sel, children: n.children })) menuActions.expToggle(sel, k); }
+        else expSee(k);
+      }
       else if (e.key === 'Escape') setSelected(null);
       else if (e.key === ' ' && sel && !sel.startsWith('@')) { e.preventDefault(); e.stopPropagation(); toggle(sel); }
       else if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.altKey && sel && graph.nodes.get(sel)?.children.length) { e.preventDefault(); toggleFrame(sel); }
       else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); e.stopPropagation(); remove(sel); }
       else if (e.key === 'F2' && sel) { e.preventDefault(); focusLabel(sel); }
-      else if ((e.key === 'i' || e.key === 'I') && !e.ctrlKey && !e.altKey) { e.preventDefault(); setPropsOpen(o => !o); }
       else if (e.key === '?' || e.key === 'F1') { e.preventDefault(); setHelpOpen(h => !h); }
       else if ((e.key === 'l' || e.key === 'L') && !e.ctrlKey && !e.altKey && sel && !sel.startsWith('@')) { e.preventDefault(); setFinder({ mode: 'link', from: sel }); }
     };
@@ -1119,7 +1124,7 @@ export function Shell({ name, Canvas }) {
           onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} onEdgeRemove={(from, to) => removeEdges([[from, to]])} color={colors.get(sel)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} onColorWords={menuActions.colorWords} pattern={patterns.get(sel)} onPattern={menuActions.pattern} onPatternWords={menuActions.patternWords}
           hl={rawHl && rawHl.file === nodeFile(sel) ? rawHl : null} onSelMenu={mode === 'ws' ? (e, s) => setMenu({ x: e.clientX, y: e.clientY, sel: s }) : null} />
       )}
-      {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（I 开关）</div></aside>}
+      {propsOpen && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（Ctrl+Tab 开关）</div></aside>}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
       {settingsOpen && mode === 'ws' && <SettingsModal api={api} onClose={() => setSettingsOpen(false)} onHelp={() => setHelpOpen(true)} />}
       {filePick && mode === 'ws' && <FilePickModal api={api} tree={tree} setTree={setTree} onPick={addFileNodeFrom} onClose={() => setFilePick(false)} />}

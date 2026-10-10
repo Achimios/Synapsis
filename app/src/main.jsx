@@ -164,7 +164,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   const centered = new Set(plane?.ids || []); // 空间成员：卡片中心对准坐标点
   // >v<🎨画布-多选-选择由这里自己管（不用 React Flow 的 Ctrl 多选：两边各管一份会互相触发 → 死循环黑屏，👤 2026-10-08）：
   // 单击 = 只选它；Ctrl+单击 = 加入 / 移出；Shift+单击 = 加上它和当前选中之间路径上的节点；Shift+拖空白 = 框选；
-  // Ctrl+← / → = 沿入线 / 出线扩一层，Shift+← / → = 扩到头（core/select.js）
+  // Shift+A / D = 沿入线 / 出线扩一层，Alt+Shift+A / D = 扩到头，Ctrl+A = 全选（core/select.js）
   const [multi, setMultiRaw] = useState([]); // 多选（≥2 张）；单选仍由外壳的 selected 管
   const setMulti = ids => { const next = ids.length > 1 ? [...new Set(ids)].sort() : []; setMultiRaw(m => m.join('|') === next.join('|') ? m : next); };
   const ms = new Set(multi);
@@ -277,10 +277,12 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
     const key = e => {
       if (e.target.closest?.('textarea, input, [contenteditable="true"]')) return;
       if (e.key === 'Escape') { setMulti([]); return; }
-      if (e.altKey || !(e.ctrlKey || e.shiftKey) || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+      if (e.ctrlKey && !e.altKey && !e.shiftKey && e.code === 'KeyA') { e.preventDefault(); e.stopPropagation(); setMulti(view.nodes.map(n => n.id)); return; } // Ctrl+A = 全选本页的卡（不再选中界面文字）
+      // Shift+A / D = 沿入线 / 出线扩一层；Alt+Shift+A / D = 扩到头
+      if (e.ctrlKey || !e.shiftKey || (e.code !== 'KeyA' && e.code !== 'KeyD')) return;
       const b = base(); if (!b.length) return;
       e.preventDefault(); e.stopPropagation();
-      setMulti([...expand(view.edges, b, e.key === 'ArrowLeft' ? 'in' : 'out', e.shiftKey)]);
+      setMulti([...expand(view.edges, b, e.code === 'KeyA' ? 'in' : 'out', e.altKey)]);
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);

@@ -58,7 +58,7 @@ for (const kind of ['reactflow']) {
   ok((await page.$eval('.crumbs', e => e.innerText)).includes('游戏AI'), '双击子项 → 跳进去');
   ok((await page.$$eval('.card.sel', cs => cs.map(c => c.innerText.split('\n')[0]))).some(t => t.includes('决策')), '双击子项 → 选中它');
   await page.keyboard.press('Escape');
-  await page.keyboard.press('Alt+ArrowUp'); await sleep(800);
+  await page.keyboard.press('Alt+KeyW'); await sleep(800);
   await page.click('.card:has-text("游戏AI") .kids'); await sleep(400);
   ok((await page.$$('.kidlist li')).length === 0, '再点 ▸N 收起');
   await page.keyboard.press('Escape'); await sleep(200);
@@ -108,10 +108,14 @@ for (const kind of ['reactflow']) {
   await page.keyboard.down('Shift'); await page.mouse.click(...center(await cardBox('行动'))); await page.keyboard.up('Shift'); await sleep(400);
   ok(await selLabs() === '决策,感知,行动,记忆与人格', 'Shift+单击 = 两点之间路径上的都选上（兜底不在路径上） ' + await selLabs());
   await page.keyboard.press('Escape'); await page.mouse.click(...center(await cardBox('行动'))); await sleep(300);
-  await page.keyboard.press('Control+ArrowLeft'); await sleep(400);
-  ok(await selLabs() === '兜底,决策,行动', 'Ctrl+← = 沿入线扩一层 ' + await selLabs());
-  await page.keyboard.press('Shift+ArrowLeft'); await sleep(400);
-  ok((await page.$$('.card.sel')).length === 5, 'Shift+← = 一直扩到头 ' + await selLabs());
+  await page.keyboard.press('Shift+KeyA'); await sleep(400);
+  ok(await selLabs() === '兜底,决策,行动', 'Shift+A = 沿入线扩一层 ' + await selLabs());
+  await page.keyboard.press('Alt+Shift+KeyA'); await sleep(400);
+  ok((await page.$$('.card.sel')).length === 5, 'Alt+Shift+A = 一直扩到头 ' + await selLabs());
+  await page.keyboard.press('Escape'); await sleep(200);
+  await page.keyboard.press('Control+KeyA'); await sleep(300);
+  ok((await page.$$('.card.sel')).length === (await page.$$('.react-flow__node.react-flow__node-card, .card')).length && (await page.$$('.card.sel')).length > 1, 'Ctrl+A = 全选本页的卡');
+  ok(!(await page.evaluate(() => String(getSelection()).trim())), 'Ctrl+A 不再选中界面文字');
   await page.keyboard.press('Escape'); await sleep(200);
   ok((await page.$$('.card.sel')).length === 0, 'Esc 清空多选');
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${kind}_2_select.png` });
@@ -189,7 +193,7 @@ for (const kind of ['reactflow']) {
   ok((await selTxt()) === '个性空间', '双击大纲树 → 改名框');
   await page.keyboard.press('Escape'); await sleep(200);
   await page.click('.side .bar button'); // 关掉属性面板
-  await page.keyboard.press('Alt+ArrowLeft'); await sleep(600);
+  await page.keyboard.press('Alt+KeyA'); await sleep(600);
   await page.mouse.click(1000, 780); await sleep(200);
   await page.click('button:has-text("＋ 节点")'); await sleep(400);
   ok((await selTxt()).startsWith('新节点'), '工具栏 ＋节点 → 大纲选中名字 ' + await selTxt());
@@ -211,14 +215,14 @@ for (const kind of ['reactflow']) {
   const camIn = await cam();
   ok(camIn !== camFit, '缩放平移确实改变了视图（否则下面的还原检查无意义）');
   await page.mouse.click(1000, 780); await page.keyboard.press('Escape');
-  await page.keyboard.press('Alt+ArrowUp'); await sleep(800);
+  await page.keyboard.press('Alt+KeyW'); await sleep(800);
   ok((await page.$eval('.crumbs a', e => e.innerText)) === '根' && /^根( › [^›]+)?$/.test((await page.$eval('.crumbs', e => e.innerText)).trim()), 'Alt+↑ 返回上一级（面包屑回到根；选中刚离开的节点 → 后面多接它一段）');
-  await page.keyboard.press('Alt+ArrowLeft'); await sleep(800);
+  await page.keyboard.press('Alt+KeyA'); await sleep(800);
   ok((await page.$eval('.crumbs', e => e.innerText)).includes('游戏AI'), 'Alt+← 后退回游戏AI');
   ok(await cam() === camIn, `返回再进来视图还原 ${camIn} vs ${await cam()}`);
-  await page.keyboard.press('Alt+ArrowRight'); await sleep(600);
+  await page.keyboard.press('Alt+KeyD'); await sleep(600);
   ok((await page.$eval('.crumbs', e => e.innerText)) === '根', 'Alt+→ 前进');
-  await page.keyboard.press('Alt+ArrowLeft'); await sleep(600);
+  await page.keyboard.press('Alt+KeyA'); await sleep(600);
 
   // 刷新：坐标持久
   await page.reload(); await sleep(1500);
@@ -923,7 +927,7 @@ for (const kind of ['reactflow']) {
   // 卡片上显示人加的属性
   await page.mouse.click(700, 760); await sleep(200); // AI 预览时已选中它，再点一下会取消
   await page.mouse.click(...mid(await (await lab('咕噜人')).boundingBox())); await sleep(300);
-  if (!(await page.$('.addrow'))) { await page.keyboard.press('i'); await sleep(500); }
+  if (!(await page.$('.addrow'))) { await page.keyboard.press('Control+Tab'); await sleep(500); }
   const gmd = () => readFileSync(join(ws, '__synapsis', '咕噜人.md'), 'utf8');
   const cardP = () => page.$$eval('.card', cs => cs.find(c => c.querySelector('.lab')?.textContent === '咕噜人')?.querySelector('.props')?.textContent || '');
   // 属性表：失焦也能加（不用回车）、改名、清空值不删、✕ 删
@@ -1001,7 +1005,7 @@ for (const kind of ['reactflow']) {
   await page.mouse.dblclick(...mid(await (await lab('情绪反应')).boundingBox())); await sleep(1200);
   await page.mouse.click(...mid(await (await lab('咕噜人')).boundingBox())); await sleep(300);
   await page.keyboard.press('Control+x'); await sleep(300);
-  await page.keyboard.press('Alt+ArrowUp'); await sleep(1200);
+  await page.keyboard.press('Alt+KeyW'); await sleep(1200);
   await page.mouse.move(700, 650); await page.keyboard.press('Control+v'); await sleep(2000);
   ok(existsSync(join(ws, '__synapsis', '咕噜人.md')) && /血量: 120/.test(readFileSync(join(ws, '__synapsis', '咕噜人.md'), 'utf8')) && !existsSync(join(ws, '__synapsis', '情绪反应', '咕噜人.md')), 'Ctrl+X → 回到根 Ctrl+V = 剪出来（属性还在）');
   // 大纲树拖动：行 → 行 = 放进去；行 → 树下空白 = 挪到根；行 → 画布卡片 = 放进那张卡
@@ -1141,6 +1145,18 @@ for (const kind of ['reactflow']) {
   await page.click('.ctx .expchips button.off'); await sleep(200);
   ok(!!(await page.$('.ctx')), '点灰的项没反应（菜单不关）');
   await page.keyboard.press('Escape'); await sleep(200);
+  // 数字键 1-4：选中了卡 = 切这张卡自己的；没选中 = 本页「看」
+  { await page.mouse.click(b丁.x + b丁.width / 2, b丁.y + b丁.height / 2); await sleep(300);
+    const n0 = await nText();
+    await page.keyboard.press('Digit4'); await sleep(500);
+    ok((await nText()) !== n0, '选中丁按 4 → 正文展开状态变了');
+    await page.keyboard.press('Digit4'); await sleep(500);
+    ok((await nText()) === n0, '再按 4 → 变回去');
+    await page.keyboard.press('Escape'); await sleep(200);
+    await page.keyboard.press('Digit4'); await sleep(500);
+    ok((await nText()) !== n0, '没选中按 4 → 本页「看」正文');
+    await page.keyboard.press('Digit4'); await sleep(300); await page.keyboard.press('Digit4'); await sleep(500);
+    ok((await nText()) === n0, '看 三态轮一圈 → 回到不接管'); }
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });
@@ -1356,10 +1372,10 @@ for (const kind of ['reactflow']) {
   await page.dblclick('.react-flow__node[data-id="丙"] .lab'); await sleep(900);
   await rclick('丁'); await page.click('.ctx .mi:has-text("钉到「组 1」")'); await sleep(900);
   ok(names() === '组 1:甲+乙+丙/丁 | 组 2:丙', '在别的页钉 丁 → 组 1 ' + names());
-  await page.mouse.click(700, 800); await page.keyboard.press('Alt+ArrowUp'); await sleep(900);
+  await page.mouse.click(700, 800); await page.keyboard.press('Alt+KeyW'); await sleep(900);
   await page.dblclick('.pinbox .hgroup:nth-child(1) li:nth-child(3) .hlab'); await sleep(1200);
   ok((await page.$eval('.crumbs', e => e.innerText)).includes('丙') && (await page.$eval('.side h3 input', e => e.value)) === '丁', '双击别页的钉子 → 换页并选中 丁');
-  await page.mouse.click(700, 800); await page.keyboard.press('Alt+ArrowUp'); await sleep(700);
+  await page.mouse.click(700, 800); await page.keyboard.press('Alt+KeyW'); await sleep(700);
   // 撤销 / 重做：撤销刚才钉 丁；操作历史里有一句人话
   await page.mouse.click(700, 800); await page.keyboard.press('Control+z'); await sleep(900);
   ok(names() === '组 1:甲+乙 | 组 2:丙', 'Ctrl+Z → 撤销钉 丁 ' + names());
@@ -1414,7 +1430,7 @@ for (const kind of ['reactflow']) {
   const ctr = async l => { const cb = await (await lab(l))?.boundingBox(), rb = await page.$eval('.react-flow', e => e.getBoundingClientRect().toJSON()); return cb ? Math.hypot(cb.x + cb.width / 2 - (rb.left + rb.width / 2), cb.y + cb.height / 2 - (rb.top + rb.height / 2)) : 9999; };
   await page.dblclick('.pinbox .hgroup:nth-child(1) li:nth-child(3) .hlab'); await sleep(450);
   ok((await ctr('丁')) < 220, '双击别页的钉子 → 450ms 内换页并居中 ' + Math.round(await ctr('丁')));
-  await page.mouse.click(700, 800); await page.keyboard.press('Alt+ArrowUp'); await sleep(500);
+  await page.mouse.click(700, 800); await page.keyboard.press('Alt+KeyW'); await sleep(500);
   // AI 指令框也一样（和钉子窗口共用同一套拖动 / 缩放）：缩小窗口 → 默认位置和拖过的位置都拉回屏幕里
   await page.mouse.click(700, 800); await page.keyboard.press('Shift+F'); await sleep(600);
   const aiIn = async () => { const b = await page.$eval('.agentbox', e => e.getBoundingClientRect().toJSON()), v = page.viewportSize(); return b.left >= -1 && b.top >= -1 && b.right <= v.width + 1 && b.bottom <= v.height + 1; };
