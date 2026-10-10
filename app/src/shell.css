@@ -87,6 +87,12 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 /* 节点颜色 --c（core/colors.js）：边框 + 淡底色；左边那条仍是状态色 */
 .card { --c: var(--line2); border-top-color: color-mix(in srgb, var(--c) 70%, var(--line2)); border-right-color: color-mix(in srgb, var(--c) 70%, var(--line2)); border-bottom-color: color-mix(in srgb, var(--c) 70%, var(--line2)); background: color-mix(in srgb, var(--c) 9%, var(--panel2)); }
 .card .title .lab { color: color-mix(in srgb, var(--c) 35%, var(--text)); }
+/* 👤 2026-10-11 亮色下卡片 / 框太淡：只在亮色里把节点色压深一截当边框、底色多染一点（深色不动） */
+:root[data-theme="light"] .card.uibox { border-color: color-mix(in srgb, var(--c, var(--accent)) 70%, #444); }
+:root[data-theme="light"] .card.sel, :root[data-theme="light"] .frame.sel { border-color: var(--sel); }
+:root[data-theme="light"] .card:not(.uibox):not(.sel) { border-top-color: color-mix(in srgb, var(--c) 70%, #444); border-right-color: color-mix(in srgb, var(--c) 70%, #444); border-bottom-color: color-mix(in srgb, var(--c) 70%, #444); }
+:root[data-theme="light"] .card:not(.uibox) { background: color-mix(in srgb, var(--c) 14%, var(--panel2)); }
+:root[data-theme="light"] .frame:not(.sel) { border-color: color-mix(in srgb, var(--c) 70%, #444); background: color-mix(in srgb, var(--c) 10%, transparent); }
 .card.sel { border-color: var(--sel); box-shadow: 0 0 0 1px var(--sel), 0 0 10px color-mix(in srgb, var(--c) 60%, transparent); }
 .card.dim { opacity: .25; }
 /* 看清连线（顶栏 🔍）：卡片缩成只剩标题、变淡，让线露出来；有选中时，选中的和它相连的保持原样（它们不带 .dim），其余更淡；悬停时恢复 */
