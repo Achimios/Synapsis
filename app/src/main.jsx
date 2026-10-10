@@ -212,7 +212,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   useEffect(() => { // 选中了展开子图的框（普通节点或 UI 框）+ 鼠标在框上：滚轮 = 缩放框内画布（以鼠标为中心），UI 框里鼠标中键拖 = 平移框内画布；整页的缩放 / 平移不动
     const hit = e => {
       const { selected: sid, view: v } = fvLive.current;
-      const n = sid && v.nodes.find(x => x.id === sid && x.framed); if (!n) return null;
+      const sel = sid && v.nodes.find(x => x.id === sid), n = sel?.framed ? sel : sel?.frame != null ? v.nodes.find(x => x.id === sel.frame && x.framed) : null; if (!n) return null; // 选中的是展开子图的框，或者是框里的子节点 → 都算「这个框」
       const r = document.querySelector('.react-flow__node[data-id="' + CSS.escape(n.id) + '"]')?.getBoundingClientRect();
       if (!r || e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return null;
       return { n, r };
@@ -235,15 +235,17 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
     };
     const move = e => {
       if (!pan) return;
+      if (!(e.buttons & 4)) { pan = null; return; } // 中键已经松开（mouseup 被系统吞了也能停）
       const dx = (e.clientX - pan.x) / pan.s, dy = (e.clientY - pan.y) / pan.s;
       setFv(m => ({ ...m, [pan.id]: { z: pan.cur.z, tx: pan.cur.tx + dx, ty: pan.cur.ty + dy } }));
     };
     const up = () => { pan = null; };
+    window.addEventListener('pointerup', up, true); window.addEventListener('pointercancel', up, true); window.addEventListener('blur', up);
     const aux = e => { if (e.button === 1 && hit(e)) { e.preventDefault(); e.stopPropagation(); } };
     window.addEventListener('wheel', onWheel, { capture: true, passive: false });
     window.addEventListener('mousedown', down, true); window.addEventListener('pointerdown', down, true);
     window.addEventListener('mousemove', move, true); window.addEventListener('mouseup', up, true); window.addEventListener('auxclick', aux, true);
-    return () => { window.removeEventListener('wheel', onWheel, true); window.removeEventListener('mousedown', down, true); window.removeEventListener('pointerdown', down, true); window.removeEventListener('mousemove', move, true); window.removeEventListener('mouseup', up, true); window.removeEventListener('auxclick', aux, true); };
+    return () => { window.removeEventListener('wheel', onWheel, true); window.removeEventListener('mousedown', down, true); window.removeEventListener('pointerdown', down, true); window.removeEventListener('mousemove', move, true); window.removeEventListener('mouseup', up, true); window.removeEventListener('auxclick', aux, true); window.removeEventListener('pointerup', up, true); window.removeEventListener('pointercancel', up, true); window.removeEventListener('blur', up); };
   }, []);
   // UI 框里的东西被平移 / 缩放到框外的部分裁掉（子节点是画布上的独立节点，不在框的 DOM 里，用 clip-path 按框的范围裁）
   const uiClip = n => {
@@ -251,11 +253,16 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
     if (!f || !f.ui) return {};
     const p = posOf(n), m = nodesRef.current?.find(x => x.id === n.id)?.measured; if (!p || !m?.width) return {};
     const t = Math.max(0, UI_TITLE - p.y), l = Math.max(0, -p.x), r = Math.max(0, p.x + m.width - f.uiW), b = Math.max(0, p.y + m.height - f.uiH);
-    return t || l || r || b ? { style: { clipPath: `inset(${t}px ${r}px ${b}px ${l}px)` } } : {};
+    return t || l || r || b ? { clipPath: `inset(${t}px ${r}px ${b}px ${l}px)` } : {};
+  };
+  // 一个节点的 style 在这里一次算好（框的初始大小 / UI 框的宽高 / 被裁剪）；没有就明确给 undefined，别让上一次的裁剪留在节点上
+  const nodeStyle = n => {
+    const sty = { ...(n.framed && !n.ui ? { width: FMIN.w, height: FMIN.h } : {}), ...(n.ui && (n.framed || !n.children.length) ? { width: n.uiW * (fx[n.frame]?.z || 1), height: n.uiH * (fx[n.frame]?.z || 1) } : {}), ...uiClip(n) }; // 框里的 UI 框随框内缩放，外层宽高也要跟着乘
+    return Object.keys(sty).length ? sty : undefined;
   };
   const build = () => [
     ...(plane ? [{ id: '@axes', type: 'axes', position: { x: -plane.S * 1.25, y: -plane.S * 1.25 }, data: plane, draggable: false, selectable: false, focusable: false, zIndex: -1, style: { pointerEvents: 'none' } }] : []),
-    ...view.nodes.map(n => ({ id: n.id, type: n.framed && !n.ui ? 'frame' : 's', position: posOf(n), ...uiClip(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(n.framed && !n.ui ? { style: { width: FMIN.w, height: FMIN.h } } : {}), ...(n.ui && (n.framed || !n.children.length) ? { style: { width: n.uiW, height: n.uiH } } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id), zoom: n.frame != null ? fx[n.frame]?.z || 1 : 1 }, selected: isSel(n.id) })),
+    ...view.nodes.map(n => ({ id: n.id, type: n.framed && !n.ui ? 'frame' : 's', position: posOf(n), style: nodeStyle(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id), zoom: n.frame != null ? fx[n.frame]?.z || 1 : 1 }, selected: isSel(n.id) })),
     ...view.portals.map(p => ({ id: p.id, type: 's', position: layout[p.id], data: { portal: p, dim: nodeDim(p.id, view, selected) }, selected: isSel(p.id) })),
     ...pics.map(p => ({ id: p.id, type: 'pic', position: layout[p.id] || { x: 0, y: 0 }, data: { pic: p, isSel: isSel(p.id) }, selected: isSel(p.id) })),
   ];

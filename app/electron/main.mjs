@@ -141,6 +141,8 @@ function refreshTray() {
     { type: 'separator' },
     ...(recent.length ? recent.map(r => ({ label: r.name, sublabel: r.dir, click: () => openWorkspace(r.dir) })) : [{ label: '（还没有打开过的工作区）', enabled: false }]),
     { type: 'separator' },
+    // 👤 2026-10-10 高频改代码时：改了服务端（vite.config.js / core/*.js）要重启才生效。不清 .junk（撤销栈还要用），重开当前的工作区
+    { label: '重启 Synapsis（改了服务端代码后用）', click: () => { const dir = [...wins.keys()][0]; app.relaunch({ args: [...process.argv.slice(1).filter(a => a !== '--ws' && a !== dir), ...(dir ? ['--ws', dir] : [])] }); app.exit(0); } },
     { label: '退出 Synapsis', click: () => { for (const dir of touched) sweepTrash(dir); app.exit(0); } }, // app.exit 不触发 before-quit，所以这里直接清
   ]));
 }
