@@ -1326,6 +1326,15 @@ for (const kind of ['reactflow']) {
   ok((await page.$eval('.react-flow__viewport', e => e.style.transform)) === vp0, '整页的缩放 / 平移没变');
   await page.mouse.move(480, 680); await page.mouse.wheel(0, 300); await sleep(1500);
   ok((await page.$eval('.react-flow__viewport', e => e.style.transform)) !== vp0, '鼠标不在框上 → 滚轮照旧缩放整页');
+  // 鼠标中键拖 = 平移框内；左下角 all = 复位（回到全部显示、居中）
+  await page.click('.card.uibox .lab'); await sleep(200);
+  ub = await box(); const kx0 = (await kid()).x;
+  await page.mouse.move(ub.x + ub.width / 2, ub.y + ub.height - 12); await page.mouse.down({ button: 'middle' }); await page.mouse.move(ub.x + ub.width / 2 + 40, ub.y + ub.height - 12, { steps: 4 }); await page.mouse.up({ button: 'middle' }); await sleep(400);
+  ok((await kid()).x - kx0 > 20, '选中框，鼠标中键在框里拖 → 框内画布平移（子节点跟着动） ' + ((await kid()).x - kx0));
+  ok(!!(await page.$('.card.uibox .uiall')), '展开子图的 UI 框左下角有 all');
+  await page.click('.card.uibox .uiall'); await sleep(500);
+  const cb3 = await kid(); ub = await box();
+  ok(cb3.x >= ub.x && cb3.x + cb3.width <= ub.x + ub.width + 1 && Math.abs(cb3.x + cb3.width / 2 - (ub.x + ub.width / 2)) < 12, '点 all → 复位：子节点回到框里、水平居中 ' + [cb3.x, cb3.width, ub.x, ub.width].map(Math.round));
   // ⊟ 收起子图、▸ 展开子级列表
   await page.click('.card.uibox .kids.fr'); await sleep(800);
   ub = await box(); const cb2 = await kid();

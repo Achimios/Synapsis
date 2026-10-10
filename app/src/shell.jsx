@@ -140,7 +140,7 @@ export function Shell({ name, Canvas }) {
     const t = setTimeout(() => api('/ai/colors').then(d => setSemCols(d.colors)).catch(() => {}), 1200); // 改大纲时别每个字都问
     return () => clearTimeout(t);
   }, [mode, aiStatus, wsData?.outline, wsData?.colorWords]);
-  const colors = useMemo(() => colorMap(graph, getMeta, wsData?.colorWords, semCols, { scope: realScope, sel: selected }), [graph, getMeta, wsData?.colorWords, semCols, realScope, selected]); // 👤 2026-10-10 内 1 层：没选中 = 本画布；选中 = 节点里面
+  const colors = useMemo(() => colorMap(graph, getMeta, wsData?.colorWords, semCols, { scope: realScope }), [graph, getMeta, wsData?.colorWords, semCols, realScope]); // 👤 2026-10-10 本页的颜色取决于本页的节点（子孙跟组头）；选中不改色
   const [semPats, setSemPats] = useState(null);
   useEffect(() => {
     if (mode !== 'ws' || !aiStatus?.ok || !aiStatus.cfg?.semColors) { setSemPats(null); return; }
@@ -238,7 +238,7 @@ export function Shell({ name, Canvas }) {
       setSaveState('保存中…');
       const hint = saveHint.current; saveHint.current = null;
       api('/outline', { method: 'PUT', body: JSON.stringify({ outline: text, ...(hint ? { hint } : {}) }) })
-        .then(d => { lastSaved.current = text; setWsData(d); recordSave(text, d.report); setPositions(p => ({ ...p, ...Object.fromEntries(Object.entries(d.layout || {}).filter(([k]) => k.startsWith('@pic:'))) })); /* 分组改名后散图坐标键会变 */ const r = d.report; setSaveState('已保存 ' + new Date().toLocaleTimeString() + (r.removed.length ? '（' + r.removed.length + ' 项移进 .junk/）' : '')); })
+        .then(d => { lastSaved.current = text; setWsData(d); recordSave(text, d.report); setPositions(p => ({ ...p, ...Object.fromEntries(Object.entries(d.layout || {}).filter(([k]) => k.startsWith('@pic:') || !p[k])) })); /* 改名 / 搬家后坐标键会变：服务端迁好的新键补进来（已有的不覆盖）——不补的话刚改名的节点在这边没坐标，下一个新节点会叠到同一个空位（2026-10-10 UI 框里连建三个全在 (0,0)） */ const r = d.report; setSaveState('已保存 ' + new Date().toLocaleTimeString() + (r.removed.length ? '（' + r.removed.length + ' 项移进 .junk/）' : '')); })
         .catch(e => setSaveState('❌ 保存失败：' + e.message));
     }, 700);
     return () => clearTimeout(t);
@@ -1409,6 +1409,7 @@ export function UiCard({ node, dim, isSel }) {
         <li key={k.id} data-nid={k.id} title="双击跳进去" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
           <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span>{k.renaming ? <RenameInput id={k.id} label={k.label} /> : <span>{k.label}</span>}{k.n > 0 && <span className="kn">▸{k.n}</span>}
         </li>))}</ul>}
+      {node.framed && node.children.length > 0 && <span className="uiall nodrag" title="复位视角：移到里面所有节点的中点，缩放到全部显示" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.fitFrame?.(node.id); }}>all</span>}
       <span className="uigrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} onClick={stop} />
     </div>
   );
@@ -1419,6 +1420,7 @@ export function FrameCard({ node, dim, isSel }) {
       <div className="fhead" onDoubleClick={e => { e.stopPropagation(); cardActions.drill(node.id); }} title="双击钻进去">
         {node.status && <span className="st">{STATUS_ICON[node.status]}</span>}
         {node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
+        <span className="frall" title="缩放回 100%" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.fitFrame?.(node.id); }}>all</span>
         <span className="kids" title="收起子图（F）" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggleFrame(node.id); }}>⊟</span>
       </div>
     </div>

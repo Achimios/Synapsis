@@ -10,7 +10,7 @@
 规矩：
 - 画布选型已定 React Flow（`../_设计/Decision_Canvas.md`）；卡片里可交互的元素加 `nodrag`/`nowheel` 或拦 `pointerdown`
 - 坐标以外壳的 layout 为准，React Flow 只在拖动中用本地坐标；重建 nodes 保留 `measured`
-- 自检：`npm run test:desktop`（Electron，窗口隐藏，最近列表重定向到临时文件）；`npm test`（纯 Node）；`npm run test:ui`（需先起 dev；无头 Edge；**只用 `?demo` 或临时 `?ws=`，别让测试碰真工作区**）；`test/shot.mjs` 给真实工作区截图
+- 自检：`npm run test:desktop`（Electron，窗口隐藏，最近列表重定向到临时文件）；`npm test`（纯 Node）；`node test/ui_par.mjs [块名片段…]`（并行版：只跑相关块十几秒，不带参数 = 全部块几分钟；`--list` 看块名）、`npm run test:ui`（串行全量，慢；需先起 dev；无头 Edge；**只用 `?demo` 或临时 `?ws=`，别让测试碰真工作区**）；`test/shot.mjs` 给真实工作区截图
 - 启动：被规划项目根目录 `Synapsis.vbs`；停：`../Synapsis_stop.bat`；或 `npm run dev`（:5410）
 - 已知简化：节点 id = 名称路径（同父 1:1 改名能跟上）。视图记忆在 `<项目>/.synapsis/view.json`（`?demo` 仍用 localStorage）
 - 主题颜色全在 `src/shell.css` 的 `:root` 变量里，别在组件里写死颜色

@@ -174,38 +174,88 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   const isSel = id => id === selected || ms.has(id);
   cardActions.multi = multi; // 外壳的 Ctrl+C 要知道多选了哪些
   // 框里子节点：画布坐标（相对框）↔ 存的坐标（钻进分组那页的坐标）
-  // 👤 2026-10-10 框内画布：存的坐标 p → 框内位置 = z * (p - c) + o。z = 框内缩放（选中框时滚轮）；
-  //   普通框 c = 子节点最小角、o = 内边距；UI 框 c = 子节点包围盒中点（展开那一刻定下来，之后拖子节点不跟着跳）、o = 框的中点
-  const [fz, setFz] = useState({});
-  const uiAnchor = useRef({});
+  // 👤 2026-10-10 框内画布：存的坐标 p → 框内位置 = z * p + t，视角 {z, tx, ty}。
+  //   UI 框：自己的平移 + 缩放（滚轮缩放、鼠标中键拖着平移、左下角 all = 复位：移到子节点包围盒中点并缩放到全部显示）；没动过 = 展开那一刻自动复位一次
+  //   普通框：大小跟着子节点走，只有缩放 z（all = 回到 1）。框外的部分被裁掉（UI 框）
+  const nodesRef = useRef(null);
+  const [fv, setFv] = useState({});
+  const UI_TITLE = 30, UI_PAD = 12;
+  const natural = id => { const m = nodesRef.current?.find(x => x.id === id)?.measured; return { w: m?.width || 150, h: m?.height || 40 }; };
+  const fitUi = (n, zNow = 1) => {
+    const ks = n.children.map(c => ({ p: layout[c], s: natural(c) })).filter(k => k.p);
+    if (!ks.length) return { z: 1, tx: n.uiW / 2, ty: UI_TITLE + (n.uiH - UI_TITLE) / 2 };
+    const x0 = Math.min(...ks.map(k => k.p.x)), y0 = Math.min(...ks.map(k => k.p.y)), x1 = Math.max(...ks.map(k => k.p.x + k.s.w / zNow)), y1 = Math.max(...ks.map(k => k.p.y + k.s.h / zNow));
+    const z = Math.max(0.15, Math.min(1.5, (n.uiW - 2 * UI_PAD) / Math.max(1, x1 - x0), (n.uiH - UI_TITLE - UI_PAD) / Math.max(1, y1 - y0)));
+    return { z, tx: n.uiW / 2 - z * (x0 + x1) / 2, ty: UI_TITLE + (n.uiH - UI_TITLE - UI_PAD) / 2 - z * (y0 + y1) / 2 };
+  };
   const fx = {};
   for (const n of view.nodes) if (n.framed) {
-    const ks = n.children.map(c => layout[c]).filter(Boolean), z = fz[n.id] || 1;
-    if (n.ui) {
-      let a = uiAnchor.current[n.id];
-      if (!a || a.n !== ks.length) { a = ks.length ? { n: ks.length, x: (Math.min(...ks.map(p => p.x)) + Math.max(...ks.map(p => p.x)) + 150) / 2, y: (Math.min(...ks.map(p => p.y)) + Math.max(...ks.map(p => p.y)) + 40) / 2 } : { n: 0, x: 0, y: 0 }; uiAnchor.current[n.id] = a; }
-      fx[n.id] = { z, cx: a.x, cy: a.y, ox: n.uiW / 2, oy: n.uiH / 2 };
-    } else fx[n.id] = { z, cx: ks.length ? Math.min(...ks.map(p => p.x)) : 0, cy: ks.length ? Math.min(...ks.map(p => p.y)) : 0, ox: FP.x, oy: FP.y };
+    if (n.ui) fx[n.id] = fv[n.id] || fitUi(n);
+    else { const ks = n.children.map(c => layout[c]).filter(Boolean), z = fv[n.id]?.z || 1; fx[n.id] = { z, tx: FP.x - z * (ks.length ? Math.min(...ks.map(p => p.x)) : 0), ty: FP.y - z * (ks.length ? Math.min(...ks.map(p => p.y)) : 0) }; }
   }
   const frameOf = new Map(view.nodes.filter(n => n.frame != null).map(n => [n.id, n.frame]));
-  const posOf = n => { const p = layout[n.id], t = fx[frameOf.get(n.id)]; return t && p ? { x: t.z * (p.x - t.cx) + t.ox, y: t.z * (p.y - t.cy) + t.oy } : p; };
-  const toLayout = (id, p) => { const t = fx[frameOf.get(id)]; return t ? { x: Math.round((p.x - t.ox) / t.z + t.cx), y: Math.round((p.y - t.oy) / t.z + t.cy) } : p; };
-  const wheelLive = useRef(); wheelLive.current = { selected, view };
-  useEffect(() => { // 选中了展开子图的框（普通节点或 UI 框），鼠标在框上滚轮 = 缩放框内画布，不缩放整页
-    const onWheel = e => {
-      const { selected: sid, view: v } = wheelLive.current;
-      const n = sid && v.nodes.find(x => x.id === sid && x.framed); if (!n) return;
+  const posOf = n => { const p = layout[n.id], t = fx[frameOf.get(n.id)]; return t && p ? { x: t.z * p.x + t.tx, y: t.z * p.y + t.ty } : p; };
+  const toLayout = (id, p) => { const t = fx[frameOf.get(id)]; return t ? { x: Math.round((p.x - t.tx) / t.z), y: Math.round((p.y - t.ty) / t.z) } : p; };
+  const fvLive = useRef(); fvLive.current = { selected, view, fx, fitUi };
+  cardActions.fitFrame = id => { const n = view.nodes.find(x => x.id === id); if (!n) return; setFv(m => { if (!n.ui) { const { [id]: _, ...rest } = m; return rest; } return { ...m, [id]: fitUi(n, fx[id]?.z || 1) }; }); };
+  // UI 框刚展开 / 子节点数变了 → 自动复位一次（等卡片量完尺寸再算）
+  const fvKey = useRef({});
+  useEffect(() => {
+    const todo = view.nodes.filter(n => n.framed && n.ui && fvKey.current[n.id] !== n.children.length);
+    for (const n of todo) fvKey.current[n.id] = n.children.length;
+    for (const n of view.nodes) if (!n.framed || !n.ui) delete fvKey.current[n.id];
+    if (!todo.length) return;
+    setFv(m => { const r = { ...m }; for (const n of todo) delete r[n.id]; return r; });
+    const t = setTimeout(() => { const L = fvLive.current; setFv(m => { const r = { ...m }; for (const n of todo) { const cur = L.view.nodes.find(x => x.id === n.id); if (cur?.framed) r[n.id] = L.fitUi(cur, L.fx[n.id]?.z || 1); } return r; }); }, 450);
+    return () => clearTimeout(t);
+  }, [view]);
+  useEffect(() => { // 选中了展开子图的框（普通节点或 UI 框）+ 鼠标在框上：滚轮 = 缩放框内画布（以鼠标为中心），UI 框里鼠标中键拖 = 平移框内画布；整页的缩放 / 平移不动
+    const hit = e => {
+      const { selected: sid, view: v } = fvLive.current;
+      const n = sid && v.nodes.find(x => x.id === sid && x.framed); if (!n) return null;
       const r = document.querySelector('.react-flow__node[data-id="' + CSS.escape(n.id) + '"]')?.getBoundingClientRect();
-      if (!r || e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
-      e.preventDefault(); e.stopPropagation();
-      setFz(m => ({ ...m, [n.id]: Math.max(0.3, Math.min(3, (m[n.id] || 1) * (e.deltaY < 0 ? 1.1 : 1 / 1.1))) }));
+      if (!r || e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return null;
+      return { n, r };
     };
+    const onWheel = e => {
+      const h = hit(e); if (!h) return;
+      e.preventDefault(); e.stopPropagation();
+      const { n, r } = h, f = e.deltaY < 0 ? 1.1 : 1 / 1.1, cur = fvLive.current.fx[n.id];
+      const z = Math.max(0.15, Math.min(3, cur.z * f));
+      if (!n.ui) { setFv(m => ({ ...m, [n.id]: { z, tx: 0, ty: 0 } })); return; }
+      const s = r.width / n.uiW, mx = (e.clientX - r.left) / s, my = (e.clientY - r.top) / s;
+      setFv(m => ({ ...m, [n.id]: { z, tx: mx - (mx - cur.tx) * z / cur.z, ty: my - (my - cur.ty) * z / cur.z } }));
+    };
+    let pan = null;
+    const down = e => {
+      if (e.button !== 1) return;
+      const h = hit(e); if (!h || !h.n.ui) return;
+      e.preventDefault(); e.stopPropagation();
+      pan = { id: h.n.id, x: e.clientX, y: e.clientY, s: h.r.width / h.n.uiW, cur: fvLive.current.fx[h.n.id] };
+    };
+    const move = e => {
+      if (!pan) return;
+      const dx = (e.clientX - pan.x) / pan.s, dy = (e.clientY - pan.y) / pan.s;
+      setFv(m => ({ ...m, [pan.id]: { z: pan.cur.z, tx: pan.cur.tx + dx, ty: pan.cur.ty + dy } }));
+    };
+    const up = () => { pan = null; };
+    const aux = e => { if (e.button === 1 && hit(e)) { e.preventDefault(); e.stopPropagation(); } };
     window.addEventListener('wheel', onWheel, { capture: true, passive: false });
-    return () => window.removeEventListener('wheel', onWheel, true);
+    window.addEventListener('mousedown', down, true); window.addEventListener('pointerdown', down, true);
+    window.addEventListener('mousemove', move, true); window.addEventListener('mouseup', up, true); window.addEventListener('auxclick', aux, true);
+    return () => { window.removeEventListener('wheel', onWheel, true); window.removeEventListener('mousedown', down, true); window.removeEventListener('pointerdown', down, true); window.removeEventListener('mousemove', move, true); window.removeEventListener('mouseup', up, true); window.removeEventListener('auxclick', aux, true); };
   }, []);
+  // UI 框里的东西被平移 / 缩放到框外的部分裁掉（子节点是画布上的独立节点，不在框的 DOM 里，用 clip-path 按框的范围裁）
+  const uiClip = n => {
+    const f = n.frame != null && view.nodes.find(x => x.id === n.frame);
+    if (!f || !f.ui) return {};
+    const p = posOf(n), m = nodesRef.current?.find(x => x.id === n.id)?.measured; if (!p || !m?.width) return {};
+    const t = Math.max(0, UI_TITLE - p.y), l = Math.max(0, -p.x), r = Math.max(0, p.x + m.width - f.uiW), b = Math.max(0, p.y + m.height - f.uiH);
+    return t || l || r || b ? { style: { clipPath: `inset(${t}px ${r}px ${b}px ${l}px)` } } : {};
+  };
   const build = () => [
     ...(plane ? [{ id: '@axes', type: 'axes', position: { x: -plane.S * 1.25, y: -plane.S * 1.25 }, data: plane, draggable: false, selectable: false, focusable: false, zIndex: -1, style: { pointerEvents: 'none' } }] : []),
-    ...view.nodes.map(n => ({ id: n.id, type: n.framed && !n.ui ? 'frame' : 's', position: posOf(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(n.framed && !n.ui ? { style: { width: FMIN.w, height: FMIN.h } } : {}), ...(n.ui ? { style: { width: n.uiW, height: n.uiH } } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id), zoom: n.frame != null ? fz[n.frame] || 1 : 1 }, selected: isSel(n.id) })),
+    ...view.nodes.map(n => ({ id: n.id, type: n.framed && !n.ui ? 'frame' : 's', position: posOf(n), ...uiClip(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(n.framed && !n.ui ? { style: { width: FMIN.w, height: FMIN.h } } : {}), ...(n.ui ? { style: { width: n.uiW, height: n.uiH } } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id), zoom: n.frame != null ? fx[n.frame]?.z || 1 : 1 }, selected: isSel(n.id) })),
     ...view.portals.map(p => ({ id: p.id, type: 's', position: layout[p.id], data: { portal: p, dim: nodeDim(p.id, view, selected) }, selected: isSel(p.id) })),
     ...pics.map(p => ({ id: p.id, type: 'pic', position: layout[p.id] || { x: 0, y: 0 }, data: { pic: p, isSel: isSel(p.id) }, selected: isSel(p.id) })),
   ];
@@ -217,7 +267,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
       // 坐标以外壳的 layout 为准；只有正在拖的节点用本地坐标（否则旧坐标会和自动布局打架，新节点压住老节点）
       return build().map(n => { const o = old.get(n.id); return o ? { ...o, ...n, position: o.dragging ? o.position : n.position } : n; });
     });
-  }, [view, layout, selected, images, pics, plane, multi, fz]);
+  }, [view, layout, selected, images, pics, plane, multi, fv]);
 
   // 选中一个框：框里的节点连出去的线也算「相连」
   const near = selected && view.parentOf?.size ? new Set([selected, ...view.nodes.filter(n => { for (let f = n.frame; f != null; f = view.parentOf.get(f)) if (f === selected) return true; return false; }).map(n => n.id)]) : null;
@@ -259,7 +309,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
     }
     setNodes(ns => applyNodeChanges(ch, ns));
   }, []);
-  const nodesRef = useRef(nodes); nodesRef.current = nodes;
+  nodesRef.current = nodes;
   // AI 指令框用：选中一批（预览 / 执行「选中」）；量卡片（对齐 / 排列要宽高，坐标给存的那套）
   cardActions.select = ids => { setMulti(ids); onSelect(ids.length === 1 ? ids[0] : ids.at(-1) ?? null); };
   cardActions.boxes = () => Object.fromEntries(nodesRef.current.filter(n => n.measured?.width && n.type !== 'axes').map(n => {
