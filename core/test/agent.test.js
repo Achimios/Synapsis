@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadSkills, pageContext, parseReply, applyPlan, runAgent, loadChat, clearChat, systemPrompt, loosePrompt, isLoose, isQuestion, isFollowup, estimateContext, estTokens, memoryOf, compactChat, needCompact } from '../agent.js';
+import { loadSkills, pageContext, parseReply, applyPlan, runAgent, loadChat, clearChat, systemPrompt, loosePrompt, isLoose, isQuestion, isFollowup, estimateContext, estTokens, memoryOf, compactChat, needCompact, memCfg } from '../agent.js';
 import { validateAction, planMoves, VALIDATORS } from '../plan.js';
 import { saveOutline, loadWorkspace, workspaceOutline, DIR } from '../workspace.js';
 import { parseOutline } from '../outline.js';
@@ -195,16 +195,19 @@ try {
     ok(!readFileSync(cfg.log, 'utf8').includes('iVBOR') && readFileSync(cfg.log, 'utf8').includes('[图片 1 张]'), '日志不存 base64，只写「图片 N 张」');
     await runAgent(root, { scope: '', selected: [], text: '再来' }, ocfg);
     ok(lastMsgs.some(m => typeof m.content === 'string' && m.content.includes('附了 1 张图')) && !lastMsgs.some(m => Array.isArray(m.content)), '下一轮：历史里只说附过图，图不重发');
-    let threw = ''; try { await runAgent(root, { text: 'x', images: [PNG] }, cfg); } catch (e) { threw = e.message; }
-    ok(/本地模型看不了图/.test(threw), '本地 + 图 → 明说看不了');
+    await runAgent(root, { text: '怎么用这个？', images: [PNG] }, cfg);
+    ok(Array.isArray(lastMsgs.at(-1).content) && lastMsgs.at(-1).content[0].text.endsWith('/no_think') && lastMsgs.at(-1).content[1].image_url, '本地 + 图 → 照发（能看图的本地模型用得上）；带图的问句不走问答');
     for (const k of ['一', '二', '三']) await runAgent(root, { scope: '', selected: [], text: '第' + k + '句' + '很长'.repeat(300) }, ocfg);
     ok(needCompact(root, true, ocfg) && !needCompact(root, true, { ...ocfg, autoCompact: false }), '原文超过 memLimit → 该压了（关掉自动就不压）');
     const cp = await compactChat(root, true, ocfg), mm = memoryOf(root, true);
     ok(cp.ok && cp.n === 4 && mm.summary.includes('摘要内容') && mm.turns.length === 1 && mm.turns[0].user.startsWith('第三句'), '压缩：旧的 4 轮进摘要，保留最近 1 轮原文 ' + cp.n);
-    ok(loadChat(root).length === 5 && !needCompact(root, true, ocfg), '原文不删；压完不再触发');
+    ok(loadChat(root).length === 6 && !needCompact(root, true, ocfg), '原文不删（5 轮在线 + 1 轮本地）；压完不再触发');
     await runAgent(root, { scope: '', selected: [], text: '接着' }, ocfg);
     ok(lastMsgs[1].content.includes('记忆摘要') && lastMsgs[1].content.includes('摘要内容') && !lastMsgs.some(m => typeof m.content === 'string' && m.content.startsWith('第一句')), '下一轮先喂摘要，压掉的原文不再发');
     ok(estimateContext(root, { loose: true }).parts.短记忆 < 1000, '估算也按「摘要 + 之后的原文」算');
+    { const off = { ...ocfg, autoCompact: false, memLimit: 700 }; for (const k of ['四', '五']) await runAgent(root, { scope: '', selected: [], text: '第' + k + '句' + '很长'.repeat(300) }, off);
+      const mt = memoryOf(root, true, off); ok(mt.turns.length >= 1 && mt.turns.length < memoryOf(root, true).turns.length && !mt.turns.some(t => t.user.startsWith('第三句')), '关了自动压缩：超上限就从最老的丢 ' + mt.turns.length); }
+    ok(memCfg({ memLimitLocal: 5000 }, false).memLimit === 5000 && memCfg({}, true).memLimit === 64000 && memCfg({}, false).memKeep === 2, '在线 / 本地各一套参数');
     clearChat(root);
     ok(!memoryOf(root, true).summary, '清空记忆连摘要一起清');
   } finally { delete process.env.SYNAPSIS_ONLINE_URL; delete process.env.DEEPSEEK_API_KEY; }

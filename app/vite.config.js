@@ -133,7 +133,7 @@ function workspaceApi() {
             }
             // 上下文：这次大概要占多少（估）+ 对话模型加载时设的上下文长度（LM Studio /api/v0/models 的 loaded_context_length）
             if (url.pathname === '/ai/context') {
-              const est = existsSync(join(root, DIR)) ? estimateContext(root, { scope: url.searchParams.get('scope') || '', selected: (url.searchParams.get('selected') || '').split('\n').filter(Boolean), loose: isLoose(cfg) }) : null;
+              const est = existsSync(join(root, DIR)) ? estimateContext(root, { scope: url.searchParams.get('scope') || '', selected: (url.searchParams.get('selected') || '').split('\n').filter(Boolean), loose: isLoose(cfg), cfg }) : null;
               const st = await aiStatus(cfg), model = chatModel(cfg), m = chatInfo(st, model);
               return send(200, { estimate: est, model, ctx: m?.ctx || null, maxCtx: m?.maxCtx || null, loaded: !!m?.loaded });
             }

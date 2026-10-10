@@ -14,7 +14,7 @@ import { isDropped } from './outline.js';
 // agentSrc = AI 指令框 / 问答 / 生成词表 / 「?」关系说明 用本地还是在线；bulkSrc = 高频后台（潜在关联重排、语义配色归类），默认本地（👤「高频调用的默认不用在线」）
 export const AI_DEFAULTS = { url: 'http://127.0.0.1:1234/v1', embed: 'text-embedding-qwen3-embedding-0.6b', chat: 'qwen3-8b', semColors: true,
   agentSrc: 'local', bulkSrc: 'local', onlineModel: 'deepseek-flash', onlineEffort: 'off',
-  memLimit: 8000, memKeep: 4, autoCompact: true }; // 短记忆：原文超过 memLimit token 自动压成摘要，保留最近 memKeep 轮原文（core/agent.js compactChat）
+  memLimit: 64000, memKeep: 4, autoCompact: true, memLimitLocal: 3000, memKeepLocal: 2, autoCompactLocal: true }; // 短记忆：原文超过 memLimit token 自动压成摘要，保留最近 memKeep 轮原文；本地一套带 Local（core/agent.js compactChat）
 export const EFFORTS = ['off', 'low', 'high', 'max']; // off = 不思考（默认：快、省钱）；其余 = DeepSeek 的 reasoning_effort
 const cfgFile = home => join(home, '.synapsis', 'ai.json');
 
@@ -85,11 +85,13 @@ export function aiConfig(home, root = null) {
   const read = f => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return {}; } };
   return { ...AI_DEFAULTS, keys: keyFile(home), ...read(cfgFile(home)), ...(root ? read(join(root, '.synapsis', 'ai.json')) : {}), ...(process.env.SYNAPSIS_LLM_URL ? { url: process.env.SYNAPSIS_LLM_URL } : {}) };
 }
+// 只写人改过的键（以前把整份默认值一起写进去 → 默认值改了也不生效，比如 memLimit 被冻在旧的 8000）
 export function saveAiConfig(home, patch) {
-  const { keys, ...next } = { ...aiConfig(home), ...patch }; // keys = key 文件的路径，每次现算，不存
+  let own = {}; try { own = JSON.parse(readFileSync(cfgFile(home), 'utf8')); } catch { /* 第一次 */ }
+  const { keys: _k, ...next } = { ...own, ...patch }; // keys = key 文件的路径，每次现算，不存
   mkdirSync(dirname(cfgFile(home)), { recursive: true });
   writeFileSync(cfgFile(home), JSON.stringify(next, null, 2));
-  return { ...next, keys };
+  return aiConfig(home);
 }
 
 const post = async (cfg, path, body, ms = 120000) => {
@@ -153,10 +155,10 @@ const cacheOf = root => join(root, '.synapsis', 'embed.json');
 // opts.bulk = 高频后台调用（潜在关联重排、语义配色归类）→ 按 cfg.bulkSrc 选本地 / 在线，其余按 cfg.agentSrc
 export async function chat(cfg, system, user, maxTokens = 300, opts = {}) {
   const model = chatModel(cfg, opts.task || (opts.bulk ? 'rerank' : 'agent')), on = onlineOf(model);
-  // opts.images = 这一句附的图（dataURL）：OpenAI 兼容的多段 content（文字 + image_url）。只给在线；日志里换成「[图片 N 张]」，不存 base64
-  const imgs = opts.images || [];
-  if (imgs.length && !on) throw new Error('本地模型看不了图：AI 设置里把这个用途切到 ☁ 在线');
-  const messages = [{ role: 'system', content: system }, ...(opts.history || []), { role: 'user', content: imgs.length ? [{ type: 'text', text: user }, ...imgs.map(url => ({ type: 'image_url', image_url: { url } }))] : on ? user : user + '\n/no_think' }];
+  // opts.images = 这一句附的图（dataURL）：OpenAI 兼容的多段 content（文字 + image_url）。本地也照发（能看图的本地模型如 Qwen VL 认这个格式；不能看的由 LM Studio 报错）；
+  //   日志里换成「[图片 N 张]」，不存 base64
+  const imgs = opts.images || [], txt = on ? user : user + '\n/no_think';
+  const messages = [{ role: 'system', content: system }, ...(opts.history || []), { role: 'user', content: imgs.length ? [{ type: 'text', text: txt }, ...imgs.map(url => ({ type: 'image_url', image_url: { url } }))] : txt }];
   const logMsgs = imgs.length ? messages.map((m, i) => i === messages.length - 1 ? { role: 'user', content: user + `\n[图片 ${imgs.length} 张]` } : m) : messages;
   const t0 = Date.now(), u = opts.usage || {}; // u = 这次的 token 用量（调用方没传就自己攒一份，用来记总用量）
   let raw = '', err = null;

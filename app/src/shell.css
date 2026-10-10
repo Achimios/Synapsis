@@ -377,8 +377,8 @@ button.aibtn.off { opacity: .7; }
 .agentbox .sumline { margin: 8px 0 2px; padding: 4px 8px; border: 1px dashed var(--line2); border-radius: 4px; font-size: 12px; color: var(--dim); opacity: 1; }
 .agentbox .sumline summary { cursor: pointer; }
 .agentbox .turn.squashed:has(.sumline) { opacity: 1; } .agentbox .turn.squashed:has(.sumline) > :not(.sumline) { opacity: .45; }
-.aipanel .memrow { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin: 6px 0; }
-.aipanel .memrow input[type=number] { width: 72px; background: var(--bg); color: var(--text); border: 1px solid var(--line2); border-radius: 3px; padding: 2px 4px; font: inherit; }
+.aipanel .memrow { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin: 4px 0; }
+.aipanel .memrow input[type=number] { width: 64px; background: var(--bg); color: var(--text); border: 1px solid var(--line2); border-radius: 3px; padding: 2px 4px; font: inherit; }
 .aipanel .memrow .hint { flex-basis: 100%; }
 
 /* 卡片上的属性 */

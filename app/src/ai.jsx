@@ -58,12 +58,12 @@ export function AiPanel({ api, status, onStatus, onClose }) {
             <TaskRows {...{ status, cfg, save }} />
             <label className="chk"><input type="checkbox" checked={!!cfg.semColors} onChange={e => save({ semColors: e.target.checked })} />语义配色：词表没认出的节点让对话模型归到词表某一行（结果缓存，有新节点才再问）</label>
             {/* >v<🤖AI指令-压缩记忆-设置（👤 2026-10-11「自动压缩参数可调丢 AI 配置页面」） */}
-            <div className="memrow">
-              <label className="chk"><input type="checkbox" checked={cfg.autoCompact !== false} onChange={e => save({ autoCompact: e.target.checked })} />AI 指令框的短记忆自动压缩：</label>
-              <span>原文超过 <input type="number" min="1000" step="1000" key={'l' + cfg.memLimit} defaultValue={cfg.memLimit ?? 8000} onBlur={e => { const v = Math.max(1000, Math.round(+e.target.value || 8000)); if (v !== cfg.memLimit) save({ memLimit: v }); }} /> token 时，</span>
-              <span>把旧的压成一段摘要，保留最近 <input type="number" min="0" max="20" key={'k' + cfg.memKeep} defaultValue={cfg.memKeep ?? 4} onBlur={e => { const v = Math.max(0, Math.min(20, Math.round(+e.target.value) || 0)); if (v !== cfg.memKeep) save({ memKeep: v }); }} /> 轮原文</span>
-              <div className="hint">只对 ☁ 在线生效（本地照旧只记最近 8 轮）。压缩 = 让模型写摘要，要花一次调用；原文不删，界面里照样看得到。指令框里 🗜 可以随时手动压。</div>
-            </div>
+            {[['', '☁ 在线', 64000, 4], ['Local', '本地', 3000, 2]].map(([s, name, dl, dk]) => { const L = 'memLimit' + s, K = 'memKeep' + s, A = 'autoCompact' + s; return (
+              <div key={name} className="memrow" title="指令框短记忆（不含提示词和当前页）超过这个数，就把旧对话压成一段摘要；关掉 = 超了直接丢最老的。🗜 随时手动压">
+                <label className="chk"><input type="checkbox" checked={cfg[A] !== false} onChange={e => save({ [A]: e.target.checked })} />{name}短记忆超过</label>
+                <input type="number" min="500" step="1000" key={L + cfg[L]} defaultValue={cfg[L] ?? dl} onBlur={e => { const v = Math.max(500, Math.round(+e.target.value || dl)); if (v !== cfg[L]) save({ [L]: v }); }} /><span>token 自动压缩，留</span>
+                <input type="number" min="0" max="20" key={K + cfg[K]} defaultValue={cfg[K] ?? dk} onBlur={e => { const v = Math.max(0, Math.min(20, Math.round(+e.target.value) || 0)); if (v !== cfg[K]) save({ [K]: v }); }} /><span>轮原文</span>
+              </div>); })}
             <div className="hint">按节点生成配色词表在 AI 指令框（Shift+F）的「🎨 配色词表」页 —— 这里只放设置。{busy}</div>
           </div>
           <div className="bar tabs aitabs">{[['local', '本地（LM Studio）'], ['online', '☁ 在线（DeepSeek）']].map(([k, t]) => <a key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t}</a>)}</div>
@@ -406,7 +406,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
           {busy && <div className={'hint pad' + (busy.startsWith('❌') ? ' bad' : '')}>{busy}</div>}
           {note && !busy && <div className="hint pad">{note}</div>}
         </div>
-        {imgs.length > 0 && <div className="askimgs">{imgs.map((u, i) => <span key={i}><img src={u} title="单击放大" onClick={() => onZoom?.(imgs, i)} /><a title="不附这张" onClick={() => setImgs(a => a.filter((_, j) => j !== i))}>✕</a></span>)}<span className="hint">{loose ? '随下一句发出（只这一句看得到，不进短记忆）' : '⚠ 本地模型看不了图：AI 设置里把指令框切到 ☁ 在线'}</span></div>}
+        {imgs.length > 0 && <div className="askimgs">{imgs.map((u, i) => <span key={i}><img src={u} title="单击放大" onClick={() => onZoom?.(imgs, i)} /><a title="不附这张" onClick={() => setImgs(a => a.filter((_, j) => j !== i))}>✕</a></span>)}<span className="hint">{loose ? '随下一句发出（不进短记忆）' : '随下一句发出（本地模型要能看图，比如 Qwen VL）'}</span></div>}
         <textarea ref={inp} className="ask" rows={2} value={text} onChange={e => setText(e.target.value)}
           placeholder={plan?.actions.some(a => a.ok) ? 'Enter = 执行上面的动作；或者接着说（改主意 / 补充）' : '说要做什么…（Enter 发送，Shift+Enter 换行，Ctrl+V / 拖进来 = 附图）' + (selected.length ? `　已选 ${selected.length} 个` : '')} />
       </> : tab === 'words' ? <WordsTab api={api} onWordsApplied={onWordsApplied} /> : <div className="logs">
