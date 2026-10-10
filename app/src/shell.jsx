@@ -152,9 +152,11 @@ export function Shell({ name, Canvas }) {
   const patterns = useMemo(() => patternMap(graph, getMeta, wsData?.patternWords, semPats), [graph, getMeta, wsData?.patternWords, semPats]);
   // 边标签 / 节点副标题来自工作区文件（大纲里没有）
   const sm = seeModes[realScope] || {};
-  const eff = (m, own, id) => m === 'deep' || (m === 'on' && (graph.nodes.get(id)?.parent ?? ROOT) === realScope) ? true : own; // 本页「看」盖一层：on = 只展开本页直接的节点；deep = 子孙也一起（Shift+数字）；没开 = 用节点自己的
+  const pre = (m, id) => m === 'deep' || (m === 'on' && (graph.nodes.get(id)?.parent ?? ROOT) === realScope); // 本页「看」盖一层：on = 只展开本页直接的节点；deep = 子孙也一起（Shift+数字）
+  const eff = (m, own, id) => pre(m, id) ? true : own; // 没开 = 用节点自己的
   const uiId = id => isUi(wsData?.nodes[id]?.meta); // 👤 2026-10-10 UI 框不跟「预览展开」的全局三态，只认自己的 ▸ / ⊞
-  const expE = id => eff(sm.kids, !!expanded[id], id), frmE = id => eff(sm.frame, !!framed[id], id), txtE = id => eff(sm.text, !!textOpen[id], id), prpE = id => eff(sm.props, !propsShut[id], id);
+  // 👤 2026-10-11 预览「子级」临时盖过节点自己真展开的子图（不然真成框的节点在预览里看不到子级列表）；预览「子图」同时开着时子图优先；UI 框的子图是它本体，不盖
+  const expE = id => eff(sm.kids, !!expanded[id], id), frmE = id => pre(sm.frame, id) || (!!framed[id] && !(pre(sm.kids, id) && !uiId(id))), txtE = id => eff(sm.text, !!textOpen[id], id), prpE = id => eff(sm.props, !propsShut[id], id);
   const view = useMemo(() => {
     const v = projectView(graph, realScope, space ? null : new Set([...graph.nodes.keys()].filter(k => graph.nodes.get(k)?.children.length && frmE(k))));
     const lab = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.label]));
