@@ -53,7 +53,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .crumbs { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .crumbs a { cursor: pointer; color: var(--text); }
 .crumbs a:hover { color: var(--accent); }
-.crumbs span:last-child a { color: #fff; }
+.crumbs span:last-child a { color: var(--strong); }
 .crumbs span:last-child a.cur { color: var(--accent); cursor: default; } /* 选中节点那一段：不是链接 */
 button { font: inherit; color: var(--text); padding: 1px 8px; border: 1px solid var(--line2); background: var(--panel2); border-radius: 3px; cursor: pointer; }
 button:hover { background: var(--hover); border-color: var(--line2); }
@@ -187,7 +187,7 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .side.wide { width: 44vw; max-width: 760px; }
 .side .bar .hint { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebody { flex: 1; overflow: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
-.sidebody h3 { margin: 0; font-size: 14px; color: #fff; }
+.sidebody h3 { margin: 0; font-size: 14px; color: var(--strong); }
 .sidebody .row { display: flex; gap: 4px; align-items: center; }
 .filerow { display: flex; gap: 4px; align-items: center; }
 .filerow .hint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
@@ -231,7 +231,7 @@ pre.raw { margin: 0; white-space: pre-wrap; word-break: break-word; font: var(--
 .orow .odrill { margin-left: auto; color: var(--faint); font-size: 10px; padding: 0 4px; border-radius: 3px; visibility: hidden; }
 .orow:hover .odrill { visibility: visible; }
 .orow .odrill:hover { background: var(--chip2); color: var(--strong); }
-.orow input { flex: 1; min-width: 0; font: inherit; background: var(--panel2); color: #fff; border: 1px solid var(--accent); border-radius: 2px; padding: 0 3px; outline: none; }
+.orow input { flex: 1; min-width: 0; font: inherit; background: var(--panel2); color: var(--strong); border: 1px solid var(--accent); border-radius: 2px; padding: 0 3px; outline: none; }
 /* 快捷键页 */
 .modal > div.help { width: min(880px, 94vw); }
 .helpgrid { columns: 2; column-gap: 18px; padding: 10px 14px 14px; overflow: auto; } /* 瀑布式两列：一张卡片高了不会把同行另一张撑高 */
@@ -241,7 +241,7 @@ pre.raw { margin: 0; white-space: pre-wrap; word-break: break-word; font: var(--
 .helpgrid td { padding: 2px 4px; border-top: 1px solid var(--line); vertical-align: top; }
 .helpgrid td:first-child { width: 42%; overflow-wrap: anywhere; line-height: 1.7; } /* 键名可以换行（长的不再把说明挤成窄条） */
 .helpgrid kbd { white-space: normal; }
-.helpgrid kbd { font: 11px Consolas, monospace; background: var(--panel2); border: 1px solid var(--line2); border-radius: 3px; padding: 0 4px; color: #fff; }
+.helpgrid kbd { font: 11px Consolas, monospace; background: var(--panel2); border: 1px solid var(--line2); border-radius: 3px; padding: 0 4px; color: var(--strong); }
 .hint.keys { cursor: pointer; }
 .side .bar.tabs .hint { border: 0; border-radius: 0; width: auto; height: auto; display: block; flex: 1; cursor: default; }
 /* 散图：图就是本体 */
@@ -304,6 +304,8 @@ svg.axes text.al { fill: var(--dim); font-size: 12px; }
 
 /* Alt 拖连线：线身上显示可抓；拖着时画一条从不动端到鼠标的虚线 */
 .altdown .react-flow__edge { cursor: grab; }
+/* 👤 2026-10-11 按着 Alt 时，鼠标下面那条（按下就会拿起的那条）：不管原来淡不淡、粗不粗，都变不透明 + 一圈强调色光晕 → 一眼看出是哪条 */
+.altdown .react-flow__edge:hover .react-flow__edge-path { opacity: 1 !important; filter: drop-shadow(0 0 1.5px var(--accent)) drop-shadow(0 0 4px var(--accent)); }
 .rwline { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 60; }
 .rwline line { stroke: #ffd27a; stroke-width: 2; stroke-dasharray: 6 4; }
 .rwline circle { fill: #ffd27a; }

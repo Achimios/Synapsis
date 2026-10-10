@@ -1159,9 +1159,8 @@ export function Shell({ name, Canvas }) {
         </div>
         <OverflowBar>
           <button onClick={() => addNode(false)} title="在当前层新建（选中节点时建在它后面）；建完直接打字改名">＋ 节点</button>
-          {mode === 'ws' && <button className={histOpen ? '' : 'off'} title="操作历史：每一步改了什么，点一行回到那一步（Shift+Tab）" onClick={() => setHistOpen(o => !o)}>🕘 历史</button>}
+          {mode === 'ws' && <button className={histOpen ? '' : 'off'} title="操作历史：每一步改了什么，点一行回到那一步（Shift+`）" onClick={() => setHistOpen(o => !o)}>🕘 历史</button>}
           {withPics.length > 0 && <button onClick={() => setPicFold(f => { const g = { ...f }; for (const n of withPics) g[n.id] = !allPicsFolded; return g; })} title="当前页所有卡片的图片一起收起 / 显示">{allPicsFolded ? '显示图片' : '收起图片'}</button>}
-          {view.portals.length + (portalModes[realScope] === 'hide' ? 1 : 0) > 0 && <button className="portalbtn" title="这一页的传送门（别的层的节点）：显示 → 淡化 → 隐藏（隐藏时和选中节点相连的仍显示）" onClick={() => setPortalModes(m => ({ ...m, [realScope]: { show: 'fade', fade: 'hide', hide: 'show' }[m[realScope] || 'show'] }))}>↗ 传送门：{{ show: '显示', fade: '淡化', hide: '隐藏' }[portalModes[realScope] || 'show']}</button>}
           <button onClick={() => setExportText(exportForLLM(graph, realScope))}>导出给 LLM</button>
           {mode === 'ws' && <button title="AI 指令框（Shift+F）：用一句话让本地模型在当前页对齐 / 排列 / 连线 / 改状态…，先预览再执行" onClick={() => setAgentOpen(o => !o)}>💬 指令</button>}
           {mode === 'ws' && <button className={'aibtn ' + (aiStatus?.ok ? 'on' : 'off')} title={aiStatus?.ok ? 'LM Studio 已连上：语义配色 / 潜在关联 / 生成词表' : 'AI 辅助（LM Studio）：' + (aiStatus?.error || '检查中')} onClick={() => { setAiOpen(true); aiCheck(); }}>🤖 AI</button>}
@@ -1186,6 +1185,8 @@ export function Shell({ name, Canvas }) {
           <div className="expsep" />
           {mode === 'ws' && <button className={'tool pinbtn' + (pinsOpen ? ' on' : '')} title={'钉子：临时翻阅用的书签组（右键卡片 → 📌 钉到…；反引号 ` 开关）' + (pins.groups.some(g => g.items.length) ? '\n现有 ' + pins.groups.reduce((s, g) => s + g.items.length, 0) + ' 个钉子' : '')} onClick={() => setPinsOpen(o => !o)}>📌钉</button>}
           <button className={'tool linebtn' + (seeLines ? ' on' : '')} title="看清连线（Q）：卡片缩小变淡（选中节点和它相连的不变），连线变粗变亮。再点一下恢复" onClick={() => setSeeLines(o => !o)}>🔍线</button>
+          {view.portals.length + (portalModes[realScope] === 'hide' ? 1 : 0) > 0 && (() => { const pm = portalModes[realScope] || 'show'; // 👤 2026-10-11 传送门三档是「改观察」，从顶栏挪到钉 / 线旁边
+            return <button className={'tool portalbtn' + (pm !== 'show' ? ' on' : '')} title={'这一页的传送门（别的层的节点）：显示 → 淡化 → 隐藏（隐藏时和选中节点相连的仍显示）\n现在：' + { show: '显示', fade: '淡化', hide: '隐藏' }[pm]} onClick={() => setPortalModes(m => ({ ...m, [realScope]: { show: 'fade', fade: 'hide', hide: 'show' }[m[realScope] || 'show'] }))}>↗{{ show: '门', fade: '淡化', hide: '隐藏' }[pm]}</button>; })()}
         </div>}
         {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className={'canvas' + (seeLines ? ' seelines' : '') + (sel ? ' hassel' : '')} onDragOver={e => e.preventDefault()} onDrop={onDrop}>
           {plane && <div className="planebar" title="投影方向可以是轴，也可以是某个成员的方向（= 换一组基看同一批点）。拖动卡片 = 改它在这两个方向上的坐标">
