@@ -7,7 +7,7 @@ import { loadSettings, saveSettings, settingsPath, SCHEMA as SETTINGS_SCHEMA } f
 import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, loadPins, savePins, findFilesByName, addFileNode, addRefNode, addUiNode, saveLooseImage, removeLooseImage, removePic, restoreRemoved, graveyardInfo, clearGraveyard, ensureGitignore, pasteNodes, ensureWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, movePic, grepProject, DIR } from '../core/workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 
-import { workspaceRoot, manualText } from '../core/cli.js';
+import { workspaceRoot, manualText, synItems, synWrite } from '../core/cli.js';
 import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, suggestPatternWords, readAiLog, readUsage } from '../core/ai.js';
 import { lmsEstimate, lmsReload, lmsServerStart } from '../core/lmstudio.js';
 let lmsTried = false;
@@ -61,8 +61,7 @@ function workspaceApi() {
             return send(200, { settings: loadSettings(SYN_HOME), schema: SETTINGS_SCHEMA, path: settingsPath(SYN_HOME) });
           }
           if (url.pathname === '/ws' && req.method === 'GET') {
-            ensureWorkspaceReadme(root, manualText(root));
-            ensureGitignore(root);
+            if (existsSync(join(root, DIR))) { ensureWorkspaceReadme(root, manualText(root)); ensureGitignore(root); } // 没挂上的文件夹别往里写（界面会弹「挂上 Synapsis」清单）
             // .junk/ 里有「这次托盘启动之前」留下的东西 = 上次没正常退出托盘，或 CLI / AI 删过东西：交给界面问一句要不要清。
             // 这次托盘期间删的不问（关 vault 再打开还要能撤销，退出托盘才清）
             const left = graveyardInfo(root).entries.filter(e => e.time < SESSION_START);
@@ -109,8 +108,19 @@ function workspaceApi() {
           // 撤销删除：把 .junk/ 里的文件搬回去（随后前端写回删除前的大纲）
           if (url.pathname === '/restore' && req.method === 'POST') return send(200, { restored: restoreRemoved(root, (await body(req)).pairs) });
           // 项目骨架（_开发进度.md 那套）：GET = 检测清单，POST = 只写勾上且不存在的
-          if (url.pathname === '/scaffold' && req.method === 'GET') return send(200, { items: scaffoldPlan(root).map(({ rel, exists, alike }) => ({ rel, exists, alike })) });
-          if (url.pathname === '/scaffold' && req.method === 'POST') { if (!existsSync(join(root, DIR))) return send(404, { error: '不是 Synapsis 工作区' }); return send(200, { made: scaffoldWrite(root, (await body(req)).files) }); }
+          // 👤 2026-10-12 「📄 项目文件…」一个对话框：挂 Synapsis 的几样（手册 / 黑板 / 词表 / 快捷方式）+ 项目文档骨架。没挂过的文件夹打开时自动弹
+          //   默认勾 = settings.yaml 的 init 段（上次在这里勾的）；已有的灰掉不覆盖
+          if (url.pathname === '/scaffold' && req.method === 'GET') { const S = loadSettings(SYN_HOME).init;
+            return send(200, { mounted: existsSync(join(root, DIR)), root, syn: synItems(root).map(i => ({ ...i, def: S[i.key] !== false })), docsDef: !!S.docs, items: scaffoldPlan(root).map(({ rel, exists, alike }) => ({ rel, exists, alike })) }); }
+          if (url.pathname === '/scaffold' && req.method === 'POST') {
+            const b = await body(req), keys = b.syn || [], files = b.files || [];
+            const synLeft = synItems(root).filter(i => !i.exists), docLeft = scaffoldPlan(root).filter(i => !i.exists);
+            const made = [...(keys.length || b.mount ? synWrite(root, keys) : []), ...scaffoldWrite(root, files)];
+            const remember = !b.mount ? {} : Object.fromEntries(synLeft.map(i => [i.key, keys.includes(i.key)])); // 挂新项目时记住这次的选择 = 下个新项目的默认（已有的那几样不算数；平时补文件不改默认）
+            if (b.mount && docLeft.length) remember.docs = files.length > 0;
+            if (Object.keys(remember).length) try { saveSettings(SYN_HOME, { init: remember }); } catch { /* 设置文件只读就算了 */ }
+            return send(200, { made });
+          }
           // >v<🤖AI辅助-接口-LM Studio（core/ai.js）：连不上回 503，前端安静降级
           // >v<🎛界面暂存-关掉 AI 框 / 关窗口不丢的界面状态（没发出的话、待确认的动作、查找词、过滤词…）。
           //   👤 2026-10-08「退出后输入框里没发出的文字要保留…是否执行也要保留…重启托盘才重置」→ 存在这个服务进程的内存里（按工作区），

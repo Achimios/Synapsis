@@ -8,15 +8,16 @@ export const SETTINGS_FILE = 'settings.yaml';
 
 // 默认值 + 给界面用的说明（段 → 键 → [默认, 名字, 说明]）
 export const SCHEMA = {
+  // 👤 2026-10-12 不在 ⚙ 里单独列了：和「📄 项目文件…」合成一个对话框（打开没挂过 Synapsis 的文件夹自动弹），这里只记上次勾了哪些 = 下次的默认 + 命令行 init 用
   init: {
     title: '新项目 init 时生成',
-    hint: '在界面里给一个文件夹挂上 Synapsis（或命令行 init）时，勾上的才会生成；已有的文件不会被覆盖。',
+    hidden: true,
     keys: {
       manual: [true, 'AI 接入手册', '__synapsis/_synapsis.md：别的 AI 怎么用 Synapsis 读图、按图施工'],
       blackboard: [true, '黑板', '__synapsis/_Blackboard.md：多个 AI / 对话之间传话的地方'],
-      colorWords: [true, '词表（颜色）', '__synapsis/_词表.md 的颜色那一节：名字里含这些词的节点自动上色'],
-      patternWords: [true, '词表（图案）', '__synapsis/_词表.md 的图案那一节：自动加底纹（和颜色同一份文件，任一勾上就建）'],
+      words: [true, '分层词表', '__synapsis/_词表.md：颜色 + 图案两节，名字里含这些词的节点自动上色 / 加底纹'],
       launcher: [true, '启动快捷方式', '项目根目录的「在 Synapsis 打开」快捷方式 + .synapsis/ 里的兜底启动脚本'],
+      docs: [false, '项目文档骨架', '_开发进度.md、_TODO.md、AGENTS.md 那一套（只做规划 / 研究可以不要）'],
     },
   },
   // 👤 2026-10-12 方向键挪卡片 / Ctrl+方向键 撑大 UI 框：打字时双手不离键盘
@@ -39,14 +40,18 @@ const coerce = v => { const t = String(v).trim().replace(/\s+#.*$/, ''); if (t =
 // 文本 → 设置（先放默认值，文件里有的覆盖；不认识的段 / 键原样带上，免得丢别人加的）
 export function parseSettings(text) {
   const out = defaults();
-  let sec = null;
+  let sec = null, wordsSet = false;
   for (const raw of String(text || '').split(/\r?\n/)) {
     if (!raw.trim() || raw.trim().startsWith('#')) continue;
     const m = /^(\s*)([^:#\s][^:]*?):\s*(.*)$/.exec(raw);
     if (!m) continue;
     if (!m[1].length) { sec = m[2]; if (!(sec in out)) out[sec] = {}; if (m[3].trim() && m[3].trim() !== '{}') { out[sec] = coerce(m[3]); sec = null; } continue; }
-    if (sec && typeof out[sec] === 'object') out[sec][m[2]] = coerce(m[3]);
+    if (sec && typeof out[sec] === 'object') { out[sec][m[2]] = coerce(m[3]); if (sec === 'init' && m[2] === 'words') wordsSet = true; }
   }
+  // 旧文件的 colorWords / patternWords（颜色、图案两份词表时代）→ words
+  const I = out.init;
+  if (I && !wordsSet && ('colorWords' in I || 'patternWords' in I)) I.words = !!(I.colorWords || I.patternWords);
+  if (I) { delete I.colorWords; delete I.patternWords; }
   return out;
 }
 
@@ -85,15 +90,15 @@ export function saveSettings(home, patch) {
 }
 
 export const DEFAULT_TEXT = `# Synapsis 设置（进 git，团队共享）。在界面左上角 ⚙ 里改，也可以直接改这个文件。
-# 没有的项 = 用默认值。格式：段名: 下面缩进两格写「键: 值」（true / false）。
+# 没有的项 = 用默认值。格式：段名: 下面缩进两格写「键: 值」（true / false / 数字）。
 
-# init：给新项目挂上 Synapsis 时生成哪些东西
+# init：挂上 Synapsis 时默认勾哪些（打开新文件夹弹的对话框会记住你上次勾的；命令行 init 也照这个）
 init:
   manual: true         # AI 接入手册  __synapsis/_synapsis.md
   blackboard: true     # 黑板  __synapsis/_Blackboard.md
-  colorWords: true     # 词表（颜色）  __synapsis/_词表.md
-  patternWords: true   # 词表（图案）  同一份 _词表.md
+  words: true          # 分层词表  __synapsis/_词表.md（颜色 + 图案）
   launcher: true       # 启动快捷方式（项目根目录 .lnk + .synapsis/ 兜底脚本）
+  docs: false          # 项目文档骨架（_开发进度.md、_TODO.md、AGENTS.md 那一套）
 
 # nudge：方向键挪卡片 / Ctrl+方向键 撑大 UI 框（数字）
 nudge:

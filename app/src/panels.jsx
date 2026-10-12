@@ -495,25 +495,39 @@ export function OutlineTree({ graph, rootId = '', selected, scope, renaming, sta
 }
 
 // >v<🧭导航-快捷键页-? 或 F1 弹出；键位只在这张表里写一次（以后要自定义就从这里长出来）
-// >v<🏗️构建引导-项目文档对话框-先检测：已存在的灰掉；有同类中文名文件的默认不勾；其余默认勾上。只创建勾上的
-export function ScaffoldModal({ items, root, onCreate, onClose }) {
-  const [pick, setPick] = useState(() => new Set(items.filter(i => !i.exists && !i.alike.length).map(i => i.rel)));
-  const flip = rel => setPick(s => { const t = new Set(s); t.has(rel) ? t.delete(rel) : t.add(rel); return t; });
-  const missing = items.filter(i => !i.exists);
+// >v<🏗️构建引导-项目文件对话框-👤 2026-10-12 和 ⚙ 里「init 生成哪些」合成一个：上面 Synapsis 自己的几样，下面项目文档骨架。
+//   没挂过 Synapsis 的文件夹打开时自动弹（fresh）；顶栏「📄 项目文件…」随时补。先检测：已存在的灰掉；有同类中文名文件的默认不勾；
+//   默认勾 = 上次在这里勾的（settings.yaml init 段）。只创建勾上的，已有的不覆盖
+const SYN_NAMES = { manual: ['AI 接入手册', '别的 AI 怎么读图、按图施工'], blackboard: ['黑板', '多个 AI / 对话之间传话'], words: ['分层词表', '颜色 + 图案，名字含这些词自动上色 / 加底纹'], launcher: ['启动快捷方式', '项目根目录「在Synapsis打开本项目」'] };
+export function ScaffoldModal({ data, onCreate, onClose }) {
+  const { syn, items, docsDef, mounted, root } = data, fresh = !mounted;
+  const [pickS, setPickS] = useState(() => new Set(syn.filter(i => !i.exists && i.def).map(i => i.key)));
+  const [pick, setPick] = useState(() => new Set(docsDef ? items.filter(i => !i.exists && !i.alike.length).map(i => i.rel) : []));
+  const flip = (set, v) => set(s => { const t = new Set(s); t.has(v) ? t.delete(v) : t.add(v); return t; });
+  const docLeft = items.filter(i => !i.exists), allDocs = docLeft.length > 0 && docLeft.every(i => pick.has(i.rel));
+  const n = pickS.size + pick.size, name = String(root).split(/[\\/]/).filter(Boolean).at(-1);
   return (
-    <div className="modal" onClick={onClose}>
+    <div className="modal" onClick={fresh ? undefined : onClose}>
       <div className="scaffold" onClick={e => e.stopPropagation()}>
-        <div className="bar"><b>项目文档骨架</b><span className="hint" style={{ flex: 1 }} title={root}>{root}</span><button onClick={onClose}>✕</button></div>
+        <div className="bar"><b>{fresh ? `挂上 Synapsis：${name}` : '项目文件'}</b><span className="hint" style={{ flex: 1 }} title={root}>{root}</span>{!fresh && <button onClick={onClose}>✕</button>}</div>
         <div className="sidebody">
-          <p className="hint">开发进度、待办、规矩那一套（和新项目引导同一套模板）。<b>已有的不会覆盖</b>；只是做规划 / 研究的话可以都不要。</p>
+          <p className="hint">{fresh ? <>这个文件夹还没挂上 Synapsis。会建 <code>__synapsis/</code>（图数据）和 <code>.synapsis/</code>（本机状态），下面勾上的一起建。</> : '缺什么补什么。'}<b>已有的不会覆盖</b>{fresh ? '；这次勾的会记住，下个新项目默认照这样勾。' : '。'}</p>
+          <h4>Synapsis</h4>
+          <ul className="scaflist">{syn.map(i => (
+            <li key={i.key} className={i.exists ? 'has' : ''}>
+              <label><input type="checkbox" disabled={i.exists} checked={i.exists || pickS.has(i.key)} onChange={() => flip(setPickS, i.key)} /><b>{SYN_NAMES[i.key]?.[0] || i.key}</b> <code>{i.rel}</code></label>
+              {i.exists ? <span className="hint">已存在</span> : <span className="hint">{SYN_NAMES[i.key]?.[1]}</span>}
+            </li>))}</ul>
+          <h4><label><input type="checkbox" disabled={!docLeft.length} checked={!docLeft.length || allDocs} onChange={() => setPick(allDocs ? new Set() : new Set(docLeft.map(i => i.rel)))} />项目文档骨架</label> <span className="hint">开发进度、待办、规矩那一套（和新项目引导同一套模板）；只做规划 / 研究可以不要</span></h4>
           <ul className="scaflist">{items.map(i => (
             <li key={i.rel} className={i.exists ? 'has' : ''}>
-              <label><input type="checkbox" disabled={i.exists} checked={i.exists || pick.has(i.rel)} onChange={() => flip(i.rel)} />{i.rel}</label>
+              <label><input type="checkbox" disabled={i.exists} checked={i.exists || pick.has(i.rel)} onChange={() => flip(setPick, i.rel)} />{i.rel}</label>
               {i.exists ? <span className="hint">已存在</span> : i.alike.length ? <span className="warn">已有同类：{i.alike.join('、')}</span> : null}
             </li>))}</ul>
         </div>
-        <div className="bar"><span className="grow" /><button onClick={onClose}>取消</button>
-          <button disabled={!pick.size} onClick={() => onCreate([...pick])}>{missing.length ? `创建勾选的 ${pick.size} 个` : '都已存在'}</button></div>
+        <div className="bar"><span className="grow" />
+          <button onClick={fresh ? () => window.close() : onClose} title={fresh ? '什么都不建，关掉这个窗口' : ''}>{fresh ? '不挂了' : '取消'}</button>
+          <button className="primary" disabled={!fresh && !n} onClick={() => onCreate([...pickS], [...pick], fresh)}>{fresh ? (n ? `挂上，并建勾选的 ${n} 个` : '只挂上') : n ? `创建勾选的 ${n} 个` : '都已存在'}</button></div>
       </div>
     </div>
   );
@@ -560,7 +574,7 @@ export function SearchModal({ title, items, exclude, onPick, onClose }) {
   );
 }
 
-// ⚙ 设置：Synapsis 目录根的 settings.yaml（进 git）。现在只有「init 生成哪些」；快捷键自定义下一步；以后别的设置慢慢往里加
+// ⚙ 设置：Synapsis 目录根的 settings.yaml（进 git）。现在有方向键微调（「init 生成哪些」合进了「📄 项目文件…」对话框）；快捷键自定义下一步；以后别的设置慢慢往里加
 export function SettingsModal({ api, onClose, onHelp }) {
   const [d, setD] = useState(null), [err, setErr] = useState('');
   useEffect(() => { api('/settings').then(setD).catch(e => setErr(e.message)); }, []);
@@ -572,7 +586,7 @@ export function SettingsModal({ api, onClose, onHelp }) {
         <div className="sbody">
           {err && <div className="warn">{err}</div>}
           {!d && !err && <div className="hint">读取中…</div>}
-          {d && Object.entries(d.schema).map(([sec, { title, hint, keys }]) => (
+          {d && Object.entries(d.schema).filter(([, x]) => !x.hidden).map(([sec, { title, hint, keys }]) => (
             <section key={sec}><h4>{title}</h4>
               {hint && <div className="hint" style={{ marginBottom: 4 }}>{hint}</div>}
               {Object.entries(keys).map(([k, [def, name, desc]]) => typeof def === 'number'
@@ -581,6 +595,9 @@ export function SettingsModal({ api, onClose, onHelp }) {
               )}
             </section>
           ))}
+          <section><h4>新项目生成哪些</h4>
+            <div className="hint">打开没挂过 Synapsis 的文件夹时会弹一个清单让你勾（上次勾的记住）；已有项目缺什么，顶栏 <b>📄 项目文件…</b> 里补。</div>
+          </section>
           <section><h4>快捷键</h4>
             <div className="hint">自定义键位：下一步做。现在的键位表在 <a onClick={() => { onClose(); onHelp(); }}>⌨ 快捷键</a>（可以搜）。</div>
           </section>

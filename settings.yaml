@@ -1,13 +1,20 @@
 # Synapsis 设置（进 git，团队共享）。在界面左上角 ⚙ 里改，也可以直接改这个文件。
-# 没有的项 = 用默认值。格式：段名: 下面缩进两格写「键: 值」（true / false）。
+# 没有的项 = 用默认值。格式：段名: 下面缩进两格写「键: 值」（true / false / 数字）。
 
-# init：给新项目挂上 Synapsis 时生成哪些东西
+# init：挂上 Synapsis 时默认勾哪些（打开新文件夹弹的对话框会记住你上次勾的；命令行 init 也照这个）
 init:
   manual: true         # AI 接入手册  __synapsis/_synapsis.md
   blackboard: true     # 黑板  __synapsis/_Blackboard.md
-  colorWords: true     # 配色词表  __synapsis/_配色.md
-  patternWords: true   # 图案词表  __synapsis/_图案.md
+  words: true          # 分层词表  __synapsis/_词表.md（颜色 + 图案）
   launcher: true       # 启动快捷方式（项目根目录 .lnk + .synapsis/ 兜底脚本）
+  docs: false          # 项目文档骨架（_开发进度.md、_TODO.md、AGENTS.md 那一套）
+
+# nudge：方向键挪卡片 / Ctrl+方向键 撑大 UI 框（数字）
+nudge:
+  step: 8              # 每步距离（画布单位，网格一格 = 24）
+  fast: 4              # 按住 Shift 时每步 × 几
+  delay: 200           # 按下走一步后，停多久（毫秒）开始连续走
+  interval: 100        # 连续走时每步隔多久（毫秒）
 
 # 快捷键自定义：下一步做（现在的键位见界面里的 ⌨ 快捷键）
 # keys: {}

@@ -15,7 +15,7 @@ function Launcher() {
       <h1>Synapsis</h1>
       <p className="hint">在自己脑海里导航和记录 —— 选一个项目文件夹开始</p>
       <button className="big" onClick={() => D.pickOpen().then(load)}>📂 打开文件夹…</button>
-      <p className="hint small">新项目也用它：没挂上 Synapsis 的文件夹会先问你要不要初始化（只新建文件，不动已有的）。</p>
+      <p className="hint small">新项目也用它：没挂上 Synapsis 的文件夹打开后会给你一张清单，勾要建哪些（只新建文件，不动已有的）。</p>
       <h2>最近打开</h2>
       {recent === null ? <p className="hint">…</p> : recent.length === 0 ? <p className="hint">还没有。</p> : (
         <ul className="recent">{recent.map(r => (

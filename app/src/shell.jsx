@@ -238,6 +238,7 @@ export function Shell({ name, Canvas }) {
       const sv = stash?.[HIST_KEY] || (() => { try { return JSON.parse(sessionStorage.getItem(HIST_KEY)); } catch { return null; } })();
       if (sv?.committed?.text === d.outline) { hist2.current.undo = sv.undo || []; hist2.current.redo = sv.redo || []; }
       setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); setPropsShut(v.propsShut || {}); setLeftCols(+v.leftCols || 1); setOutlineHere(v.outlineHere === true ? 2 : +v.outlineHere || 0); setOutlineGroup(!!v.outlineGroup); setSeeModes(v.seeModes || {}); setSeeLines(!!v.seeLines); if (v.histOpen) setHistOpen(true); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
+      api('/scaffold').then(s => { if (!s.mounted) setScaffold(s); }).catch(() => {}); // 👤 2026-10-12 没挂过 Synapsis 的文件夹：先问要建哪些
       setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
       // .junk/ = 删除的临时去处，正常关窗口会清空；还有东西 = 上次没正常关闭（或 CLI / AI 删过东西）→ 问要不要清
       if (d.graveyard) setTimeout(() => {
@@ -511,7 +512,7 @@ export function Shell({ name, Canvas }) {
     for (const [from, to] of pairs) { const x = withoutEdge(g, from, to); if (x) { t = x; g = parseOutline(x); } }
     if (t) { setText(t); setSaveState('已删除连线' + (pairs.length > 1 ? ' ' + pairs.length + ' 条' : '') + '（Ctrl+Z 撤销）'); }
   };
-  const [scaffold, setScaffold] = useState(null); // 项目文档对话框：检测结果
+  const [scaffold, setScaffold] = useState(null); // 「📄 项目文件…」对话框：检测结果（没挂过的文件夹打开时自动弹）
   const [leftTab, setLeftTab] = useState('outline'); // outline（树，导航用）| text（原始大纲文本）| files
   // >v<🌳大纲模型-大纲树-点一下 = 画布跳到那一页并选中、右侧显示内容；双击 / Enter = 改名；钻进用 ▸
   const pick = id => {
@@ -1201,7 +1202,7 @@ export function Shell({ name, Canvas }) {
           <button onClick={() => setExportText(exportForLLM(graph, realScope, id => wsData?.nodes[id]))}>导出给 LLM</button>
           {mode === 'ws' && <button title="AI 指令框（Shift+F）：用一句话让本地模型在当前页对齐 / 排列 / 连线 / 改状态…，先预览再执行" onClick={() => setAgentOpen(o => !o)}>💬 指令</button>}
           {mode === 'ws' && <button className={'aibtn ' + (aiStatus?.ok ? 'on' : 'off')} title={aiStatus?.ok ? 'LM Studio 已连上：语义配色 / 潜在关联 / 生成词表' : 'AI 辅助（LM Studio）：' + (aiStatus?.error || '检查中')} onClick={() => { setAiOpen(true); aiCheck(); }}>🤖 AI</button>}
-          {mode === 'ws' && <button title="给这个项目补开发进度 / 待办 / 规矩那套文档（先检测，已有的不覆盖）" onClick={() => api('/scaffold').then(d => setScaffold(d.items)).catch(e => setSaveState('❌ ' + e.message))}>📄 项目文档…</button>}
+          {mode === 'ws' && <button title="给这个项目补 Synapsis 的几样（手册 / 黑板 / 词表 / 快捷方式）和开发进度 / 待办 / 规矩那套文档（先检测，已有的不覆盖）" onClick={() => api('/scaffold').then(setScaffold).catch(e => setSaveState('❌ ' + e.message))}>📄 项目文件…</button>}
           {local && <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>}
           <button className="themebtn" title={theme === 'light' ? '换深色主题' : '换白色主题'} onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}>{theme === 'light' ? '🌙' : '☀'}</button>
           <button className="keysbtn" title="快捷键一览（? 或 F1）" onClick={() => setHelpOpen(true)}>⌨ 快捷键</button>
@@ -1279,8 +1280,8 @@ export function Shell({ name, Canvas }) {
         onStep={d => setRepl(x => ({ ...x, idx: replCur + d, note: '' }))} onOne={() => replHits.length && replRun(replHits[replCur])} onAll={() => replHits.length && replRun(null)} onClose={() => setRepl(null)} />}
       {finder && <SearchModal title={finder.mode === 'link' ? '连线：「' + graph.nodes.get(finder.from)?.label + '」→ 哪个节点？' : finder.mode === 'linkfrom' ? '连线：哪个节点 → 「' + graph.nodes.get(finder.to)?.label + '」？' : finder.mode === 'import' ? '引入到这里：节点 → 传送门卡片，项目文件 → 文件节点' : '跳到节点（Ctrl+F）'} items={[...(finder.mode === 'import' ? searchItems.filter(x => !x.here && !wsData?.nodes[x.id]?.meta?.ref) : searchItems), ...fileItems]} exclude={finder.from || finder.to}
         onClose={() => setFinder(null)} onPick={id => id.startsWith('@file:') ? (finder.mode === 'link' ? linkToFile(finder.from, id.slice(6)) : finder.mode === 'import' ? addFileNodeFrom(id.slice(6)) : openFile(id.slice(6))) : finder.mode === 'link' ? connect(finder.from, id) : finder.mode === 'linkfrom' ? connect(id, finder.to) : finder.mode === 'import' ? addRefNodeFrom(id) : jumpTo(id)} />}
-      {scaffold && <ScaffoldModal items={scaffold} root={wsData?.root || ''} onClose={() => setScaffold(null)}
-        onCreate={files => api('/scaffold', { method: 'POST', body: JSON.stringify({ files }) }).then(d => { setScaffold(null); setTree(null); setSaveState(d.made.length ? '已创建 ' + d.made.join('、') : '没有新建（都已存在）'); }).catch(e => setSaveState('❌ ' + e.message))} />}
+      {scaffold && <ScaffoldModal data={scaffold} onClose={() => setScaffold(null)}
+        onCreate={(syn, files, mount) => api('/scaffold', { method: 'POST', body: JSON.stringify({ syn, files, mount }) }).then(async d => { setScaffold(null); setTree(null); setWsData(await api('/ws')); setSaveState(d.made.length ? '已创建 ' + d.made.join('、') : '没有新建（都已存在）'); }).catch(e => setSaveState('❌ ' + e.message))} />}
       {fileView && <FilePanel file={fileView.text !== undefined || fileView.error || fileView.note ? fileView : null} onClose={() => setFileView(null)} hl={fileHl && fileHl.file === fileView.path ? fileHl : null} onSelMenu={mode === 'ws' ? (e, s) => setMenu({ x: e.clientX, y: e.clientY, sel: s }) : null} />}
       {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), color: colors.get(menu.id), baseColor: graph.nodes.has(menu.id) ? baseColor(graph, menu.id, getMeta(menu.id), cTables, semCols) : null, satNow: satOf(getMeta(menu.id)), colorSet: getMeta(menu.id)?.color || null, patternSet: getMeta(menu.id)?.pattern || null, pattern: patterns.get(menu.id) || null, open: !!expanded[menu.id], file: wsData?.nodes[menu.id]?.meta?.file || null, ref: wsData?.nodes[menu.id]?.meta?.ref || null, ui: isUi(wsData?.nodes[menu.id]?.meta), descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
         actions={{ ...menuActions, allOpen }} onClose={() => setMenu(null)} />}

@@ -641,10 +641,10 @@ for (const kind of ['reactflow']) {
   await page.keyboard.press('Control+z'); await sleep(1000);
   ok(lay()['乙'].x === 400 && lay()['乙'].y === 0, '框选缩放也能 Ctrl+Z');
   // 项目文档：先检测；同名中文的默认不勾；只建勾上的
-  await page.click('button:has-text("项目文档")'); await sleep(600);
+  await page.click('button:has-text("项目文件")'); await sleep(600);
   ok((await page.$eval('.scaffold', e => e.innerText)).includes('已有同类：_DevProgress.md'), '项目文档：检测到同类旧英文名');
   ok(!(await page.$eval('.scaflist li:has-text("_开发进度.md") input', e => e.checked)), '有同类的默认不勾');
-  for (const li of await page.$$('.scaflist li')) { const t = await li.innerText(); const cbx = await li.$('input'); if (!t.includes('_TODO.md') && await cbx.isChecked() && !(await cbx.isDisabled())) await cbx.uncheck(); }
+  for (const li of await page.$$('.scaflist li')) { const t = await li.innerText(); const cbx = await li.$('input'); if (await cbx.isDisabled()) continue; if (t.includes('_TODO.md')) await cbx.check(); else if (await cbx.isChecked()) await cbx.uncheck(); }
   await page.click('.scaffold button:has-text("创建勾选的")'); await sleep(800);
   ok(existsSync(join(ws, '_TODO.md')) && !existsSync(join(ws, '_开发进度.md')) && existsSync(join(ws, '_DevProgress.md')) && !existsSync(join(ws, 'AGENTS.md')), '只创建勾上的（_TODO.md）');
   ok(readFileSync(join(ws, '_DevProgress.md'), 'utf8') === '旧英文名的进度', '已有文件不动');

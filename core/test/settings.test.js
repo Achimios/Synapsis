@@ -13,8 +13,10 @@ ok(JSON.stringify(parseSettings('')) === JSON.stringify(defaults()) && defaults(
 const p1 = parseSettings('init:\n  manual: false   # 不要手册\n  launcher: false\n未知段:\n  x: 3\n');
 ok(p1.init.manual === false && p1.init.launcher === false && p1.init.blackboard === true, '文件里有的覆盖默认，没写的还是默认');
 ok(p1['未知段']?.x === 3, '不认识的段 / 键原样带上（数字）');
-ok(parseSettings(DEFAULT_TEXT).init.colorWords === true, '自带的默认文件能读回来');
+ok(parseSettings(DEFAULT_TEXT).init.words === true && parseSettings(DEFAULT_TEXT).nudge.delay === 200, '自带的默认文件能读回来');
 ok(parseSettings('init:\r\n  manual: false\r\n').init.manual === false, 'CRLF 也行');
+ok(parseSettings('init:\n  colorWords: false\n  patternWords: false\n').init.words === false && !('colorWords' in parseSettings('init:\n  colorWords: true\n').init), '旧的 colorWords / patternWords → words（两个都关才关）');
+ok(parseSettings('init:\n  colorWords: true\n').init.words === true && defaults().init.docs === false, '一个开着就开；文档骨架默认不要');
 
 // 只改一行，其余和注释不动
 const t0 = '# 头注释\ninit:\n  manual: true   # 手册\n  blackboard: true\n\n# 尾注释\nkeys: {}\n';

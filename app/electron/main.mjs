@@ -81,12 +81,9 @@ function showLauncher() {
 async function openWorkspace(dir) {
   dir = resolve(dir);
   if (!existsSync(dir)) { dialog.showErrorBox('Synapsis', '文件夹不存在：\n' + dir); return; }
-  if (!existsSync(join(dir, '__synapsis'))) {
-    const r = HIDDEN ? { response: 0 } : await dialog.showMessageBox({ type: 'question', buttons: ['挂上 Synapsis 并打开', '取消'], defaultId: 0, cancelId: 1, title: 'Synapsis', message: `「${basename(dir)}」还没挂上 Synapsis`, detail: '会在里面建 __synapsis/（图数据）、.synapsis/（本机状态）和「在Synapsis打开本项目」快捷方式。已有文件不会动。' });
-    if (r.response !== 0) return;
-    await initDir(dir);
-  }
-  launcherFor(dir);
+  // 👤 2026-10-12 没挂过的不再弹系统对话框：直接开窗口，页面里弹「挂上 Synapsis」清单（要建哪些勾哪些；「不挂了」= 关窗口，什么都不建）
+  if (!existsSync(join(dir, '__synapsis'))) { if (HIDDEN) await initDir(dir); } // 自动化测试照旧直接挂
+  else launcherFor(dir);
   touchRecent(dir); refreshTray();
   const old = wins.get(dir);
   if (old && !old.isDestroyed()) { old.show(); old.focus(); return old; }
@@ -96,7 +93,7 @@ async function openWorkspace(dir) {
   const fits = b => b && screen.getAllDisplays().some(d => { const a = d.workArea; return b.x >= a.x - 50 && b.y >= a.y - 50 && b.x + 200 <= a.x + a.width && b.y + 100 <= a.y + a.height; });
   const w = zoomKeys(new BrowserWindow({ ...winOpts(1500, 950), ...(fits(saved) ? { x: saved.x, y: saved.y, width: saved.width, height: saved.height } : {}), title: 'Synapsis — ' + basename(dir) }));
   if (saved?.maximized && !HIDDEN) w.maximize();
-  const keep = () => { try { mkdirSync(dirname(wfile), { recursive: true }); writeFileSync(wfile, JSON.stringify({ ...w.getNormalBounds(), maximized: w.isMaximized() })); } catch { /* 只读目录就算了 */ } };
+  const keep = () => { if (!existsSync(join(dir, '__synapsis'))) return; /* 没挂上（点了「不挂了」）就别往人家文件夹里写 */ try { mkdirSync(dirname(wfile), { recursive: true }); writeFileSync(wfile, JSON.stringify({ ...w.getNormalBounds(), maximized: w.isMaximized() })); } catch { /* 只读目录就算了 */ } };
   let kt = null; const keepSoon = () => { clearTimeout(kt); kt = setTimeout(keep, 500); };
   w.on('resize', keepSoon); w.on('move', keepSoon); w.on('close', keep);
   w.loadURL(`${BASE}/?ws=${encodeURIComponent(dir)}`);

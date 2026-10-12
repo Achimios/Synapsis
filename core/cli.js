@@ -39,6 +39,7 @@ import { loadWorkspace, workspaceOutline, checkWorkspace, groupStatus, saveOutli
 import { spaceInfo, closestPairs } from './space.js';
 import { ensureLauncher, PROJECT_LNK } from './launcher.js';
 import { loadSettings } from './settings.js';
+import { scaffoldPlan, scaffoldWrite } from './scaffold.js';
 import { exportForLLM, withNode, withLabel, withStatus, withEdge, withoutEdge, withoutNode, ROOT } from './outline.js';
 
 const HOME = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -97,19 +98,35 @@ function spaceText(g, id) {
 }
 
 // >v<🚀启停-init-给项目挂上 Synapsis（已有的文件不覆盖）
-export function init(root, home = HOME) {
-  const S = loadSettings(home).init; // settings.yaml 的 init 段：生成哪些（没有这个文件 = 全生成）
-  const made = [];
+// 挂 Synapsis 时可选的几样（界面「📄 项目文件…」对话框和命令行 init 共用）。exists = 已经有了，不会再写
+export function synItems(root) {
+  const has = rel => existsSync(join(root, rel));
+  return [
+    { key: 'manual', rel: DIR + '/_synapsis.md', exists: has(DIR + '/_synapsis.md') },
+    { key: 'blackboard', rel: DIR + '/' + blackboardName(root), exists: has(DIR + '/' + blackboardName(root)) },
+    { key: 'words', rel: DIR + '/' + WORDS_ALL, exists: has(DIR + '/' + WORDS_ALL) || has(DIR + '/_配色.md') },
+    { key: 'launcher', rel: PROJECT_LNK, exists: has(PROJECT_LNK) },
+  ];
+}
+// 挂上 Synapsis：__synapsis/ + .synapsis/ 总是建；keys 里的几样没有才写（已有的不覆盖）
+export function synWrite(root, keys) {
+  const want = new Set(keys || []), made = [];
   const put = (rel, content) => { const f = join(root, rel); if (existsSync(f)) return; mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, content); made.push(rel); };
+  if (!existsSync(join(root, DIR))) made.push(DIR + '/');
   mkdirSync(join(root, DIR), { recursive: true });
-  if (S.manual && ensureWorkspaceReadme(root, manualText(root))) made.push(DIR + '/_synapsis.md（AI 接入手册）');
-  if (S.blackboard && blackboardName(root) === '_Blackboard.md') put(DIR + '/_Blackboard.md', BLACKBOARD);
-  if (S.colorWords || S.patternWords) put(DIR + '/' + WORDS_ALL, DEFAULT_ALL); // 👤 2026-10-12 颜色 + 图案合成一份 _词表.md
-
+  if (want.has('manual') && ensureWorkspaceReadme(root, manualText(root))) made.push(DIR + '/_synapsis.md（AI 接入手册）');
+  if (want.has('blackboard') && blackboardName(root) === '_Blackboard.md') put(DIR + '/_Blackboard.md', BLACKBOARD);
+  if (want.has('words') && !existsSync(join(root, DIR, '_配色.md'))) put(DIR + '/' + WORDS_ALL, DEFAULT_ALL); // 👤 2026-10-12 颜色 + 图案合成一份 _词表.md（旧的 _配色.md 打开时会迁移过去）
   ensureGitignore(root);
   put('.synapsis/.gitignore', '# 本机状态（视图、缓存），不进 git\n*\n');
   // 启动器是生成物：根目录一个带图标的快捷方式 + 藏在 .synapsis/ 的兜底 vbs（core/launcher.js；Synapsis 搬家后重跑 init 即可修好）
-  if (S.launcher) made.push(...ensureLauncher(root, { force: true }));
+  if (want.has('launcher')) made.push(...ensureLauncher(root, { force: true }));
+  return made;
+}
+export function init(root, home = HOME) {
+  const S = loadSettings(home).init; // settings.yaml 的 init 段：生成哪些（没有这个文件 = 默认）
+  const made = synWrite(root, Object.keys(S).filter(k => S[k] === true));
+  if (S.docs) made.push(...scaffoldWrite(root, scaffoldPlan(root).filter(i => !i.alike.length).map(i => i.rel)));
   console.log(made.length ? '已创建：\n  ' + made.join('\n  ') : '都已存在，没动');
   if (S.launcher) console.log('双击 ' + join(root, PROJECT_LNK) + ' 打开');
 }
