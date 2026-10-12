@@ -31,6 +31,8 @@ const s2 = saveSettings(home, { init: { manual: false, 不存在的键: true, bl
 ok(s2.init.manual === false && s2.init.blackboard === true, '只认设计里有的键、且必须是布尔');
 ok(existsSync(join(home, 'settings.yaml')) && /manual: false/.test(readFileSync(join(home, 'settings.yaml'), 'utf8')), '存出 settings.yaml');
 ok(!/乱来|不存在的键/.test(readFileSync(join(home, 'settings.yaml'), 'utf8')), '不认识的写不进去');
+const s3 = saveSettings(home, { nudge: { step: 12, delay: '300', interval: NaN } });
+ok(s3.nudge.step === 12 && s3.nudge.delay === 200 && s3.nudge.interval === 100 && s3.init.manual === false, '数字项（方向键微调）存得进去；类型不对 / NaN 不写');
 
 // init 听设置
 const proj = mkdtempSync(join(tmpdir(), 'syn-proj-'));

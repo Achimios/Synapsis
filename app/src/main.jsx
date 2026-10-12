@@ -277,7 +277,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
     setNodes(prev => {
       const old = new Map(prev.map(n => [n.id, n]));
       // 坐标以外壳的 layout 为准；只有正在拖的节点用本地坐标（否则旧坐标会和自动布局打架，新节点压住老节点）
-      return build().map(n => { const o = old.get(n.id); return o ? { ...o, ...n, position: o.dragging ? o.position : n.position } : n; });
+      return applyHold(build().map(n => { const o = old.get(n.id); return o ? { ...o, ...n, position: o.dragging ? o.position : n.position } : n; })); // 方向键按住中：叠上没存的位移
     });
   }, [view, layout, selected, images, pics, plane, multi, fv]);
 
@@ -322,6 +322,84 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
     setNodes(ns => applyNodeChanges(ch, ns));
   }, []);
   nodesRef.current = nodes;
+  // >v<🎨画布-方向键微调（👤 2026-10-12 打字时双手不离键盘）：方向键 = 挪选中的卡（多选一起），Shift = × fast；
+  //   Ctrl+方向键 = UI 框往那边撑大，Ctrl+Alt = 那一边往回缩（普通卡大小跟内容走，不管）。
+  //   按下先走一步，停 delay 毫秒后每 interval 毫秒一步（不用系统的按键重复）；几个方向键一起按 = 斜着走；中途按 / 松 Shift、Ctrl 立刻生效。
+  //   全松开才存：一次按住 = 一次挪动（Ctrl+Z 一步；往左 / 上撑大 = 改大小 + 挪位置两步）。参数在 ⚙ 设置（settings.yaml 的 nudge）
+  const hold = useRef({ keys: new Set(), base: new Map(), acc: new Map(), pend: new Map(), timer: null, mods: {} });
+  const applyHold = list => {
+    const H = hold.current; if (!H.acc.size && !H.pend.size) return list;
+    return list.map(n => {
+      let a = H.acc.get(n.id), b = H.base.get(n.id);
+      if (!a && H.pend.has(n.id)) { const p = H.pend.get(n.id); if (n.data?.node?.uiW === p.w && n.data?.node?.uiH === p.h) { H.pend.delete(n.id); return n; } a = p.a; b = p.b; } // 存了大小、服务器还没回：先按新的画，免得闪回去
+      if (!a || !b) return n;
+      const out = { ...n, position: { x: b.pos.x + a.x * b.z, y: b.pos.y + a.y * b.z } };
+      if (b.ui && (a.w || a.h)) { const w = b.w + a.w, h = b.h + a.h; out.style = { ...n.style, width: w * b.z, height: h * b.z }; out.data = { ...n.data, node: { ...n.data.node, uiW: w, uiH: h } }; }
+      return out;
+    });
+  };
+  const nudgeLive = useRef(null);
+  nudgeLive.current = { multi, selected, toLayout, onMove };
+  useEffect(() => {
+    const DIR = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+    const H = hold.current;
+    const step = codes => {
+      const cfg = cardActions.nudge || {}, s = (+cfg.step || 8) * (H.mods.shift ? (+cfg.fast || 4) : 1);
+      for (const [id, b] of H.base) {
+        const a = H.acc.get(id) || { x: 0, y: 0, w: 0, h: 0 };
+        for (const c of codes) {
+          const [dx, dy] = DIR[c];
+          if (!H.mods.ctrl) { a.x += dx * s; a.y += dy * s; continue; }
+          if (!b.ui) continue;
+          const d = H.mods.alt ? -s : s; // 撑大 / 往回缩那一边
+          if (dx) { const w0 = b.w + a.w, w1 = Math.max(40, w0 + d); a.w += w1 - w0; if (dx < 0) a.x -= w1 - w0; }
+          else { const h0 = b.h + a.h, h1 = Math.max(30, h0 + d); a.h += h1 - h0; if (dy < 0) a.y -= h1 - h0; }
+        }
+        H.acc.set(id, a);
+      }
+      setNodes(ns => applyHold(ns));
+    };
+    const commit = () => {
+      clearTimeout(H.timer); clearInterval(H.timer); H.timer = null; H.keys.clear();
+      if (!H.acc.size) { H.base.clear(); return; }
+      const { toLayout: tl, onMove: mv } = nudgeLive.current, cur = new Map(nodesRef.current.map(n => [n.id, n]));
+      const moves = {};
+      for (const [id, a] of H.acc) {
+        const b = H.base.get(id), n = cur.get(id); if (!b || !n) continue;
+        if (a.x || a.y) moves[id] = tl(id, n.position);
+        if (a.w || a.h) { H.pend.set(id, { w: Math.round(Math.max(40, b.w + a.w)), h: Math.round(Math.max(30, b.h + a.h)), a: { ...a }, b }); cardActions.resizeUi?.(id, b.w + a.w, b.h + a.h); }
+      }
+      H.acc.clear(); H.base.clear();
+      if (Object.keys(moves).length) mv(moves);
+      if (H.pend.size) setTimeout(() => { if (H.pend.size) { H.pend.clear(); setNodes(ns => [...ns]); } }, 3000);
+    };
+    const down = e => {
+      if (!DIR[e.code]) { if (H.keys.size) H.mods = { shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey }; return; }
+      const t = e.target; if (t !== document.body && !t.closest?.('.react-flow')) return; // 大纲树等自己管方向键的地方不抢
+      if (t.closest?.('textarea, input, [contenteditable="true"]') || e.metaKey || (e.altKey && !e.ctrlKey)) return;
+      e.preventDefault(); e.stopPropagation();
+      H.mods = { shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey };
+      if (e.repeat || H.keys.has(e.code)) return;
+      if (!H.keys.size) { // 新的一次按住：记下目标和起点
+        const { multi: m, selected: sl } = nudgeLive.current;
+        const ids = (m.length ? m : sl ? [sl] : []).filter(id => id !== '@axes');
+        H.base.clear();
+        for (const n of nodesRef.current) if (ids.includes(n.id) && n.draggable !== false) H.base.set(n.id, { pos: { ...n.position }, z: n.data?.zoom || 1, ui: !!n.data?.node?.ui, w: n.data?.node?.uiW || 0, h: n.data?.node?.uiH || 0 });
+        if (!H.base.size) return;
+      }
+      H.keys.add(e.code);
+      step([e.code]);
+      if (!H.timer) { const cfg = cardActions.nudge || {}; H.timer = setTimeout(() => { H.timer = setInterval(() => step([...H.keys]), Math.max(16, +cfg.interval || 100)); }, Math.max(0, +cfg.delay || 200)); }
+    };
+    const up = e => {
+      if (!DIR[e.code]) { if (H.keys.size) H.mods = { shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey }; return; }
+      if (!H.keys.has(e.code)) return;
+      H.keys.delete(e.code); if (!H.keys.size) commit();
+    };
+    const blur = () => { if (H.keys.size) commit(); };
+    window.addEventListener('keydown', down); window.addEventListener('keyup', up); window.addEventListener('blur', blur);
+    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); };
+  }, []);
   // AI 指令框用：选中一批（预览 / 执行「选中」）；量卡片（对齐 / 排列要宽高，坐标给存的那套）
   cardActions.select = ids => { setMulti(ids); onSelect(ids.length === 1 ? ids[0] : ids.at(-1) ?? null); };
   cardActions.boxes = () => Object.fromEntries(nodesRef.current.filter(n => n.measured?.width && n.type !== 'axes').map(n => {

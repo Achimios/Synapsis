@@ -795,6 +795,13 @@ export function Shell({ name, Canvas }) {
     text: { name: '正文', field: 'textOpen', ok: n => !!wsData?.nodes[n.id]?.body?.trim(), own: id => !!textOpen[id], tip: '卡片里渲染 md 正文' },
   };
   const [settingsOpen, setSettingsOpen] = useState(false); // 左上角 ⚙
+  // 方向键微调的参数（settings.yaml 的 nudge 段；样例模式 / 读不到 = 默认）。画布那边读 cardActions.nudge
+  useEffect(() => {
+    const put = s => { if (s?.nudge) cardActions.nudge = { ...NUDGE, ...s.nudge }; };
+    if (mode === 'ws') api('/settings').then(d => put(d.settings)).catch(() => {});
+    const on = e => put(e.detail); window.addEventListener('syn-settings', on);
+    return () => window.removeEventListener('syn-settings', on);
+  }, [mode]);
   // Ctrl+H 替换节点名：范围 = 选中的几张（ids）或整页（null）；匹配的卡依次选中并移到视野里
   const [repl, setRepl] = useState(null); // {find, to, ids, idx, note}
   const replIds = repl ? (repl.ids || graph.nodes.get(realScope)?.children || []).filter(id => graph.nodes.has(id)) : [];
@@ -1329,7 +1336,8 @@ export function nodeDim(id, view, selected) {
   return !view.edges.some(e => (e.from === selected && e.to === id) || (e.to === selected && e.from === id));
 }
 // 卡片上的交互回调（外壳每次渲染时填好；画布组件不用逐层传）
-export const cardActions = { toggle: () => {}, openChild: () => {}, foldPics: () => {}, resizePics: () => {} };
+const NUDGE = { step: 8, fast: 4, delay: 200, interval: 100 }; // 和 core/settings.js 的 nudge 默认值一致
+export const cardActions = { toggle: () => {}, openChild: () => {}, foldPics: () => {}, resizePics: () => {}, nudge: { ...NUDGE } };
 // pointerdown 也要拦住，否则 React Flow 会把它当成选中或拖动的开始
 const stop = e => e.stopPropagation();
 // 卡片上就地改名：Enter / 失焦 = 确定，Esc = 取消；键盘和鼠标事件都不往画布冒（否则 Delete / 拖动会作用到卡片）

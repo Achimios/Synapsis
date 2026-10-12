@@ -560,6 +560,7 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 .settings h4 { margin: 2px 0 6px; font-size: 13px; }
 .settings .srow { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; cursor: pointer; }
 .settings .srow b { min-width: 96px; font-weight: 600; }
+.settings .srow .snum { width: 56px; }
 .settings .spath { margin-top: 6px; word-break: break-all; }
 
 /* 连线到… 搜索框的两个页签：节点 / 项目文件 */

@@ -564,7 +564,7 @@ export function SearchModal({ title, items, exclude, onPick, onClose }) {
 export function SettingsModal({ api, onClose, onHelp }) {
   const [d, setD] = useState(null), [err, setErr] = useState('');
   useEffect(() => { api('/settings').then(setD).catch(e => setErr(e.message)); }, []);
-  const set = (sec, k, v) => { setD(x => ({ ...x, settings: { ...x.settings, [sec]: { ...x.settings[sec], [k]: v } } })); api('/settings', { method: 'PUT', body: JSON.stringify({ [sec]: { [k]: v } }) }).then(setD).catch(e => setErr(e.message)); };
+  const set = (sec, k, v) => { setD(x => ({ ...x, settings: { ...x.settings, [sec]: { ...x.settings[sec], [k]: v } } })); api('/settings', { method: 'PUT', body: JSON.stringify({ [sec]: { [k]: v } }) }).then(r => { setD(r); window.dispatchEvent(new CustomEvent('syn-settings', { detail: r.settings })); }).catch(e => setErr(e.message)); };
   return (
     <div className="modal" onClick={onClose}>
       <div className="settings" onClick={e => e.stopPropagation()}>
@@ -572,12 +572,13 @@ export function SettingsModal({ api, onClose, onHelp }) {
         <div className="sbody">
           {err && <div className="warn">{err}</div>}
           {!d && !err && <div className="hint">读取中…</div>}
-          {d && Object.entries(d.schema).map(([sec, { title, keys }]) => (
+          {d && Object.entries(d.schema).map(([sec, { title, hint, keys }]) => (
             <section key={sec}><h4>{title}</h4>
-              <div className="hint" style={{ marginBottom: 4 }}>在界面里给一个文件夹挂上 Synapsis（或命令行 init）时，勾上的才会生成；已有的文件不会被覆盖。</div>
-              {Object.entries(keys).map(([k, [, name, desc]]) => (
-                <label key={k} className="srow"><input type="checkbox" checked={!!d.settings[sec]?.[k]} onChange={e => set(sec, k, e.target.checked)} /><b>{name}</b><span className="hint">{desc}</span></label>
-              ))}
+              {hint && <div className="hint" style={{ marginBottom: 4 }}>{hint}</div>}
+              {Object.entries(keys).map(([k, [def, name, desc]]) => typeof def === 'number'
+                ? <label key={k} className="srow"><input type="number" className="snum" min="1" defaultValue={d.settings[sec]?.[k] ?? def} onBlur={e => { const v = Number(e.target.value); if (Number.isFinite(v) && v > 0 && v !== d.settings[sec]?.[k]) set(sec, k, v); }} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} /><b>{name}</b><span className="hint">{desc}（默认 {def}）</span></label>
+                : <label key={k} className="srow"><input type="checkbox" checked={!!d.settings[sec]?.[k]} onChange={e => set(sec, k, e.target.checked)} /><b>{name}</b><span className="hint">{desc}</span></label>
+              )}
             </section>
           ))}
           <section><h4>快捷键</h4>
