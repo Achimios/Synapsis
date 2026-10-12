@@ -336,7 +336,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   }, []);
   nodesRef.current = nodes;
   // >v<🎨画布-方向键微调（👤 2026-10-12 打字时双手不离键盘）：方向键 = 挪选中的卡（多选一起），Shift = × fast；
-  //   Ctrl+方向键 = UI 框那一边往外撑，Ctrl+Alt+方向键 = 对面那一边往箭头方向缩（箭头 = 边移动的方向；普通卡大小跟内容走，不管）。
+  //   Ctrl+方向键 = UI 框的右边 / 下边往箭头方向走，Ctrl+Alt = 左边 / 上边（箭头 = 边移动的方向；普通卡大小跟内容走，不管）。
   //   按下先走一步，停 delay 毫秒后每 interval 毫秒一步（不用系统的按键重复）；几个方向键一起按 = 斜着走；中途按 / 松 Shift、Ctrl 立刻生效。
   //   全松开才存：一次按住 = 一次挪动（Ctrl+Z 一步；往左 / 上撑大 = 改大小 + 挪位置两步）。参数在 ⚙ 设置（settings.yaml 的 nudge）
   const hold = useRef({ keys: new Set(), base: new Map(), acc: new Map(), pend: new Map(), timer: null, mods: {} });
@@ -364,10 +364,10 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
           const [dx, dy] = DIR[c];
           if (!H.mods.ctrl) { a.x += dx * s; a.y += dy * s; continue; }
           if (!b.ui) continue;
-          // 箭头指哪边，边就往哪边走：Ctrl = 那一边往外撑（Ctrl+← 左边往左）；Ctrl+Alt = 对面那一边往这边缩（Ctrl+Alt+← 右边往左，👤 2026-10-12）
-          const alt = H.mods.alt, d = alt ? -s : s, moveNear = (dx || dy) < 0 ? !alt : alt; // 动的是左 / 上边 → 位置跟着挪
-          if (dx) { const w0 = b.w + a.w, w1 = Math.max(40, w0 + d); a.w += w1 - w0; if (moveNear) a.x -= w1 - w0; }
-          else { const h0 = b.h + a.h, h1 = Math.max(30, h0 + d); a.h += h1 - h0; if (moveNear) a.y -= h1 - h0; }
+          // 箭头 = 边往哪边走。Ctrl 动右边 / 下边（大部分时候只要这两边），Ctrl+Alt 动左边 / 上边（👤 2026-10-12）
+          const near = H.mods.alt, d = (dx || dy) * s * (near ? -1 : 1); // 动左 / 上边：往右 / 下走 = 变小，位置跟着挪
+          if (dx) { const w0 = b.w + a.w, w1 = Math.max(40, w0 + d); a.w += w1 - w0; if (near) a.x -= w1 - w0; }
+          else { const h0 = b.h + a.h, h1 = Math.max(30, h0 + d); a.h += h1 - h0; if (near) a.y -= h1 - h0; }
         }
         H.acc.set(id, a);
       }
