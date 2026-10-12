@@ -680,3 +680,6 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 .keyhud kbd { font: 600 12px Consolas, monospace; background: var(--panel2); border: 1px solid var(--line2); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; color: var(--strong); }
 .keyhud .hk { color: var(--faint); font-size: 10px; justify-content: flex-end; }
 .finder .ftabs .tabkey { align-self: center; margin-left: 4px; font: 600 10px Consolas, monospace; color: var(--dim); border: 1px solid var(--line2); border-radius: 3px; padding: 0 4px; }
+/* F 看全局中：左下角 ⛶ 底变黄；框里的 ⛶ 同理 */
+.react-flow__controls-button.ovbtn.on, .card.uibox .uiall.on, .frame .frall.on { background: #e6c440 !important; color: #222 !important; }
+.react-flow__controls-button.ovbtn.on svg { fill: #222 !important; }

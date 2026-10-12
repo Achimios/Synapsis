@@ -899,6 +899,7 @@ export function Shell({ name, Canvas }) {
       else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); setLeftHidden(h => !h); } // 👤 Tab = 侧栏开关
       else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) focusLabel(sel); }
       else if (e.code === 'KeyR' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) focusLabel(sel); } // 👤 2026-10-12 R = 改名（左手，同 Enter）；Alt+R = 改完
+      else if (e.code === 'KeyF' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { e.preventDefault(); e.stopPropagation(); const n = sel && !sel.startsWith('@') && graph.nodes.get(sel); if (n?.children.length && frmE(sel)) cardActions.fitFrame?.(sel); else cardActions.overview?.(); } // 👤 2026-10-12 F = 看全局 / 再按回原来的视野；选中的节点展开了子图 = 只管它里面（同框里的 ⛶）
       else if (e.code === 'KeyH' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { e.preventDefault(); e.stopPropagation(); setKeyHints(o => !o); }
       else if (e.code === 'KeyT' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@') && graph.nodes.has(sel)) menuActions.addChild(sel); } // 👤 2026-10-12 T = 给选中的建子节点，直接进改名（同右键 ＋ 新建子节点） // 👤 2026-10-10 选中了 Enter = 重命名；没选中什么都不做（常误触）。👤 2026-10-11 键盘新建（Shift+Enter / Insert / Ctrl+Enter）和 F2 都去掉：新建走鼠标（右键），改名只留 Enter
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyS') { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) drill(sel); } // Alt+S = 钻进去（没选中不管）
@@ -1351,7 +1352,7 @@ export function nodeDim(id, view, selected) {
 }
 // 卡片上的交互回调（外壳每次渲染时填好；画布组件不用逐层传）
 // 画布右下角的导航 / 选择速查（H 开关）。只放画布上随时要用、按钮上看不到的
-const KEY_HUD = [['W A S D', '选卡'], ['Shift+W A S D', '只本层'], ['Alt+W / S', '上一层 / 进去'], ['Alt+A / D', '后退 / 前进'], ['Alt(Shift)+← →', '扩选'], ['(Shift) ← → ↑ ↓', '挪卡'], ['Ctrl(Alt)+← → ↑ ↓', 'UI 框大小'], ['R / T', '改名 / 建子节点']];
+const KEY_HUD = [['F', '看全局 / 回去'], ['W A S D', '选卡'], ['Shift+W A S D', '只本层'], ['Alt+W / S', '上一层 / 进去'], ['Alt+A / D', '后退 / 前进'], ['Alt(Shift)+← →', '扩选'], ['(Shift) ← → ↑ ↓', '挪卡'], ['Ctrl(Alt)+← → ↑ ↓', 'UI 框大小'], ['R / T', '改名 / 建子节点']];
 const NUDGE = { step: 8, fast: 4, delay: 200, interval: 100 }; // 和 core/settings.js 的 nudge 默认值一致
 export const cardActions = { toggle: () => {}, openChild: () => {}, foldPics: () => {}, resizePics: () => {}, nudge: { ...NUDGE } };
 // pointerdown 也要拦住，否则 React Flow 会把它当成选中或拖动的开始
@@ -1493,7 +1494,7 @@ export function UiCard({ node, dim, isSel }) {
         <li key={k.id} data-nid={k.id} style={k.d ? { paddingLeft: 2 + k.d * 12 } : undefined} title="双击跳进去" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
           <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span>{k.renaming ? <RenameInput id={k.id} label={k.label} /> : <span>{k.label}</span>}{k.n > 0 && <span className="kn">▸{k.n}</span>}
         </li>))}</ul>}
-      {node.framed && node.children.length > 0 && <span className="uiall nodrag" title="复位视角：移到里面所有节点的中点，缩放到全部显示" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.fitFrame?.(node.id); }}>⛶</span>}
+      {node.framed && node.children.length > 0 && <span className={'uiall nodrag' + (node.ovOn ? ' on' : '')} title={node.ovOn ? '回到原来的视角' : '复位视角：移到里面所有节点的中点，缩放到全部显示；再点一下回到原来的'} onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.fitFrame?.(node.id); }}>⛶</span>}
       {!compact && <span className="uigrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} onClick={stop} />}
     </div>
   );
@@ -1504,7 +1505,7 @@ export function FrameCard({ node, dim, isSel }) {
       <div className="fhead" onDoubleClick={e => { e.stopPropagation(); cardActions.drill(node.id); }} title="双击钻进去">
         {node.status && <span className="st">{STATUS_ICON[node.status]}</span>}
         {node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
-        <span className="frall" title="缩放回 100%" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.fitFrame?.(node.id); }}>⛶</span>
+        <span className={'frall' + (node.ovOn ? ' on' : '')} title={node.ovOn ? '回到原来的缩放' : '缩放回 100%；再点一下回到原来的'} onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.fitFrame?.(node.id); }}>⛶</span>
         <span className="kids" title="收起子图（F）" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggleFrame(node.id); }}>⊟</span>
       </div>
     </div>

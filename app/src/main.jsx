@@ -1,6 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { ReactFlow, Background, Controls, MiniMap, Handle, Position, applyNodeChanges, BaseEdge, EdgeLabelRenderer, getBezierPath, ViewportPortal, useReactFlow } from '@xyflow/react';
+import { ReactFlow, Background, Controls, ControlButton, MiniMap, Handle, Position, applyNodeChanges, BaseEdge, EdgeLabelRenderer, getBezierPath, ViewportPortal, useReactFlow } from '@xyflow/react';
 import { dragScale } from './arrange.js';
 import { expand, pathBetween } from './select.js';
 import '@xyflow/react/dist/style.css';
@@ -103,8 +103,13 @@ function ScaleFrame({ nodes, ids, setNodes, onMove }) {
 }
 
 // 外壳要把屏幕坐标换成画布坐标（粘贴落在鼠标处）
-function FlowBridge() {
+function FlowBridge({ ovRef, setOv }) {
   const rf = useReactFlow();
+  // 👤 2026-10-12 F / 左下角 ⛶ = 看全局：记下现在的视野 → 缩放到全部；再按一次回到原来的视野。中途自己拖 / 滚了画布 = 退出，以当前视野为准（原来的忘掉）
+  cardActions.overview = () => {
+    if (ovRef.current) { const v = ovRef.current; ovRef.current = null; setOv(null); rf.setViewport(v, { duration: 150 }); return; }
+    const v = rf.getViewport(); ovRef.current = v; setOv(v); rf.fitView({ duration: 150, padding: 0.1 });
+  };
   cardActions.toFlow = p => rf.screenToFlowPosition(p);
   // 居中到某张卡：卡片还没量好尺寸（刚换页）就返回 false，让调用方等一下再试；force = 不等了，量没量好都居中。动画 120ms（以前 300，跳转显得拖）
   cardActions.centerOn = (id, force) => { const n = rf.getNode(id); if (!n || (!force && !n.measured?.width)) return false; rf.fitView({ nodes: [{ id }], duration: 120, padding: 1.5, maxZoom: Math.max(1, rf.getZoom()) }); return true; };
@@ -116,6 +121,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   // >v<🎨画布-改接连线-按住 Alt 在连线身上任意处按下 = 拿起离鼠标近的那一端（👤 2026-10-08：端点处常叠着好几条线，只能从线身上挑）
   //   放到别的节点 = 改接（标签 / 类型跟过去），放到画布空白 = 删除，拖着时右键 / Esc = 取消，放到画布外（面板上）= 取消
   const [alt, setAlt] = useState(false);
+  const [ov, setOv] = useState(null), ovRef = useRef(null); // 看全局之前的视野（F）；换页时整个画布重建，自然清掉
   useEffect(() => {
     const k = e => setAlt(e.altKey), b = () => setAlt(false);
     window.addEventListener('keydown', k); window.addEventListener('keyup', k); window.addEventListener('blur', b);
@@ -197,7 +203,13 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   const posOf = n => { const p = layout[n.id], t = fx[frameOf.get(n.id)]; return t && p ? { x: t.z * p.x + t.tx, y: t.z * p.y + t.ty } : p; };
   const toLayout = (id, p) => { const t = fx[frameOf.get(id)]; return t ? { x: Math.round((p.x - t.tx) / t.z), y: Math.round((p.y - t.ty) / t.z) } : p; };
   const fvLive = useRef(); fvLive.current = { selected, view, fx, fitUi };
-  cardActions.fitFrame = id => { const n = view.nodes.find(x => x.id === id); if (!n) return; setFv(m => { if (!n.ui) { const { [id]: _, ...rest } = m; return rest; } return { ...m, [id]: fitUi(n, fx[id]?.z || 1) }; }); };
+  // 框里的 ⛶ 和 F 一样（👤 2026-10-12「子图同理」）：第一下复位看全部，记下原来的；再点一下回去；中途自己滚 / 拖了框里 = 以当前为准
+  const [frameOv, setFrameOv] = useState({}), frameOvRef = useRef({}); frameOvRef.current = frameOv;
+  const forgetFrameOv = id => { if (id in frameOvRef.current) setFrameOv(({ [id]: _, ...rest }) => rest); };
+  cardActions.fitFrame = id => { const n = view.nodes.find(x => x.id === id); if (!n) return;
+    if (id in frameOv) { const old = frameOv[id]; setFrameOv(({ [id]: _, ...rest }) => rest); setFv(m => { if (!old) { const { [id]: _, ...rest } = m; return rest; } return { ...m, [id]: old }; }); return; }
+    setFrameOv(o => ({ ...o, [id]: fv[id] || null }));
+    setFv(m => { if (!n.ui) { const { [id]: _, ...rest } = m; return rest; } return { ...m, [id]: fitUi(n, fx[id]?.z || 1) }; }); };
   // UI 框刚展开 / 子节点数变了 → 自动复位一次（等卡片量完尺寸再算）
   const fvKey = useRef({});
   useEffect(() => {
@@ -209,6 +221,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
     const t = setTimeout(() => { const L = fvLive.current; setFv(m => { const r = { ...m }; for (const n of todo) { const cur = L.view.nodes.find(x => x.id === n.id); if (cur?.framed) r[n.id] = L.fitUi(cur, L.fx[n.id]?.z || 1); } return r; }); }, 450);
     return () => clearTimeout(t);
   }, [view]);
+  const forgetFrameOvLive = useRef(null); forgetFrameOvLive.current = forgetFrameOv;
   useEffect(() => { // 选中了展开子图的框（普通节点或 UI 框）+ 鼠标在框上：滚轮 = 缩放框内画布（以鼠标为中心），UI 框里鼠标中键拖 = 平移框内画布；整页的缩放 / 平移不动
     const hit = e => {
       const { selected: sid, view: v } = fvLive.current;
@@ -220,7 +233,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
     const onWheel = e => {
       const h = hit(e); if (!h) return;
       e.preventDefault(); e.stopPropagation();
-      const { n, r } = h, f = e.deltaY < 0 ? 1.1 : 1 / 1.1, cur = fvLive.current.fx[n.id];
+      const { n, r } = h, f = e.deltaY < 0 ? 1.1 : 1 / 1.1, cur = fvLive.current.fx[n.id]; forgetFrameOvLive.current(n.id);
       const z = Math.max(0.15, Math.min(3, cur.z * f));
       if (!n.ui) { setFv(m => ({ ...m, [n.id]: { z, tx: 0, ty: 0 } })); return; }
       const s = r.width / n.uiW, mx = (e.clientX - r.left) / s, my = (e.clientY - r.top) / s;
@@ -236,7 +249,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
     const move = e => {
       if (!pan) return;
       if (!(e.buttons & 4)) { pan = null; return; } // 中键已经松开（mouseup 被系统吞了也能停）
-      const dx = (e.clientX - pan.x) / pan.s, dy = (e.clientY - pan.y) / pan.s;
+      const dx = (e.clientX - pan.x) / pan.s, dy = (e.clientY - pan.y) / pan.s; forgetFrameOvLive.current(pan.id);
       setFv(m => ({ ...m, [pan.id]: { z: pan.cur.z, tx: pan.cur.tx + dx, ty: pan.cur.ty + dy } }));
     };
     const up = () => { pan = null; };
@@ -267,7 +280,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   };
   const build = () => [
     ...(plane ? [{ id: '@axes', type: 'axes', position: { x: -plane.S * 1.25, y: -plane.S * 1.25 }, data: plane, draggable: false, selectable: false, focusable: false, zIndex: -1, style: { pointerEvents: 'none' } }] : []),
-    ...view.nodes.map(n => ({ id: n.id, type: n.framed && !n.ui ? 'frame' : 's', position: posOf(n), style: nodeStyle(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id), zoom: n.frame != null ? fx[n.frame]?.z || 1 : 1 }, selected: isSel(n.id) })),
+    ...view.nodes.map(n => ({ id: n.id, type: n.framed && !n.ui ? 'frame' : 's', position: posOf(n), style: nodeStyle(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n.id in frameOv ? { ...n, ovOn: true } : n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id), zoom: n.frame != null ? fx[n.frame]?.z || 1 : 1 }, selected: isSel(n.id) })),
     ...view.portals.map(p => ({ id: p.id, type: 's', position: layout[p.id], data: { portal: p, dim: nodeDim(p.id, view, selected) }, selected: isSel(p.id) })),
     ...pics.map(p => ({ id: p.id, type: 'pic', position: layout[p.id] || { x: 0, y: 0 }, data: { pic: p, isSel: isSel(p.id) }, selected: isSel(p.id) })),
   ];
@@ -279,7 +292,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
       // 坐标以外壳的 layout 为准；只有正在拖的节点用本地坐标（否则旧坐标会和自动布局打架，新节点压住老节点）
       return applyHold(build().map(n => { const o = old.get(n.id); return o ? { ...o, ...n, position: o.dragging ? o.position : n.position } : n; })); // 方向键按住中：叠上没存的位移
     });
-  }, [view, layout, selected, images, pics, plane, multi, fv]);
+  }, [view, layout, selected, images, pics, plane, multi, fv, frameOv]);
 
   // 选中一个框：框里的节点连出去的线也算「相连」
   const near = selected && view.parentOf?.size ? new Set([selected, ...view.nodes.filter(n => { for (let f = n.frame; f != null; f = view.parentOf.get(f)) if (f === selected) return true; return false; }).map(n => n.id)]) : null;
@@ -506,11 +519,16 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
       zoomOnDoubleClick={false} deleteKeyCode={null} minZoom={0.1} colorMode={theme === 'light' ? 'light' : 'dark'}
       // 记住的视图优先；第一次进这个范围才 fitView
       fitView={!viewport} fitViewOptions={{ padding: 0.2 }} defaultViewport={viewport}
-      onMoveEnd={(_, vp) => onViewport(vp)}>
+      onMoveStart={e => { if (e && ovRef.current) { ovRef.current = null; setOv(null); } }} /* 人拖 / 滚的才有 event；程序动的（看全局、居中）没有 */
+      onMoveEnd={(_, vp) => { if (!ovRef.current) onViewport(vp); }}> {/* 看全局时不记视野：换页再回来还是原来那个 */}
       <Background gap={24} size={1} color={theme === 'light' ? '#dcdcdc' : '#333'} />
-      <Controls showInteractive={false} />
+      <Controls showInteractive={false} showFitView={false}>
+        <ControlButton className={'ovbtn' + (ov ? ' on' : '')} title={ov ? '回到原来的视野（F）' : '看全局（F）：再按一次回到原来的视野'} onClick={() => cardActions.overview?.()}>
+          <svg viewBox="0 0 32 30"><path d="M3.692 4.63c0-.53.4-.938.939-.938h5.215V0H4.708C2.13 0 0 2.054 0 4.63v5.216h3.692V4.63zM27.354 0h-5.2v3.692h5.17c.53 0 .984.4.984.939v5.215H32V4.631A4.624 4.624 0 0027.354 0zm.954 24.83c0 .532-.4.94-.939.94h-5.215v3.768h5.215c2.577 0 4.631-2.13 4.631-4.707v-5.139h-3.692v5.139zm-23.677.94c-.531 0-.939-.4-.939-.94v-5.138H0v5.139c0 2.577 2.13 4.707 4.708 4.707h5.138V25.77H4.631z" /></svg>
+        </ControlButton>
+      </Controls>
       <MiniMap pannable zoomable nodeColor={n => n.data?.node?.color || n.data?.portal?.color || "#444"} nodeStrokeColor="#666" maskColor={theme === 'light' ? 'rgba(255,255,255,.6)' : 'rgba(0,0,0,.55)'} />
-      <FlowBridge />
+      <FlowBridge ovRef={ovRef} setOv={setOv} />
       {multi.length > 1 && <ScaleFrame nodes={shown} ids={multi} setNodes={setNodes} onMove={ch => onMove(Object.fromEntries(Object.entries(ch).map(([id, p]) => [id, toLayout(id, p)])))} />}
     </ReactFlow>
   </>);

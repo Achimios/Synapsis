@@ -581,7 +581,7 @@ export function SettingsModal({ api, onClose, onHelp }) {
   useEffect(() => { api('/settings').then(setD).catch(e => setErr(e.message)); }, []);
   const set = (sec, k, v) => { setD(x => ({ ...x, settings: { ...x.settings, [sec]: { ...x.settings[sec], [k]: v } } })); api('/settings', { method: 'PUT', body: JSON.stringify({ [sec]: { [k]: v } }) }).then(r => { setD(r); window.dispatchEvent(new CustomEvent('syn-settings', { detail: r.settings })); }).catch(e => setErr(e.message)); };
   return (
-    <div className="modal" onClick={onClose}>
+    <div className="modal">{/* 👤 2026-10-12 点框外不关，只能点 ✕（改数字时手一滑就没了） */}
       <div className="settings" onClick={e => e.stopPropagation()}>
         <div className="bar"><b>⚙ 设置</b><span className="hint" style={{ flex: 1 }}>改了立刻存进 settings.yaml</span><button onClick={onClose}>✕</button></div>
         <div className="sbody">
