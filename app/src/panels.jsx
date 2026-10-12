@@ -10,13 +10,48 @@ import { KEYMAP, comboFromKeyEvent, comboText, matchKey } from './keymap.js';
 const STATUS = [['done', '✅'], ['partial', '◐'], ['todo', '○'], ['dropped', '❌']];
 
 // >v<🎨画布-右键菜单-节点：属性/改名/状态/新建/展开/钻进/删除；空白处：新建/全部展开/上一层
+// >v<⌨快捷键-右键菜单键盘操作（👤 2026-10-12）：E 弹出（选中的卡旁边；没选中 = 画布中间的空白菜单），WASD 在菜单里走，E 确定，Esc 关。
+//   W / S 上下一项；一排按钮（状态 / 颜色 / 饱和 / 图案 / 连线）里 A / D 左右；带 ▸ 的 D 进二级、二级里 A 退回；Shift = 一次走 4 格（只管同一层）
+//   直接读菜单的 DOM 走（.mi = 一项；一项里有 button / a = 一排），菜单长什么样这里不用跟着改
+function menuNav(e, onClose) {
+  const root = document.querySelector('.ctx:not(.submenu)'); if (!root) return false;
+  const K = { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right', KeyE: 'ok' }[e.code];
+  if (!K || e.ctrlKey || e.altKey || e.metaKey) return false;
+  e.preventDefault(); e.stopPropagation();
+  const st = root._kb || (root._kb = { level: root, row: -1, col: 0 });
+  if (!st.level.isConnected) Object.assign(st, { level: root, row: -1, col: 0 });
+  const rows = [...st.level.children].filter(el => el.classList.contains('mi'));
+  if (!rows.length) return true;
+  const ctrls = el => el ? [...el.querySelectorAll(':scope > button, :scope > a')] : [];
+  const n = e.shiftKey ? 4 : 1, cur = rows[st.row];
+  const mark = () => {
+    root.querySelectorAll('.kb').forEach(x => x.classList.remove('kb'));
+    const r = rows[st.row]; if (!r) return;
+    const cs = ctrls(r); (cs.length ? cs[Math.min(st.col, cs.length - 1)] : r).classList.add('kb');
+    r.scrollIntoView?.({ block: 'nearest' });
+  };
+  if (K === 'up' || K === 'down') { st.row = st.row < 0 ? (K === 'down' ? 0 : rows.length - 1) : Math.max(0, Math.min(rows.length - 1, st.row + (K === 'down' ? n : -n))); st.col = Math.max(0, ctrls(rows[st.row]).findIndex(c => c.classList.contains('on'))); mark(); return true; }
+  if (!cur) { st.row = 0; mark(); return true; }
+  const cs = ctrls(cur);
+  if (K === 'left' || K === 'right') {
+    if (cs.length) { st.col = Math.max(0, Math.min(cs.length - 1, Math.min(st.col, cs.length - 1) + (K === 'right' ? n : -n))); mark(); return true; }
+    if (K === 'right' && cur.classList.contains('sub')) { const sub = cur.querySelector(':scope > .submenu'); cur.classList.add('open'); st.parent = { level: st.level, row: st.row }; Object.assign(st, { level: sub, row: 0, col: 0 }); const r2 = [...sub.children].filter(el => el.classList.contains('mi')); root.querySelectorAll('.kb').forEach(x => x.classList.remove('kb')); r2[0]?.classList.add('kb'); return true; }
+    if (K === 'left' && st.level !== root && st.parent) { st.level.parentElement?.classList.remove('open'); Object.assign(st, { level: st.parent.level, row: st.parent.row, col: 0, parent: null }); const r0 = [...st.level.children].filter(el => el.classList.contains('mi')); root.querySelectorAll('.kb').forEach(x => x.classList.remove('kb')); r0[st.row]?.classList.add('kb'); return true; }
+    return true;
+  }
+  // E = 确定：一排里点那个按钮（改颜色 / 状态这类不关菜单）；▸ = 进二级；其余 = 点这一项
+  if (cs.length) cs[Math.min(st.col, cs.length - 1)].click();
+  else if (cur.classList.contains('sub')) menuNav({ code: 'KeyD', preventDefault() {}, stopPropagation() {} }, onClose);
+  else cur.click();
+  return true;
+}
 export function ContextMenu({ menu, node, actions, onClose }) {
   useEffect(() => {
     const close = () => onClose();
-    const key = e => { if (e.key === 'Escape') onClose(); };
+    const key = e => { if (e.key === 'Escape') { onClose(); return; } if (!e.target.closest?.('input, textarea, [contenteditable="true"]')) menuNav(e, onClose); };
     window.addEventListener('pointerdown', close);
-    window.addEventListener('keydown', key);
-    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', key); };
+    window.addEventListener('keydown', key, true); // 抢在画布的 WASD / E 前面
+    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', key, true); };
   }, [onClose]);
   const item = (label, fn, opts = {}) => (
     <div className={'mi' + (opts.danger ? ' danger' : '') + (opts.quiet ? ' quiet' : '')} onPointerDown={e => e.stopPropagation()} onClick={() => { onClose(); fn(); }}>
@@ -52,14 +87,14 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       {item('＋ 在这里新建节点', actions.addHere)}
       {actions.addUiHere && item('▭ 新建 UI 框', actions.addUiHere)}
       {actions.pickFile && item('📎 引入…', actions.pickFile)}
-      {actions.canUp && item('↑ 返回上一层', actions.up, { key: 'Alt+↑ · 顶栏 ↑', quiet: true })}
+      {actions.canUp && item('↑ 返回上一层', actions.up, { key: 'Alt+W', quiet: true })}
     </div>
   );
   return (
     <div className="ctx" style={style}>
       <div className="mh">{node.label}</div>
       {item('属性…', () => actions.props(node.id), { key: 'Shift+Tab' })}
-      {item('重命名', () => actions.rename(node.id), { key: 'Enter' })}
+      {item('重命名', () => actions.rename(node.id), { key: 'R' })}
       {node.file && item('📎 打开引用的文件', () => actions.openProjectFile(node.file))}
       {node.ref && item('↗ 跳到它指的节点', () => actions.gotoRef(node.id))}
       {node.ui && item('▭ 复制 UI 布局', () => actions.copyUiLayout(node.id))}
@@ -93,7 +128,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
           {h.cur && item('＋ 钉到新组', () => h.pin('new'), { quiet: true })}
         </>;
       })()}
-      {item('＋ 新建子节点', () => actions.addChild(node.id))}
+      {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'T' })}
       {actions.convert && !node.ref && !node.file && <div className="mi sub" onPointerDown={e => e.stopPropagation()}><span>转为 ▸</span>
         <div className={'ctx submenu' + (menu.x > innerWidth - 420 ? ' flip' : '')}>{/* 👤 2026-10-11 常建错类型：普通节点 ⇄ UI 框，只改 ui / w / h，名字、子级、正文都不动 */}
           {node.ui ? item('▢ 普通节点', () => actions.convert(node.id, 'node')) : item('▭ UI 框', () => actions.convert(node.id, 'ui'))}

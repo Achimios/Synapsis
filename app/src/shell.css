@@ -80,7 +80,9 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 /* 右键「展开 ▸」二级菜单：悬停弹出（离开 .sub 才收，不加延迟；放不下就翻到左边） */
 .ctx .mi.sub { position: relative; }
 .ctx .mi.sub > .submenu { display: none; position: absolute; left: 100%; top: -4px; min-width: 120px; margin-left: 2px; }
-.ctx .mi.sub:hover > .submenu { display: block; }
+.ctx .mi.sub:hover > .submenu, .ctx .mi.sub.open > .submenu { display: block; }
+.ctx .mi.kb { background: var(--selbg); box-shadow: inset 2px 0 0 var(--accent); } /* 键盘走到的那一项（E 弹出的菜单里 WASD） */
+.ctx .mi > button.kb, .ctx .mi > a.kb { outline: 2px solid var(--accent); outline-offset: 1px; }
 .ctx .mi.sub > .submenu.flip { left: auto; right: 100%; margin-left: 0; margin-right: 2px; }
 
 /* 卡片：扁、细边、状态用左边一条色带 */

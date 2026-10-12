@@ -888,6 +888,7 @@ export function Shell({ name, Canvas }) {
       if (e.ctrlKey && !e.altKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); e.stopPropagation(); if (e.target === taRef.current || e.target === findRef.current) { findRef.current?.focus(); findRef.current?.select(); return; } setFinder({ mode: 'go' }); return; } // 在输入框里也能用；在「文本」页 = 文本查找
       const inText = e.target.closest && e.target.closest('textarea, input, [contenteditable="true"]');
       if (inText) return;
+      if (menu) return; // 右键菜单开着：WASD / E / Esc 归菜单（panels.jsx menuNav）
       if (finder && e.key === 'Tab') return; // 连线 / 搜索弹窗开着：Tab 归弹窗（切页签），别当成开关左栏
       if (helpOpen && e.key === 'Escape') { setHelpOpen(false); return; }
       if (e.key === '`' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.isComposing) { e.preventDefault(); e.stopPropagation(); if (mode === 'ws') setPinsOpen(o => !o); return; } // 👤 2026-10-09 反引号 = 钉子窗口开关
@@ -900,6 +901,12 @@ export function Shell({ name, Canvas }) {
       else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) focusLabel(sel); }
       else if (e.code === 'KeyR' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) focusLabel(sel); } // 👤 2026-10-12 R = 改名（左手，同 Enter）；Alt+R = 改完
       else if (e.code === 'KeyF' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { e.preventDefault(); e.stopPropagation(); const n = sel && !sel.startsWith('@') && graph.nodes.get(sel); if (n?.children.length && frmE(sel)) cardActions.fitFrame?.(sel); else cardActions.overview?.(); } // 👤 2026-10-12 F = 看全局 / 再按回原来的视野；选中的节点展开了子图 = 只管它里面（同框里的 ⛶）
+      else if (e.code === 'KeyE' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { // 👤 2026-10-12 E = 弹右键菜单（选中的卡旁边；没选中 = 画布中间的空白菜单），WASD 在菜单里走，E 确定
+        e.preventDefault(); e.stopPropagation();
+        const el = sel && document.querySelector(`.react-flow__node[data-id="${CSS.escape(sel)}"]`), cv = document.querySelector('.canvas')?.getBoundingClientRect();
+        if (el) { const r = el.getBoundingClientRect(); onContextMenu(sel, Math.min(r.right + 4, innerWidth - 230), Math.max(r.top, 40)); }
+        else if (cv && !sel) onContextMenu(null, cv.left + cv.width / 2, cv.top + cv.height / 2);
+      }
       else if (e.code === 'KeyH' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { e.preventDefault(); e.stopPropagation(); setKeyHints(o => !o); }
       else if (e.code === 'KeyT' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@') && graph.nodes.has(sel)) menuActions.addChild(sel); } // 👤 2026-10-12 T = 给选中的建子节点，直接进改名（同右键 ＋ 新建子节点） // 👤 2026-10-10 选中了 Enter = 重命名；没选中什么都不做（常误触）。👤 2026-10-11 键盘新建（Shift+Enter / Insert / Ctrl+Enter）和 F2 都去掉：新建走鼠标（右键），改名只留 Enter
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyS') { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) drill(sel); } // Alt+S = 钻进去（没选中不管）
@@ -1352,7 +1359,7 @@ export function nodeDim(id, view, selected) {
 }
 // 卡片上的交互回调（外壳每次渲染时填好；画布组件不用逐层传）
 // 画布右下角的导航 / 选择速查（H 开关）。只放画布上随时要用、按钮上看不到的
-const KEY_HUD = [['F', '看全局 / 回去'], ['W A S D', '选卡'], ['Shift+W A S D', '只本层'], ['Alt+W / S', '上一层 / 进去'], ['Alt+A / D', '后退 / 前进'], ['Alt(Shift)+← →', '扩选'], ['(Shift) ← → ↑ ↓', '挪卡'], ['Ctrl(Alt)+← → ↑ ↓', 'UI 框大小'], ['R / T', '改名 / 建子节点']];
+const KEY_HUD = [['F', '看全局 / 回去'], ['W A S D', '选卡'], ['Shift+W A S D', '只本层'], ['Alt+W / S', '上一层 / 进去'], ['Alt+A / D', '后退 / 前进'], ['Alt(Shift)+← →', '扩选'], ['(Shift) ← → ↑ ↓', '挪卡'], ['Ctrl(Alt)+← → ↑ ↓', 'UI 框大小'], ['R / T', '改名 / 建子节点'], ['E', '右键菜单']];
 const NUDGE = { step: 8, fast: 4, delay: 200, interval: 100 }; // 和 core/settings.js 的 nudge 默认值一致
 export const cardActions = { toggle: () => {}, openChild: () => {}, foldPics: () => {}, resizePics: () => {}, nudge: { ...NUDGE } };
 // pointerdown 也要拦住，否则 React Flow 会把它当成选中或拖动的开始
