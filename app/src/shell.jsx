@@ -307,13 +307,15 @@ export function Shell({ name, Canvas }) {
     return () => clearTimeout(t);
   }, [viewports, expanded, framed, panelW, leftHidden, leftCols, outlineHere, outlineGroup, picFold, textOpen, portalModes, propsShut, seeModes, seeLines, histOpen, propsOpen, spaceAxes, realScope, mode]);
   const onViewport = useCallback((sc, vp) => setViewports(v => ({ ...v, [sc]: vp })), []);
+  // 导航历史每一条 = { scope, sel }：后退 / 前进恢复离开那一页时选中的（👤 2026-10-12，像浏览器恢复滚动位置；离开时没选 = 不选）
   const go = useCallback(next => {
     if (next === realScope) return;
-    hist.current.back.push(realScope); hist.current.fwd = [];
+    hist.current.back.push({ scope: realScope, sel: selected }); hist.current.fwd = [];
     setScope(next);
-  }, [realScope]);
-  const back = () => { const h = hist.current; if (!h.back.length) return; h.fwd.push(realScope); setSelected(null); setScope(h.back.pop()); };
-  const fwd = () => { const h = hist.current; if (!h.fwd.length) return; h.back.push(realScope); setSelected(null); setScope(h.fwd.pop()); };
+  }, [realScope, selected]);
+  const stepHist = (from, to) => { if (!from.length) return; to.push({ scope: realScope, sel: selected }); const e = from.pop(); setSelected(e.sel ?? null); setScope(e.scope); };
+  const back = () => stepHist(hist.current.back, hist.current.fwd);
+  const fwd = () => stepHist(hist.current.fwd, hist.current.back);
 
   const drill = useCallback(id => {
     if (id.startsWith('@portal:')) {
