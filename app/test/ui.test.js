@@ -1206,14 +1206,14 @@ for (const kind of ['reactflow']) {
   await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
   // 饱和度档：没选颜色时灰着；选了蓝 → 50% → color: 蓝/50
   await page.click('.card .lab:text-is("甲")', { button: 'right' }); await sleep(300);
-  ok((await page.$$eval('.ctx .swatches.sat button', e => e.map(x => x.disabled))).every(x => !x) && (await page.$$('.ctx .swatches.sat button')).length === 4, '自动色时饱和度档也能点（不再灰着）');
+  ok((await page.$$eval('.ctx .swatches.sat button', e => e.map(x => x.disabled))).every(x => !x) && (await page.$$('.ctx .swatches.sat button')).length === 5, '自动色时饱和度档也能点（不再灰着）');
   await page.click('.swatches:not(.sat):not(.pats) button[title="蓝"]'); await sleep(1200);
   await page.click('.card .lab:text-is("甲")', { button: 'right' }); await sleep(300);
   await page.click('.swatches.sat button[title^="50%"]'); await sleep(1200);
   ok(/sat: 50/.test(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8')) && /color: 蓝\s/.test(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8')), '选蓝再点 50% → sat: 50，颜色还是蓝');
   ok((await page.$eval('.card:has(.lab:text-is("甲"))', e => e.style.getPropertyValue('--c'))) !== '#4d9bff', '卡片颜色变淡了（不是原来的蓝）');
   await page.mouse.click(1000, 300); await sleep(300); await page.click('.card .lab:text-is("甲")'); await sleep(500);
-  ok((await page.$$('aside.side .swatches.sat button')).length === 4, '右栏属性里也有饱和度一行');
+  ok((await page.$$('aside.side .swatches.sat button')).length === 5, '右栏属性里也有饱和度一行');
   await page.click('aside.side .swatches.sat button[title^="25%"]'); await sleep(1200);
   ok(/sat: 25/.test(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8')), '右栏点 25% → sat: 25');
   // 新建 UI 框
