@@ -19,7 +19,7 @@ try {
   spawnSync(process.execPath, [CLI, 'init', root], { encoding: 'utf8' });
   ok(existsSync(join(root, DIR, '_synapsis.md')) && readFileSync(join(root, DIR, '_synapsis.md'), 'utf8').includes('AI 接入手册'), 'init 写入 AI 接入手册（_synapsis.md）');
   ok(existsSync(join(root, DIR, '_Blackboard.md')) && !existsSync(join(root, DIR, '_黑板.md')), 'init 建的讨论黑板叫 _Blackboard.md');
-  ok(existsSync(join(root, DIR, '_配色.md')), 'init 建配色词表 _配色.md');
+  ok(existsSync(join(root, DIR, '_词表.md')), 'init 建词表 _词表.md（颜色 + 图案一份）');
   // 启动器：根目录只有带图标的快捷方式，兜底 vbs 藏在 .synapsis/；旧版根目录的 Synapsis.vbs 认得出就去掉
   const vbs = readFileSync(join(root, '.synapsis', 'Synapsis.vbs'), 'utf8');
   ok(vbs.includes('GetParentFolderName(fso.GetParentFolderName') && !vbs.includes('{{SYNAPSIS_HOME}}') && !existsSync(join(root, 'Synapsis.vbs')), 'init：vbs 在 .synapsis/（往上两层找项目），根目录没有 vbs');

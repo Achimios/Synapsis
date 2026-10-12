@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, scanAnchors, anchorMatches, graveyardInfo, clearGraveyard, setTrash, ensureGitignore, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, linkNodes, moveNodes, movePic, grepProject, DIR } from '../workspace.js';
+import { loadWorkspace, saveOutline, workspaceOutline, parseFrontmatter, serializeNode, setNodeMeta, checkWorkspace, saveLayout, saveAsset, saveLooseImage, removeLooseImage, saveView, loadView, listTree, scanAnchors, anchorMatches, graveyardInfo, clearGraveyard, setTrash, ensureGitignore, restoreRemoved, groupStatus, pasteNodes, setNodeBody, ensureColorWords, migrateWords, linkNodes, moveNodes, movePic, grepProject, DIR } from '../workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../scaffold.js';
 import { SAMPLE } from '../../app/src/sample.js';
 
@@ -257,7 +257,7 @@ try {
     const wf = ensureColorWords(rWords);
     ok(existsSync(wf) && loadWorkspace(rWords).colorWords.includes('- 蓝:'), 'ensureColorWords 按默认词表建一份');
     writeFileSync(wf, '- 蓝: 甲\n- 不是颜色: 乙\n');
-    ok(checkWorkspace(loadWorkspace(rWords)).some(i => i.where === '_配色.md' && i.msg.includes('不是颜色')), 'check 报词表里认不出的行');
+    ok(checkWorkspace(loadWorkspace(rWords)).some(i => i.where === '_词表.md' && i.msg.includes('不是颜色')), 'check 报词表里认不出的行');
   } finally { rmSync(rWords, { recursive: true, force: true }); }
   // 弃用 ❌：frontmatter status: dropped 往返；分组汇总不算它；check 跳过它和子孙（👤 2026-10-08）
   const rDrop = mkdtempSync(join(tmpdir(), 'syn-drop-'));
@@ -391,6 +391,16 @@ try {
     ok(existsSync(join(r, DIR, '城镇', '战场', '_配色.md')), '分组挪进别的分组 → 词表跟着走');
     const rep = saveOutline(r, '城镇\n  铺子\n  战场\n');
     ok(!existsSync(join(r, DIR, '城镇', '战场')) && rep.moved.some(m => m.includes('.junk') && m.includes('_配色.md')), '分组没了子级（变叶子）→ 词表进 .junk/ ' + JSON.stringify(rep.moved));
+    // 👤 2026-10-12 合成一份 _词表.md：旧的两份迁进来；某一层只写了颜色 → 图案那边这一层没有（接着往上找）
+    saveOutline(r, '城镇\n  铺子\n  战场\n    弓兵\n');
+    writeFileSync(join(r, DIR, '城镇', '_配色.md'), '- 黄: 铺子\n');
+    writeFileSync(join(r, DIR, '城镇', '_图案.md'), '- 横纹: 铺子\n');
+    writeFileSync(join(r, DIR, '城镇', '战场', '_词表.md'), '# 词表\n\n## 颜色\n- 红: 弓兵\n');
+    const mg = migrateWords(r), all = readFileSync(join(r, DIR, '城镇', '_词表.md'), 'utf8');
+    ok(mg.length === 1 && /## 颜色\n- 黄: 铺子/.test(all) && /## 图案\n- 横纹: 铺子/.test(all) && !existsSync(join(r, DIR, '城镇', '_配色.md')) && readdirSync(join(r, DIR, '_过期的')).some(f => f.startsWith('_配色_城镇_')), '旧的 _配色.md + _图案.md → 同层 _词表.md 两节，旧文件进 _过期的/ ' + all);
+    ws = loadWorkspace(r);
+    ok(ws.colorWordsAt['城镇/战场']?.includes('红') && ws.patternWordsAt['城镇/战场'] === '' && ws.patternWordsAt['城镇'].includes('横纹'), '战场的 _词表.md 只写了颜色 → 图案那边这层是空的（就近命中时接着往上找）');
+    ok(ensureColorWords(r).endsWith('_词表.md') && /## 图案\n- 网格/.test(readFileSync(join(r, DIR, '_词表.md'), 'utf8')), '项目那份：_词表.md 带默认的颜色 + 图案两节');
   } finally { rmSync(r, { recursive: true, force: true }); }
 }
 console.log(`workspace: ${pass} 过 / ${fail} 挂`);

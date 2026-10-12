@@ -288,7 +288,7 @@ for (const kind of ['reactflow']) {
   // 颜色：自动配色不写文件；右键点色块才写 color:，「自动」删掉（👤 2026-10-08）
   const cc = label => page.$$eval('.card', (cs, l) => { const c = cs.find(x => x.querySelector('.title')?.textContent.includes(l)); return c && c.style.getPropertyValue('--c'); }, label);
   ok(!nodeFile('游戏AI/行动/_node.md').includes('color:') && await cc('行动') === PALETTE.绿, '自动配色（行动绿）不写进文件');
-  ok(await cc('兜底') === PALETTE.黄, '工作区词表 _配色.md 生效（兜底 → 黄）');
+  ok(await cc('兜底') === PALETTE.黄, '工作区词表（旧的 _配色.md 迁进 _词表.md）生效（兜底 → 黄）');
   const dash = await page.$$eval('.react-flow__edge', es => Object.fromEntries(es.map(e => [e.dataset.id, e.querySelector('.react-flow__edge-path').style.strokeDasharray])));
   ok(dash['游戏AI/行动=>游戏AI/感知'] && !dash['游戏AI/决策=>游戏AI/行动'], 'kind 离散 的边 = 虚线，其余实线 ' + JSON.stringify(dash));
   await rclick('行动'); await page.click('.ctx .swatches button[title="粉"]'); await sleep(1500);
@@ -887,7 +887,7 @@ for (const kind of ['reactflow']) {
   await page.click('.agentbox .wordstab textarea'); await page.keyboard.press('End'); await page.keyboard.press('Enter'); await sleep(200);
   ok(!(await page.$('.agentbox .plan')) && (await page.$eval('.agentbox .wordstab textarea', e => e.value)).endsWith('\n'), '词表文本框里 Enter = 换行，不会当成发指令');
   await page.click('.agentbox .wordstab button:has-text("写入")'); await sleep(1500);
-  ok(readFileSync(join(ws, '__synapsis', '_配色.md'), 'utf8').includes('- 粉: 情绪, 惊慌') && readdirSync(join(ws, '__synapsis', '_过期的')).some(f => f.startsWith('_配色_')), '写入 _配色.md，旧的备份进 _过期的/');
+  ok(readFileSync(join(ws, '__synapsis', '_词表.md'), 'utf8').includes('- 粉: 情绪, 惊慌') && readdirSync(join(ws, '__synapsis', '_过期的')).some(f => f.startsWith('_词表_')), '写入 _词表.md（👤 2026-10-12 颜色 + 图案一份），旧的备份进 _过期的/');
   await page.click('.agentbox .bar a:has-text("对话")'); await page.click('.agentbox .bar button[title^="关闭"]'); await sleep(1500);
   ok(await col('惊慌失措') === PALETTE.粉, '新词表生效：惊慌失措 → 粉');
   // AI 指令框（Ctrl+J）：说 → 预览（✓ 能做 / ✗ 不做）→ Enter 执行 → 坐标对齐、进撤销；日志页有记录
@@ -979,7 +979,7 @@ for (const kind of ['reactflow']) {
   // 底纹图案：词表认（传感器 → 点阵、情绪… → 波纹）；右键 → 图案 → 网格 写进 pattern:
   const patOf = l => page.$$eval('.card', (cs, l) => [...(cs.find(c => c.querySelector('.lab')?.textContent === l)?.classList || [])].find(x => x.startsWith('pat-')) || '', l);
   ok(await patOf('传感器') === 'pat-dots' && await patOf('情绪恐惧') === 'pat-wave', '图案词表：传感器 = 点阵，情绪恐惧 = 波纹 ' + await patOf('传感器') + ' ' + await patOf('情绪恐惧'));
-  ok(existsSync(join(ws, '__synapsis', '_图案.md')), '打开工作区就放出 _图案.md');
+  ok(existsSync(join(ws, '__synapsis', '_词表.md')) && !existsSync(join(ws, '__synapsis', '_图案.md')), '打开工作区就放出 _词表.md（不再有单独的 _图案.md）');
   await page.mouse.click(...mid(await (await lab('吓坏了')).boundingBox()), { button: 'right' }); await sleep(300);
   await page.click('.ctx .pats button.pat-grid'); await sleep(1500);
   ok(/pattern: 网格/.test(readFileSync(join(ws, '__synapsis', '吓坏了.md'), 'utf8')) && await patOf('吓坏了') === 'pat-grid', '右键 → 图案 → 网格：写进 pattern:，卡片带网格底纹');

@@ -4,11 +4,11 @@ import { resolve, join, normalize, relative } from 'node:path';
 import { spawn } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { loadSettings, saveSettings, settingsPath, SCHEMA as SETTINGS_SCHEMA } from '../core/settings.js';
-import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, loadPins, savePins, findFilesByName, addFileNode, addRefNode, addUiNode, saveLooseImage, removeLooseImage, removePic, restoreRemoved, graveyardInfo, clearGraveyard, ensureGitignore, pasteNodes, ensureColorWords, ensurePatternWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, movePic, grepProject, DIR } from '../core/workspace.js';
+import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, ensureWorkspaceReadme, setNodeMeta, setNodeBody, listTree, readProjectFile, loadView, saveView, loadPins, savePins, findFilesByName, addFileNode, addRefNode, addUiNode, saveLooseImage, removeLooseImage, removePic, restoreRemoved, graveyardInfo, clearGraveyard, ensureGitignore, pasteNodes, ensureWords, linkNodes, setEdgeLabel, rewireEdge, moveNodes, movePic, grepProject, DIR } from '../core/workspace.js';
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 
 import { workspaceRoot, manualText } from '../core/cli.js';
-import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, suggestPatternWords, applyPatternWords, readAiLog, readUsage } from '../core/ai.js';
+import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, suggestPatternWords, readAiLog, readUsage } from '../core/ai.js';
 import { lmsEstimate, lmsReload, lmsServerStart } from '../core/lmstudio.js';
 let lmsTried = false;
 import { runAgent, applyPlan, loadChat, clearChat, estimateContext, isLoose, loadSummary, compactChat, needCompact } from '../core/agent.js';
@@ -40,13 +40,12 @@ function workspaceApi() {
   const body = req => new Promise((ok, no) => { let s = ''; req.on('data', c => s += c); req.on('end', () => { try { ok(s ? JSON.parse(s) : {}); } catch (e) { no(e); } }); });
   const payload = root => {
     // 词表文件直接放出来（以前点「词表…」才建，👤 2026-10-08 根本找不到）
-    if (existsSync(join(root, DIR))) { try { ensureColorWords(root); } catch { /* 只读目录就用默认 */ } } // 没有就建；没改过的旧默认（6 行）升级成新默认
-    if (existsSync(join(root, DIR)) && !existsSync(join(root, DIR, '_图案.md'))) { try { ensurePatternWords(root); } catch { /* 同上 */ } }
+    if (existsSync(join(root, DIR))) { try { ensureWords(root); } catch { /* 只读目录就用默认 */ } } // 👤 2026-10-12 一层一份 _词表.md：没有就建；旧的 _配色.md / _图案.md 并进来（旧文件进 _过期的/）
     const ws = loadWorkspace(root);
     const nodes = {};
     // file = 相对项目根的路径（文件树和「打开 md」用）；pics = 相对 __synapsis 的图片路径
     for (const [id, n] of ws.graph.nodes) if (id) nodes[id] = { meta: n.meta, body: n.body, file: relative(root, n.file).split('\\').join('/'), pics: n.pics };
-    return { root, outline: workspaceOutline(ws), layout: ws.layout, nodes, edges: ws.graph.edges, errors: ws.graph.errors, loose: ws.loose, colorWords: ws.colorWords, patternWords: ws.patternWords, colorWordsAt: ws.colorWordsAt, patternWordsAt: ws.patternWordsAt, pins: loadPins(root) };
+    return { root, outline: workspaceOutline(ws), layout: ws.layout, nodes, edges: ws.graph.edges, errors: ws.graph.errors, loose: ws.loose, colorWords: ws.colorWords, patternWords: ws.patternWords, colorWordsAt: ws.colorWordsAt, patternWordsAt: ws.patternWordsAt, wordsFiles: ws.wordsFiles, pins: loadPins(root) };
   };
   return {
     name: 'synapsis-workspace',
@@ -95,9 +94,9 @@ function workspaceApi() {
           }
           // 配色词表：没有就按默认写一份，返回相对项目根的路径（前端接着用默认程序打开）
           // scope = 分组 id → 那个分组自己的词表（👤 2026-10-11 层级词表；没有就建一份空表）
-          if ((url.pathname === '/pattern-words' || url.pathname === '/color-words') && req.method === 'POST') {
-            const b = await body(req).catch(() => ({})), ensure = url.pathname === '/color-words' ? ensureColorWords : ensurePatternWords;
-            try { return send(200, { file: relative(root, ensure(root, b?.scope || '')).split('\\').join('/') }); } catch (e) { return send(400, { error: e.message }); }
+          if ((url.pathname === '/words' || url.pathname === '/pattern-words' || url.pathname === '/color-words') && req.method === 'POST') { // 一份 _词表.md（旧路径名照收）
+            const b = await body(req).catch(() => ({}));
+            try { return send(200, { file: relative(root, ensureWords(root, b?.scope || '')).split('\\').join('/') }); } catch (e) { return send(400, { error: e.message }); }
           }
           // 连线（带类型）/ 改已有边的标签类型
           if (url.pathname === '/link' && req.method === 'POST') { const b = await body(req); const r = linkNodes(root, b.from, b.to, b.label || '', b.kind || ''); return send(200, { report: r, ...payload(root) }); }
@@ -171,8 +170,9 @@ function workspaceApi() {
               if (url.pathname === '/ai/explain' && req.method === 'POST') { const b = await body(req); return send(200, { text: await explainRelation(root, b.id, b.other, cfg) }); }
               if (url.pathname === '/ai/patterns') return send(200, { patterns: cfg.semColors ? await semPatterns(root, cfg) : {} });
               if (url.pathname === '/ai/colors') return send(200, { colors: cfg.semColors ? await semColors(root, cfg) : {} });
-              if (url.pathname === '/ai/words' && req.method === 'POST') { const [c, p] = await Promise.all([suggestWords(root, cfg), suggestPatternWords(root, cfg)]); return send(200, { ...c, pattern: p }); } // 颜色词表 + 图案词表一起起草
-              if (url.pathname === '/ai/words/apply' && req.method === 'POST') { const b = await body(req), fs = []; if (typeof b.text === 'string') fs.push(applyWords(root, b.text)); if (typeof b.patternText === 'string') fs.push(applyPatternWords(root, b.patternText)); return send(200, { file: fs.map(f => relative(root, f).split('\\').join('/')).join('、'), ...payload(root) }); }
+              // 颜色 + 图案一起起草；scope = 分组 id（画布没选中 = 当前画布节点，选中分组 = 它）→ 只看它里面，写进它自己的 _词表.md
+              if (url.pathname === '/ai/words' && req.method === 'POST') { const b = await body(req).catch(() => ({})), sc = b?.scope || ''; const [c, p] = await Promise.all([suggestWords(root, cfg, sc), suggestPatternWords(root, cfg, sc)]); return send(200, { ...c, pattern: p }); }
+              if (url.pathname === '/ai/words/apply' && req.method === 'POST') { const b = await body(req); const f = applyWords(root, { color: typeof b.text === 'string' ? b.text : null, pattern: typeof b.patternText === 'string' ? b.patternText : null }, b.scope || ''); return send(200, { file: relative(root, f).split('\\').join('/'), ...payload(root) }); }
             } catch (e) { return send(503, { error: e.cause?.code === 'ECONNREFUSED' ? 'LM Studio 没开本机服务（' + cfg.url + '）' : e.message }); }
           }
           if (url.pathname === '/tree' && req.method === 'GET') return send(200, listTree(root));

@@ -73,14 +73,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={String(node.colorSet || '').split('/')[0] === k ? 'on' : ''} style={{ background: c }} onClick={() => { actions.color(node.id, k); }} />)}
         <button title="自动（按分组 / 名字配色，子节点跟着父节点）" className={!node.colorSet ? 'on auto' : 'auto'} onClick={() => { actions.color(node.id, null); }}>自动</button>
       </div>}
-      {actions.color && (() => { // 饱和度档（👤 2026-10-10）：在颜色上调 25 / 50 / 75 / 100%；自动色也能调（按现在看到的颜色写成手动色）
-        const cs = String(node.colorSet || ''), b0 = cs.split('/')[0], pct = +(cs.split('/')[1] || 100), hex = b0 ? parseColor(b0) : (node.color || null), base = b0 || hex;
-        return <div className="mi row swatches sat" onPointerDown={e => e.stopPropagation()}>
-          <span>饱和</span>
-          {[25, 50, 75, 100].map(p => <button key={p} disabled={!hex} title={hex ? p + '%' + (b0 ? '' : '（自动色会变成手动色）') : '没有可调的颜色'} className={hex && b0 && pct === p ? 'on' : ''} style={{ background: hex ? satHex(hex, p) : 'var(--line2)', opacity: hex ? 1 : .35 }}
-            onClick={() => { actions.color(node.id, p === 100 ? base : base + '/' + p); }}>{p}</button>)}
-        </div>;
-      })()}
+      {actions.sat && <div className="mi row swatches sat" onPointerDown={e => e.stopPropagation()}><span>饱和</span><SatButtons base={node.baseColor} cur={node.satNow} onSat={p => actions.sat(node.id, p)} /></div>}
       {actions.pattern && <div className="mi row swatches pats" onPointerDown={e => e.stopPropagation()}>
         <span>图案</span>
         {Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (node.patternSet === k ? ' on' : !node.patternSet && node.pattern === k ? ' auto-on' : '')} style={{ '--c': node.color }} onClick={() => { actions.pattern(node.id, k); }} />)}
@@ -167,9 +160,13 @@ export function RawText({ text, hl, file, onSelMenu }) {
   return <pre className="raw" ref={ref} onContextMenu={menu}>{lines.map((l, i) => <span key={i} data-ln={i + 1} className={hl?.line === i + 1 ? 'ln hl' : 'ln'}>{l}{i < lines.length - 1 ? '\n' : ''}</span>)}</pre>;
 }
 
-export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, tab, onTab, raw, onReveal, onRename, color, onColor, pattern, onPattern, words, onWords, onEdgeKind, onEdgeRemove, hl, onSelMenu }) {
+// >v<🎨画布-饱和度档-25 / 50 / 75 / 100（👤 2026-10-12：单独的 sat: 键，叠在自动色 / 手动色上，不把自动色变成手动；手动标注用）
+function SatButtons({ base, cur = 100, onSat }) {
+  return [25, 50, 75, 100].map(p => <button key={p} title={p + '%（只改深浅，颜色还是自动 / 手动不变）'} className={cur === p ? 'on' : ''} style={{ background: base ? satHex(base, p) : 'var(--line2)' }} onClick={() => onSat(p)}>{p}</button>);
+}
+export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, tab, onTab, raw, onReveal, onRename, color, onColor, baseColor, satNow, onSat, pattern, onPattern, words, onWords, onEdgeKind, onEdgeRemove, hl, onSelMenu }) {
   // 自动色 / 底纹是哪一层词表的哪个词给的（👤 2026-10-11 层级词表）：点 = 打开那份词表
-  const why = k => { const w = words?.[k]?.why; return w ? <a className="why" title={`自动${k === 'color' ? '颜色' : '底纹'}来自「${w.fromLabel}」的词表，命中「${w.word}」；点 = 打开那份词表`} onClick={() => onWords?.(k, w.from)}>词：{w.word}（{w.fromLabel}）</a> : null; };
+  const why = k => { const w = words?.[k]?.why; return w ? <a className="why" title={`自动${k === 'color' ? '颜色' : '底纹'}来自「${w.fromLabel}」的词表，命中「${w.word}」；点 = 打开那份词表`} onClick={() => onWords?.(w.from)}>词：{w.word}（{w.fromLabel}）</a> : null; };
   const n = graph.nodes.get(id);
   const [body, setBody] = useState(wsNode?.body || '');
   useEffect(() => setBody(wsNode?.body || ''), [id, wsNode?.body]);
@@ -204,22 +201,15 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
           {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={wsNode?.meta?.color === k ? 'on' : ''} style={{ background: c }} onClick={() => onColor(id, k)} />)}
           <button className={'auto' + (!wsNode?.meta?.color ? ' on' : '')} title="自动（按分组 / 词表配色）" onClick={() => onColor(id, null)}>自动</button>
           {!wsNode?.meta?.color && why('color')}</div>}
-        {onColor && (() => { const cs = String(wsNode?.meta?.color || ''), b0 = cs.split('/')[0], pct = +(cs.split('/')[1] || 100), hex = b0 ? parseColor(b0) : (color || null), base = b0 || hex;
-          return <div className="row swatches sat"><span className="rl">饱和</span>
-            {[25, 50, 75, 100].map(p => <button key={p} disabled={!hex} title={hex ? p + '%' + (b0 ? '' : '（自动色会变成手动色）') : '没有可调的颜色'} className={hex && b0 && pct === p ? 'on' : ''} style={{ background: hex ? satHex(hex, p) : 'var(--line2)', opacity: hex ? 1 : .35 }}
-              onClick={() => onColor(id, p === 100 ? base : base + '/' + p)}>{p}</button>)}</div>; })()}
+        {onSat && <div className="row swatches sat"><span className="rl">饱和</span><SatButtons base={baseColor} cur={satNow} onSat={p => onSat(id, p)} /></div>}
         {onPattern && <div className="row swatches pats"><span className="rl">图案</span>{Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (wsNode?.meta?.pattern === k ? ' on' : !wsNode?.meta?.pattern && pattern === k ? ' auto-on' : '')} style={{ '--c': color }} onClick={() => onPattern(id, k)} />)}
           <button className={'auto' + (!wsNode?.meta?.pattern ? ' on' : '')} title="自动（按图案词表 / AI 归类）" onClick={() => onPattern(id, null)}>自动</button>
           <button className={'auto' + (wsNode?.meta?.pattern === '无' ? ' on' : '')} title="不要底纹" onClick={() => onPattern(id, '无')}>无</button>
           {!wsNode?.meta?.pattern && why('pattern')}</div>}
-        {words && onWords && <div className="row wordsrow" title="词表：名字里含某个词 → 自动用那一行的颜色 / 底纹。分组可以有自己的词表，管它里面；找词时从父级往上，哪一层先命中用哪层">
+        {words && onWords && <div className="row wordsrow" title="词表（_词表.md，颜色 + 图案一份）：名字里含某个词 → 自动用那一行的颜色 / 底纹，只管节点自己。每个分组还能有自己的一份，管它里面；找词从父级往上，哪层先命中用哪层，某层没写的接着往上">
           <span className="rl">词表</span>
-          <span className="wl">上级</span>
-          <a onClick={() => onWords('color', words.color.upper.scope)} title={'对这张卡生效的配色词表在「' + words.color.upper.label + '」（再往上没命中的接着找）；点 = 打开'}>🎨 {words.color.upper.label}</a>
-          <a onClick={() => onWords('pattern', words.pattern.upper.scope)} title={'图案词表在「' + words.pattern.upper.label + '」；点 = 打开'}>▦ {words.pattern.upper.label}</a>
-          {words.group && <><span className="wsep">│</span><span className="wl">本层</span>
-            <a className={words.color.own ? '' : 'add'} onClick={() => onWords('color', id)} title={words.color.own ? '这个分组自己的配色词表（管它里面）；点 = 打开' : '给这个分组建一份自己的配色词表（管它里面，空表）'}>🎨{words.color.own ? '' : ' ＋'}</a>
-            <a className={words.pattern.own ? '' : 'add'} onClick={() => onWords('pattern', id)} title={words.pattern.own ? '这个分组自己的图案词表；点 = 打开' : '给这个分组建一份自己的图案词表（空表）'}>▦{words.pattern.own ? '' : ' ＋'}</a></>}
+          <span className="wl">上级</span><a onClick={() => onWords(words.upper.scope)} title={'对这张卡生效的最近一份词表在「' + words.upper.label + '」（再往上的接着兜底）；点 = 打开'}>📖 {words.upper.label}</a>
+          {words.group && <><span className="wsep">│</span><span className="wl">本层</span><a className={words.own ? '' : 'add'} onClick={() => onWords(id)} title={words.own ? '这个分组自己的词表（管它里面）；点 = 打开' : '给这个分组建一份自己的词表（管它里面，空表）'}>📖{words.own ? '' : ' ＋'}</a></>}
         </div>}
         <MetaTable id={id} meta={meta} editable={editable} onMeta={onMeta} hints={metaHints} />
         {(ins.length > 0 || outs.length > 0) && <div className="edges">

@@ -6,9 +6,9 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
-import { loadWorkspace, listTree, DIR } from './workspace.js';
+import { loadWorkspace, listTree, DIR, ensureWords } from './workspace.js';
 import { PALETTE, WORDS_FILE, DEFAULT_WORDS, parseColorWords, wordColor, wordTables, hierHit } from './colors.js';
-import { PATTERNS, PATTERN_HINT, PATTERN_FILE, DEFAULT_PATTERN_WORDS, parsePatternWords, wordPattern, patternTables } from './patterns.js';
+import { PATTERNS, PATTERN_HINT, PATTERN_FILE, DEFAULT_PATTERN_WORDS, parsePatternWords, wordPattern, patternTables, splitWords, joinWords, wordsHead } from './patterns.js';
 import { isDropped } from './outline.js';
 
 // agentSrc = AI 指令框 / 问答 / 生成词表 / 「?」关系说明 用本地还是在线；bulkSrc = 高频后台（潜在关联重排、语义配色归类），默认本地（👤「高频调用的默认不用在线」）
@@ -293,7 +293,7 @@ export async function semColors(root, cfg) {
   const { rules } = parseColorWords(ws.colorWords ?? DEFAULT_WORDS);
   if (!rules.length) return {};
   const tables = wordTables({ '': ws.colorWords, ...ws.colorWordsAt }); // 层级词表：哪一层命中都算命中，不再问 AI
-  const chainHit = id => { for (let x = id; x; x = g.nodes.get(x)?.parent) if (hierHit(g, x, tables)) return true; return false; };
+  const chainHit = id => !!hierHit(g, id, tables); // 颜色只看节点自己（👤 2026-10-12）：自己命中了才不问 AI
   const ids = [...g.nodes.keys()].filter(x => x && !isDropped(g, x) && !chainHit(x));
   const cache = await classifyLabels(cfg, join(root, '.synapsis', 'ai_colors.json'), rules.map(r => r.words.join('、')), ids.map(x => g.nodes.get(x).label),
     '你在帮人给思维导图的节点归类配色。', '语义配色');
@@ -337,52 +337,45 @@ export async function semPatterns(root, cfg) {
 }
 
 // >v<🤖AI辅助-生成词表-让对话模型看这个工作区的节点名，按调色板分组写一份新词表（只返回草稿，👤 点了才写）
-export async function suggestWords(root, cfg) {
+// scope = 分组 id（👤 2026-10-12：画布上没选中 = 当前画布那个节点，选中分组 = 那个分组）→ 只看它里面的节点，起草它自己的词表；'' = 项目那份
+const scopeLabels = (g, scope) => { const out = [], walk = id => { for (const c of g.nodes.get(id)?.children || []) { if (!isDropped(g, c)) out.push(g.nodes.get(c).label); walk(c); } }; walk(scope || ''); return out.slice(0, 300); };
+const scopeNote = (g, scope) => scope ? `\n这份词表只管「${g.nodes.get(scope)?.label}」这个分组里面的节点（上一层还有别的词表兜底），所以只按下面这些节点分组。` : '';
+export async function suggestWords(root, cfg, scope = '') {
   const ws = loadWorkspace(root), g = ws.graph;
-  const labels = [...g.nodes.keys()].filter(x => x && !isDropped(g, x)).map(x => g.nodes.get(x).label).slice(0, 300);
+  const labels = scopeLabels(g, scope);
   const sys = `你在帮人给一个项目的思维导图配色。调色板只有这些颜色名：${Object.keys(PALETTE).join(' ')}。
 按节点名的主题把它们分成 4~7 组，每组一个颜色，每组列 4~10 个「关键词」（短词，2~4 个字，节点名里会出现的那种词，不要整句节点名）。
 只输出词表行，每行格式严格是：- 颜色: 词, 词, 词
-不要输出任何别的文字。`;
-  const raw = await chat(cfg, sys, `现有词表（可以参考、改进）：\n${(ws.colorWords ?? DEFAULT_WORDS).split(/\r?\n/).filter(l => /^\s*[-*]/.test(l)).join('\n')}\n\n节点名：\n${labels.join('、')}`, 800, { kind: "生成词表", task: 'words' });
+不要输出任何别的文字。${scopeNote(g, scope)}`;
+  const cur = scope ? ws.colorWordsAt?.[scope] ?? '' : ws.colorWords ?? DEFAULT_WORDS;
+  const raw = await chat(cfg, sys, `现有词表（可以参考、改进）：\n${cur.split(/\r?\n/).filter(l => /^\s*[-*]/.test(l)).join('\n')}\n\n节点名：\n${labels.join('、')}`, 800, { kind: "生成词表", task: 'words' });
   const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => /^[-*]\s*[^:：]+[:：]/.test(l));
-  const head = DEFAULT_WORDS.split('\n- ')[0].trimEnd();
-  const text = head + '\n\n' + lines.join('\n') + '\n';
+  const text = lines.join('\n') + '\n'; // 只要规则行；写入时并进 _词表.md 的「## 颜色」
   const { rules, bad } = parseColorWords(text);
   return { text, rules: rules.length, bad, raw };
 }
 // >v<🤖AI辅助-生成图案词表-👤 2026-10-10「生成词表没生成图案」：和配色词表一起起草（按「性质」把节点名里的词分到 网格 / 点阵 / 斜纹 / 横纹 / 波纹），只返回草稿，点了才写
-export async function suggestPatternWords(root, cfg) {
+export async function suggestPatternWords(root, cfg, scope = '') {
   const ws = loadWorkspace(root), g = ws.graph;
-  const labels = [...g.nodes.keys()].filter(x => x && !isDropped(g, x)).map(x => g.nodes.get(x).label).slice(0, 300);
+  const labels = scopeLabels(g, scope);
   const sys = `你在帮人给一个项目的思维导图标注「性质」底纹（不是主题，是这个东西是什么性质）。图案只有这些：${Object.keys(PATTERNS).map(k => `${k}（${PATTERN_HINT[k]}）`).join('、')}。
 按节点名把节点名里的「关键词」分到这些图案：每个图案列 3~10 个短词（2~4 个字，节点名里会出现的那种词，不要整句节点名）；某个图案没有合适的词可以不写这一行。
 只输出词表行，每行格式严格是：- 图案: 词, 词, 词
-不要输出任何别的文字。`;
-  const cur = (ws.patternWords ?? DEFAULT_PATTERN_WORDS).split(/\r?\n/).filter(l => /^\s*[-*]/.test(l)).join('\n');
+不要输出任何别的文字。${scopeNote(g, scope)}`;
+  const cur = (scope ? ws.patternWordsAt?.[scope] ?? '' : ws.patternWords ?? DEFAULT_PATTERN_WORDS).split(/\r?\n/).filter(l => /^\s*[-*]/.test(l)).join('\n');
   const raw = await chat(cfg, sys, `现有词表（可以参考、改进）：\n${cur}\n\n节点名：\n${labels.join('、')}`, 800, { kind: '生成图案词表', task: 'words' });
   const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => /^[-*]\s*[^:：]+[:：]/.test(l));
-  const head = DEFAULT_PATTERN_WORDS.split('\n- ')[0].trimEnd();
-  const text = head + '\n\n' + lines.join('\n') + '\n';
+  const text = lines.join('\n') + '\n';
   const { rules, bad } = parsePatternWords(text);
   return { text, rules: rules.length, bad, raw };
 }
-export function applyPatternWords(root, text) {
-  const f = join(root, DIR, PATTERN_FILE);
-  if (existsSync(f)) {
-    const g = join(root, DIR, '_过期的', `_图案_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.md`);
-    mkdirSync(dirname(g), { recursive: true }); copyFileSync(f, g);
-  }
-  writeFileSync(f, text);
-  return f;
-}
-// 写入新词表：旧的先备份进 __synapsis/_过期的/（不直接覆盖人改过的文件）
-export function applyWords(root, text) {
-  const f = join(root, DIR, WORDS_FILE);
-  if (existsSync(f)) {
-    const g = join(root, DIR, '_过期的', `_配色_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.md`);
-    mkdirSync(dirname(g), { recursive: true }); copyFileSync(f, g);
-  }
-  writeFileSync(f, text);
+const scopeTag = scope => scope ? scope.replace(/\//g, '～') + '_' : '';
+// 写入 AI 起草的词表（👤 2026-10-12 合成一份 _词表.md）：color / pattern 是草稿的规则行，给了哪边就换哪边，另一边保留原样；
+//   旧文件先备份进 __synapsis/_过期的/（不直接覆盖人改过的文件）。scope = 分组 id → 那个分组自己的
+export function applyWords(root, { color = null, pattern = null } = {}, scope = '') {
+  const f = ensureWords(root, scope), cur = readFileSync(f, 'utf8'), sp = splitWords(cur);
+  const g = join(root, DIR, '_过期的', `_词表_${scopeTag(scope)}${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.md`);
+  mkdirSync(dirname(g), { recursive: true }); copyFileSync(f, g);
+  writeFileSync(f, joinWords(wordsHead(cur), color ?? sp.color, pattern ?? sp.pattern));
   return f;
 }

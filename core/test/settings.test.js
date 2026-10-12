@@ -38,13 +38,13 @@ saveSettings(home, { init: { manual: false, blackboard: false, colorWords: true,
 const log = console.log; console.log = () => {};
 try { init(proj, home); } finally { console.log = log; }
 const has = rel => existsSync(join(proj, rel));
-ok(has('__synapsis') && has('__synapsis/_配色.md'), 'init：配色词表生成了');
-ok(!has('__synapsis/_synapsis.md') && !has('__synapsis/_Blackboard.md') && !has('__synapsis/_图案.md'), 'init：关掉的（手册 / 黑板 / 图案词表）没生成');
+ok(has('__synapsis') && has('__synapsis/_词表.md'), 'init：词表生成了（颜色勾着）');
+ok(!has('__synapsis/_synapsis.md') && !has('__synapsis/_Blackboard.md') && !has('__synapsis/_图案.md'), 'init：关掉的（手册 / 黑板）没生成；不再有单独的 _图案.md');
 ok(!has('.synapsis/Synapsis.vbs'), 'init：关掉启动快捷方式 → 没有兜底脚本');
 const proj2 = mkdtempSync(join(tmpdir(), 'syn-proj2-'));
 const home2 = mkdtempSync(join(tmpdir(), 'syn-home2-'));
 console.log = () => {}; try { init(proj2, home2); } finally { console.log = log; }
-ok(existsSync(join(proj2, '__synapsis', '_synapsis.md')) && existsSync(join(proj2, '__synapsis', '_图案.md')), '没有 settings.yaml → 照旧全生成');
+ok(existsSync(join(proj2, '__synapsis', '_synapsis.md')) && existsSync(join(proj2, '__synapsis', '_词表.md')), '没有 settings.yaml → 照旧全生成');
 
 for (const d of [home, home2, proj, proj2]) rmSync(d, { recursive: true, force: true });
 console.log(`settings: ${pass} 过 / ${fail} 挂`);

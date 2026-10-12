@@ -88,20 +88,21 @@ try {
   ok(chatCalls === c0, '第二次走缓存（.synapsis/ai_colors.json），不再问模型');
   const ws = loadWorkspace(root);
   const cm = colorMap(ws.graph, () => undefined, ws.colorWords, sc);
-  ok(cm.get('情绪恐慌/子节点') === PALETTE.紫, 'colorMap 吃 sem：子节点跟着祖先变紫');
+  ok(cm.get('情绪恐慌/子节点') !== PALETTE.紫, '颜色只看自己（👤 2026-10-12）：AI 给祖先的紫不再传给子节点');
   // 语义图案：词表没认出的才问（传感器组 含「传感」= 点阵，不问）；假模型把 咕噜人 归到第 5 行（波纹）
   const sp = await semPatterns(root, cfg);
   ok(sp['咕噜人'] === '波纹' && !('传感器组' in sp) && !sp['情绪恐慌'], '语义图案：只问词表没认出的，归「无」的不给 ' + JSON.stringify(sp));
   // 词表命中优先于语义：顶层被 AI 染了紫，下面词表命中「观测」的子节点仍是蓝
   const cm2 = colorMap(ws.graph, () => undefined, ws.colorWords, { 传感器组: PALETTE.紫 });
-  ok(cm2.get('传感器组/观测台') === PALETTE.蓝 && cm2.get('传感器组/传感杂项') === PALETTE.紫, '词表命中排在语义配色前面');
+  ok(cm2.get('传感器组/观测台') === PALETTE.蓝 && colorMap(ws.graph, () => undefined, '- 绿: 传感器', { 传感器组: PALETTE.紫 }).get('传感器组') === PALETTE.绿, '词表命中排在语义配色前面');
 
   chatReply = '<think>想一想</think>好的，词表如下：\n- 紫: 情绪, 恐慌\n- 蓝: 传感, 观测\n- 臭: 认不出\n';
   const sw = await suggestWords(root, cfg);
-  ok(sw.rules === 2 && sw.bad.length === 1 && sw.text.startsWith('# 配色词表') && !sw.text.includes('好的'), '生成词表：只留词表行，坏行报出来 ' + JSON.stringify(sw));
-  applyWords(root, sw.text);
-  const bak = readdirSync(join(root, DIR, '_过期的')).filter(f => f.startsWith('_配色_'));
-  ok(readFileSync(join(root, DIR, '_配色.md'), 'utf8') === sw.text && bak.length === 1 && readFileSync(join(root, DIR, '_过期的', bak[0]), 'utf8').includes('紫: 恐惧'), '写入新词表，旧的备份进 _过期的/');
+  ok(sw.rules === 2 && sw.bad.length === 1 && sw.text.startsWith('- 紫') && !sw.text.includes('好的'), '生成词表：只留词表行，坏行报出来 ' + JSON.stringify(sw));
+  applyWords(root, { color: sw.text });
+  const kept = readdirSync(join(root, DIR, '_过期的')), all = readFileSync(join(root, DIR, '_词表.md'), 'utf8');
+  ok(all.includes('- 紫: 情绪, 恐慌') && !all.includes('紫: 恐惧') && /## 图案\n- 网格/.test(all), '写入 _词表.md：颜色那节换成草稿，图案那节原样留着 ' + all.slice(-200));
+  ok(kept.some(f => f.startsWith('_配色_')) && kept.some(f => f.startsWith('_词表_')), '旧的 _配色.md 迁走、写入前的 _词表.md 也备份进 _过期的/ ' + kept);
 
   // 精排：8B 会复述名字（「1. 名字 | 3 | 理由」）；乱写的行、越界的序号丢掉
   chatReply = '<think>x</think>好的\n1. 咕噜人 | 3 | 都讲惊慌\n2. 随便写写\n9. 越界 | 2 | 不要\n';

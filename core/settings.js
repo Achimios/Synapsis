@@ -13,8 +13,8 @@ export const SCHEMA = {
     keys: {
       manual: [true, 'AI 接入手册', '__synapsis/_synapsis.md：别的 AI 怎么用 Synapsis 读图、按图施工'],
       blackboard: [true, '黑板', '__synapsis/_Blackboard.md：多个 AI / 对话之间传话的地方'],
-      colorWords: [true, '配色词表', '__synapsis/_配色.md：名字里含这些词的节点自动上色'],
-      patternWords: [true, '图案词表', '__synapsis/_图案.md：名字里含这些词的节点自动加底纹'],
+      colorWords: [true, '词表（颜色）', '__synapsis/_词表.md 的颜色那一节：名字里含这些词的节点自动上色'],
+      patternWords: [true, '词表（图案）', '__synapsis/_词表.md 的图案那一节：自动加底纹（和颜色同一份文件，任一勾上就建）'],
       launcher: [true, '启动快捷方式', '项目根目录的「在 Synapsis 打开」快捷方式 + .synapsis/ 里的兜底启动脚本'],
     },
   },
@@ -79,8 +79,8 @@ export const DEFAULT_TEXT = `# Synapsis 设置（进 git，团队共享）。在
 init:
   manual: true         # AI 接入手册  __synapsis/_synapsis.md
   blackboard: true     # 黑板  __synapsis/_Blackboard.md
-  colorWords: true     # 配色词表  __synapsis/_配色.md
-  patternWords: true   # 图案词表  __synapsis/_图案.md
+  colorWords: true     # 词表（颜色）  __synapsis/_词表.md
+  patternWords: true   # 词表（图案）  同一份 _词表.md
   launcher: true       # 启动快捷方式（项目根目录 .lnk + .synapsis/ 兜底脚本）
 
 # 快捷键自定义：下一步做（现在的键位见界面里的 ⌨ 快捷键）

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { describeChange } from './history.js';
 import { uiLayoutText, isUi, uiSize } from '../../core/uilayout.js';
 import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, withReordered, replaceLabels, autoLayout, lineOf, resolveLabel, isDropped, withCopies, withoutEdge, ROOT } from './outline.js';
-import { colorMap, wordTables, hierHit, upperTable } from './colors.js';
+import { colorMap, wordTables, hierHit, upperTable, baseColor, satOf } from './colors.js';
 import { patternMap, patternTables, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
 import { ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, HistoryPanel, OutlineTree, HelpModal, SettingsModal, ReplaceBar, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
@@ -144,7 +144,7 @@ export function Shell({ name, Canvas }) {
   }, [mode, aiStatus, wsData?.outline, wsData?.colorWords]);
   const cWords = useMemo(() => ({ '': wsData?.colorWords ?? null, ...(wsData?.colorWordsAt || {}) }), [wsData?.colorWords, wsData?.colorWordsAt]), pWords = useMemo(() => ({ '': wsData?.patternWords ?? null, ...(wsData?.patternWordsAt || {}) }), [wsData?.patternWords, wsData?.patternWordsAt]); // 层级词表（👤 2026-10-11）：根 + 各分组自己的
   const cTables = useMemo(() => wordTables(cWords), [cWords]), pTables = useMemo(() => patternTables(pWords), [pWords]);
-  const colors = useMemo(() => colorMap(graph, getMeta, cWords, semCols, { scope: realScope }), [graph, getMeta, cWords, semCols, realScope]); // 👤 2026-10-10 本页的颜色取决于本页的节点（子孙跟组头）；选中不改色
+  const colors = useMemo(() => colorMap(graph, getMeta, cWords, semCols), [graph, getMeta, cWords, semCols]); // 👤 2026-10-12 颜色只看节点自己（不继承父级、不轮色，没命中 = 灰）；sat: 单独叠
   const [semPats, setSemPats] = useState(null);
   useEffect(() => {
     if (mode !== 'ws' || !aiStatus?.ok || !aiStatus.cfg?.semColors) { setSemPats(null); return; }
@@ -156,8 +156,11 @@ export function Shell({ name, Canvas }) {
   const wordsInfo = id => {
     if (id == null || !graph.nodes.has(id) || id === ROOT) return null;
     const lab = sc => sc === ROOT ? '项目' : graph.nodes.get(sc)?.label || sc;
-    const one = (tables, cur, pick) => { const h = hierHit(graph, id, tables, pick); const up = upperTable(graph, id, tables); return { why: h && h.value === cur ? { word: h.word, from: h.from, fromLabel: lab(h.from) } : null, upper: { scope: up, label: lab(up) }, own: tables.has(id) }; };
-    return { group: graph.nodes.get(id).children.length > 0, color: one(cTables, colors.get(id), r => r.color), pattern: one(pTables, patterns.get(id), r => r.pattern) };
+    const why = (tables, key, pick) => { const h = hierHit(graph, id, tables, pick); return h && !getMeta(id)?.[key] ? { word: h.word, from: h.from, fromLabel: lab(h.from) } : null; }; // 手动写了 color: / pattern: 就不显示「词：」
+    // 👤 2026-10-12 颜色 + 图案合成一份 _词表.md：上级 = 父级往上第一个有 _词表.md 的层（项目那份总算有），本层 = 这个分组自己有没有
+    const files = new Set(wsData?.wordsFiles || []); let up = ROOT;
+    for (let a = graph.nodes.get(id)?.parent; a != null && a !== ROOT; a = graph.nodes.get(a)?.parent) if (files.has(a)) { up = a; break; }
+    return { group: graph.nodes.get(id).children.length > 0, upper: { scope: up, label: lab(up) }, own: files.has(id), color: { why: why(cTables, 'color', r => r.color) }, pattern: { why: why(pTables, 'pattern', r => r.pattern) } };
   };
   // 边标签 / 节点副标题来自工作区文件（大纲里没有）
   const sm = seeModes[realScope] || {};
@@ -284,6 +287,7 @@ export function Shell({ name, Canvas }) {
     if (Object.keys(missing).length) move(missing, { silent: true });
   }, [layout]);
   const sel = selected && (view.nodes.some(n => n.id === selected) || view.portals.some(p => p.id === selected) || loosePics.some(p => p.id === selected)) ? selected : null;
+  const wordsScope = sel && !sel.startsWith('@') && graph.nodes.get(sel)?.children.length ? sel : realScope; // AI 起草词表给哪一层（选中分组 = 它，否则当前画布）
   // 👤 2026-10-10 属性栏：选中了看它；空白处（没选中）看当前进入的节点（根没有属性，不管）
   const propId = sel ? (!sel.startsWith('@') && graph.nodes.has(sel) ? sel : null) : (realScope !== ROOT ? realScope : null);
 
@@ -595,11 +599,13 @@ export function Shell({ name, Canvas }) {
     up: () => up(), canUp: realScope !== ROOT,
     // 只有 👤 在这里点了才写 color:；「自动」= 删掉 color:，回到按分组 / 关键词自动配色
     color: mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null,
+    // 饱和度：单独的 sat:（👤 2026-10-12 不把自动色变手动）；旧的「色/50」写法顺手拆回底色
+    sat: mode === 'ws' ? (id, p) => { const c = getMeta(id)?.color, patch = { sat: p === 100 ? null : String(p) }; if (c && String(c).includes('/')) patch.color = String(c).split('/')[0]; saveMeta(id, patch); } : null,
     pattern: mode === 'ws' ? (id, p) => saveMeta(id, { pattern: p }) : null,
     // 右键「转为 ▸」：普通节点 ⇄ UI 框（👤 2026-10-11 常建错）。只动 ui / w / h（进 Ctrl+Z）；转成 UI 框且有子级 → 展开成子图（UI 框默认那样）
     convert: mode === 'ws' ? (id, to) => { const m = wsData?.nodes[id]?.meta || {}; if (to === 'ui') { saveMeta(id, { ui: 'true', w: m.w || '220', h: m.h || '140' }); if (graph.nodes.get(id)?.children.length) setFramed(x => ({ ...x, [id]: true })); } else saveMeta(id, { ui: null, w: null, h: null }); } : null,
-    patternWords: mode === 'ws' ? (scope = '') => api('/pattern-words', { method: 'POST', body: JSON.stringify({ scope }) }).then(d => { reveal(d.file, 'open'); setSaveState('图案词表：' + d.file + '（改完保存，Synapsis 会自动刷新）'); }).catch(e => setSaveState('❌ ' + e.message)) : null,
-    colorWords: mode === 'ws' ? (scope = '') => api('/color-words', { method: 'POST', body: JSON.stringify({ scope }) }).then(d => { reveal(d.file, 'open'); setSaveState('配色词表：' + d.file + '（改完保存，Synapsis 会自动刷新）'); }).catch(e => setSaveState('❌ ' + e.message)) : null,
+    // 打开某一层的 _词表.md（scope = 分组 id，'' = 项目那份；没有就建）
+    words: mode === 'ws' ? (scope = '') => api('/words', { method: 'POST', body: JSON.stringify({ scope }) }).then(d => { reveal(d.file, 'open'); api('/ws').then(setWsData).catch(() => {}); setSaveState('词表：' + d.file + '（改完保存，Synapsis 会自动刷新）'); }).catch(e => setSaveState('❌ ' + e.message)) : null,
     toggleAll: () => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; }),
   };
   const onEdgeMenu = useCallback((edgeId, x, y) => { const e = view.edges.find(q => q.id === edgeId); if (e) setMenu({ edge: e, x, y }); }, [view]);
@@ -1229,7 +1235,7 @@ export function Shell({ name, Canvas }) {
       {propsOpen && propId && (
         <PropsPanel id={propId} graph={graph} wsNode={wsData?.nodes[propId]} edges={mode === 'ws' ? (wsData?.edges || []) : graph.edges}
           editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} onMeta={saveMeta} metaHints={mode === 'ws' ? metaHints(propId) : []} file={nodeFile(propId)} tab={propsTab} onTab={setPropsTab} raw={rawText} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)}
-          onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} onEdgeRemove={(from, to) => removeEdges([[from, to]])} color={colors.get(propId)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} pattern={patterns.get(propId)} onPattern={menuActions.pattern} words={wordsInfo(propId)} onWords={mode === 'ws' ? (k, sc) => (k === 'color' ? menuActions.colorWords : menuActions.patternWords)(sc) : null}
+          onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} onEdgeRemove={(from, to) => removeEdges([[from, to]])} color={colors.get(propId)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} baseColor={propId != null && graph.nodes.has(propId) ? baseColor(graph, propId, getMeta(propId), cTables, semCols) : null} satNow={satOf(getMeta(propId))} onSat={menuActions.sat} pattern={patterns.get(propId)} onPattern={menuActions.pattern} words={wordsInfo(propId)} onWords={menuActions.words}
           hl={rawHl && rawHl.file === nodeFile(propId) ? rawHl : null} onSelMenu={mode === 'ws' ? (e, s) => setMenu({ x: e.clientX, y: e.clientY, sel: s }) : null} />
       )}
       {propsOpen && !propId && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（Shift+Tab 开关）</div></aside>}
@@ -1240,7 +1246,7 @@ export function Shell({ name, Canvas }) {
         {lightbox.urls.length > 1 && <div className="lbcount">{lightbox.i + 1} / {lightbox.urls.length}（← →）</div>}
       </div>}
       {pinsOpen && mode === 'ws' && <PinDock doc={pins} graph={graph} edit={editPins} view={viewPins} jump={jumpPin} ask={pinAsk} onChoose={choosePinLine} onIgnore={() => setPinAsk(null)} onClose={() => setPinsOpen(false)} />}
-      {agentOpen && mode === 'ws' && <AgentBox preset={agentPreset} api={api} scope={realScope} boxes={() => cardActions.boxes?.() || {}} selected={cardActions.multi?.length ? cardActions.multi : sel ? [sel] : []}
+      {agentOpen && mode === 'ws' && <AgentBox preset={agentPreset} api={api} scope={realScope} wordsScope={wordsScope} wordsLabel={wordsScope === ROOT ? '项目' : graph.nodes.get(wordsScope)?.label} boxes={() => cardActions.boxes?.() || {}} selected={cardActions.multi?.length ? cardActions.multi : sel ? [sel] : []}
         onPreview={ids => ids.length && cardActions.select?.(ids)} onClose={() => setAgentOpen(false)} onZoom={(urls, i) => setLightbox({ urls, i })}
         onWordsApplied={d => { setWsData(d); setSaveState('配色词表已更新：' + d.file); }}
         onApplied={async good => {
@@ -1258,7 +1264,7 @@ export function Shell({ name, Canvas }) {
       {scaffold && <ScaffoldModal items={scaffold} root={wsData?.root || ''} onClose={() => setScaffold(null)}
         onCreate={files => api('/scaffold', { method: 'POST', body: JSON.stringify({ files }) }).then(d => { setScaffold(null); setTree(null); setSaveState(d.made.length ? '已创建 ' + d.made.join('、') : '没有新建（都已存在）'); }).catch(e => setSaveState('❌ ' + e.message))} />}
       {fileView && <FilePanel file={fileView.text !== undefined || fileView.error || fileView.note ? fileView : null} onClose={() => setFileView(null)} hl={fileHl && fileHl.file === fileView.path ? fileHl : null} onSelMenu={mode === 'ws' ? (e, s) => setMenu({ x: e.clientX, y: e.clientY, sel: s }) : null} />}
-      {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), color: colors.get(menu.id), colorSet: getMeta(menu.id)?.color || null, patternSet: getMeta(menu.id)?.pattern || null, pattern: patterns.get(menu.id) || null, open: !!expanded[menu.id], file: wsData?.nodes[menu.id]?.meta?.file || null, ref: wsData?.nodes[menu.id]?.meta?.ref || null, ui: isUi(wsData?.nodes[menu.id]?.meta), descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
+      {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), color: colors.get(menu.id), baseColor: graph.nodes.has(menu.id) ? baseColor(graph, menu.id, getMeta(menu.id), cTables, semCols) : null, satNow: satOf(getMeta(menu.id)), colorSet: getMeta(menu.id)?.color || null, patternSet: getMeta(menu.id)?.pattern || null, pattern: patterns.get(menu.id) || null, open: !!expanded[menu.id], file: wsData?.nodes[menu.id]?.meta?.file || null, ref: wsData?.nodes[menu.id]?.meta?.ref || null, ui: isUi(wsData?.nodes[menu.id]?.meta), descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
         actions={{ ...menuActions, allOpen }} onClose={() => setMenu(null)} />}
       {exportText !== null && (
         <div className="modal" onClick={() => setExportText(null)}>

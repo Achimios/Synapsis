@@ -229,23 +229,23 @@ export function RelatedDock({ api, id, label, onJump, onOpenFile, onLink }) {
 //   「日志」页 = 每次调对话模型的原始记录（core/ai.js aiLog）。短记忆存在工作区（「清空记忆」= 新话题）
 // >v<🤖AI辅助-生成词表-按这个工作区的节点让对话模型起草 _配色.md（看过、可手改，再写入；旧的进 _过期的/）。
 //   👤 2026-10-08「这种操作不该丢 AI 配置页面…丢指令页面」→ 指令框的一页
-function WordsTab({ api, onWordsApplied }) {
+function WordsTab({ api, onWordsApplied, scope = '', label = '项目' }) { // 👤 2026-10-12 按层起草：画布没选中 = 当前画布那个节点，选中分组 = 它；写进那一层的 _词表.md
   const [draft, setDraft] = useState(null), [pdraft, setPDraft] = useState(null), [busy, setBusy] = useState('');
   const gen = () => {
     setBusy('生成中…（颜色 + 图案两份）');
-    api('/ai/words', { method: 'POST' }).then(d => { setDraft(d.text); setPDraft(d.pattern?.text ?? null); const bad = d.bad.length + (d.pattern?.bad.length || 0); setBusy(bad ? `有 ${bad} 行认不出，写入前可以手改` : `颜色 ${d.rules} 行 + 图案 ${d.pattern?.rules ?? 0} 行，看过可以手改再写入`); }).catch(e => setBusy('❌ ' + e.message));
+    api('/ai/words', { method: 'POST', body: JSON.stringify({ scope }) }).then(d => { setDraft(d.text); setPDraft(d.pattern?.text ?? null); const bad = d.bad.length + (d.pattern?.bad.length || 0); setBusy(bad ? `有 ${bad} 行认不出，写入前可以手改` : `颜色 ${d.rules} 行 + 图案 ${d.pattern?.rules ?? 0} 行，看过可以手改再写入`); }).catch(e => setBusy('❌ ' + e.message));
   };
-  const apply = () => api('/ai/words/apply', { method: 'POST', body: JSON.stringify({ text: draft, patternText: pdraft }) })
+  const apply = () => api('/ai/words/apply', { method: 'POST', body: JSON.stringify({ text: draft, patternText: pdraft, scope }) })
     .then(d => { onWordsApplied?.(d); setDraft(null); setPDraft(null); setBusy('已写入 ' + d.file + '（旧的备份在 __synapsis/_过期的/）'); }).catch(e => setBusy('❌ ' + e.message));
   return (
     <div className="wordstab">
-      <div className="hint">配色词表 = __synapsis/_配色.md（名字里有某行的词，就用那行的颜色）；图案词表 = _图案.md（词 → 网格 / 点阵 / 斜纹 / 横纹 / 波纹）。这里让 AI 按这个工作区现有的节点一起起草两份。</div>
-      <div className="row"><button onClick={gen}>✨ 按这个工作区的节点生成词表（颜色 + 图案）…</button><span className="hint">{busy}</span></div>
+      <div className="hint">词表 = 每一层一份 _词表.md：「颜色」一节（名字里有某行的词，就用那行的颜色）+「图案」一节（词 → 网格 / 点阵 / 斜纹 / 横纹 / 波纹）。现在给「<b>{label}</b>」{scope ? '这个分组（只看它里面的节点）' : '整个项目'}起草；画布上选中别的分组就换成它。</div>
+      <div className="row"><button onClick={gen}>✨ 给「{label}」生成词表（颜色 + 图案）…</button><span className="hint">{busy}</span></div>
       {draft != null && <>
-        <div className="hint">🎨 颜色词表 → _配色.md</div>
+        <div className="hint">🎨 颜色那一节</div>
         <textarea className="mono" value={draft} onChange={e => setDraft(e.target.value)} rows={10} />
-        {pdraft != null && <><div className="hint">▦ 图案词表 → _图案.md</div><textarea className="mono" value={pdraft} onChange={e => setPDraft(e.target.value)} rows={8} /></>}
-        <div className="row"><button onClick={apply}>写入{pdraft != null ? '（_配色.md + _图案.md）' : ' _配色.md'}</button><button onClick={() => { setDraft(null); setPDraft(null); }}>不要</button></div>
+        {pdraft != null && <><div className="hint">▦ 图案那一节</div><textarea className="mono" value={pdraft} onChange={e => setPDraft(e.target.value)} rows={8} /></>}
+        <div className="row"><button onClick={apply}>写入「{label}」的 _词表.md</button><button onClick={() => { setDraft(null); setPDraft(null); }}>不要</button></div>
       </>}
     </div>
   );
@@ -302,7 +302,7 @@ const shrink = url => new Promise(ok => {
 });
 const imgFiles = dt => [...(dt?.items || [])].filter(i => i.kind === 'file' && i.type.startsWith('image/')).map(i => i.getAsFile()).filter(Boolean);
 
-export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, onClose, onWordsApplied, onZoom, preset = null }) {
+export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, onClose, onWordsApplied, onZoom, preset = null, wordsScope = '', wordsLabel = '项目' }) {
   const [imgs, setImgs] = useState([]); // 这一句要附的图（dataURL）
   const addImgs = files => Promise.all(files.map(f => readImg(f).then(shrink))).then(us => setImgs(a => [...a, ...us].slice(0, 6)));
   const [summary, setSummary] = useState({}), [compacting, setCompacting] = useState(false); // 记忆摘要 {loose|strict: {text, upto}}；后台在压
@@ -409,7 +409,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
         {imgs.length > 0 && <div className="askimgs">{imgs.map((u, i) => <span key={i}><img src={u} title="单击放大" onClick={() => onZoom?.(imgs, i)} /><a title="不附这张" onClick={() => setImgs(a => a.filter((_, j) => j !== i))}>✕</a></span>)}<span className="hint">{loose ? '随下一句发出（不进短记忆）' : '随下一句发出（本地模型要能看图，比如 Qwen VL）'}</span></div>}
         <textarea ref={inp} className="ask" rows={2} value={text} onChange={e => setText(e.target.value)}
           placeholder={plan?.actions.some(a => a.ok) ? 'Enter = 执行上面的动作；或者接着说（改主意 / 补充）' : '说要做什么…（Enter 发送，Shift+Enter 换行，Ctrl+V / 拖进来 = 附图）' + (selected.length ? `　已选 ${selected.length} 个` : '')} />
-      </> : tab === 'words' ? <WordsTab api={api} onWordsApplied={onWordsApplied} /> : <div className="logs">
+      </> : tab === 'words' ? <WordsTab api={api} onWordsApplied={onWordsApplied} scope={wordsScope} label={wordsLabel} /> : <div className="logs">
         <UsageBar api={api} tick={log} />
         {!log ? <div className="hint pad">读取中…</div> : !log.length ? <div className="hint pad">还没有调用记录</div> : log.map((l, i) => <div key={i} className="logrow">
           <div className="head" onClick={() => setOpenLog(openLog === i ? null : i)}>

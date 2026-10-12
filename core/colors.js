@@ -1,8 +1,5 @@
-// >v<🎨画布-节点配色-每个节点一个颜色，只看节点本身（换页不变色）：
-//   1. 自己或最近的祖先写了 color: → 用它（👤 改的才写进 frontmatter）
-//   2. 否则沿祖先往上，最上层一个名字含词表里的词的 → 那一行的颜色
-//   3. 都没有 → 它所在的顶层分组按顺序轮色（跳过兄弟里已被词表占掉的色）
-// 词表 = 工作区的 __synapsis/_配色.md（👤 2026-10-08：写死在代码里扩展性不行）；没有这个文件用 DEFAULT_WORDS。
+// >v<🎨画布-调色板与词表-颜色只看节点自己（规则见文件末尾 colorMap）。
+// 词表 = 工作区的 __synapsis/_配色.md + 各分组文件夹里自己的 _配色.md（层级词表）；项目那份没有就用 DEFAULT_WORDS。
 // 线 = 出发节点的颜色（main.jsx FlowEdge）。
 export const PALETTE = {
   蓝: '#4d9bff', 紫: '#a97cff', 橙: '#ff9636', 绿: '#5cc46a', 红: '#ff5f5f',
@@ -22,7 +19,7 @@ export function satHex(hex, pct) {
 export const WORDS_FILE = '_配色.md';
 export const DEFAULT_WORDS = `# 配色词表
 
-> 名字里含这些词的节点（连同子孙）自动用这一行的颜色；一个节点沿祖先往上，按**最外层**含词的那个算。
+> 名字里含这些词的节点自动用这一行的颜色（只管节点自己，不传给子孙）。这是项目那份；分组文件夹里还能放自己的 _配色.md，只管它里面，就近命中优先。
 > 格式：\`- 颜色: 词, 词, 词\`。颜色写调色板名（蓝 紫 橙 绿 红 灰 青 粉 黄）或 #rrggbb。上面的行优先。
 > 想单独改某个节点：界面里右键色块（会写进那个节点的 \`color:\`）。
 > 颜色后面可以跟饱和度 /25 /50 /75（100 = 不写），比如 \`- 蓝/50: 观测\`：同一个色相想分出深浅，就拆成两行。
@@ -51,7 +48,6 @@ export const OLD_DEFAULT_WORDS = `# 配色词表
 - 灰: 外部, 环境, 世界, 外显, 身体
 - 红: 兜底, 异常, 风险, fallback
 `;
-const CYCLE = ['青', '粉', '黄', '蓝', '紫', '橙', '绿', '红'].map(k => PALETTE[k]);
 
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 // color: 的值：调色板名（蓝 / 紫…）或 #rgb / #rrggbb；认不出 → null（当没写）
@@ -107,63 +103,22 @@ export function hierHit(graph, id, tables, pick = r => r.color) {
 // 对 id 的子孙生效的「上级」词表在哪一层：从 id 自己的父级往上第一个有表的（根总是有）。本层 = tables.has(id)
 export const upperTable = (graph, id, tables) => { for (let a = graph.nodes.get(id)?.parent; a != null; a = a === '' ? null : graph.nodes.get(a)?.parent) if (tables.has(a)) return a; return ''; };
 
-// graph = parseOutline 的结果（nodes: Map id → {label, parent, children}），getMeta(id) → frontmatter 或 undefined；
-// words = 词表 md 文本（undefined / null → 默认词表）；sem = {id: 颜色}（LM Studio 语义配色，core/ai.js semColors）—— 词表没命中时当命中用
-// focus = { scope }（👤 2026-10-10「本页的颜色取决于本页的节点」）：配色只看眼前这一页——scope 上的每个节点各自一组，
-//   自己的名字命中词表就用那一行，没命中就轮色（跳过同层已被词表占掉的）；组头下面的子孙（展开在它里面的）继承组头的色，
-//   有 color: 的照旧优先；选中不改变配色。不给 focus = 旧算法（最外层命中，自检里的老用例）
-export function colorMap(graph, getMeta = () => undefined, words = null, sem = null, focus = null) {
-  const tables = wordTables(words), wc = id => hierHit(graph, id, tables)?.value || null; // 层级词表：就近命中
-  if (focus) {
-    const ROOT = '', scope = graph.nodes.has(focus.scope) ? focus.scope : ROOT;
-    const hit = id => wc(id) || sem?.[id] || null;
-    const heads = new Map(); // 组头 id → 色
-    const level = parent => {
-      const kids = graph.nodes.get(parent)?.children || [];
-      const taken = new Set(kids.map(hit).filter(Boolean)), free = CYCLE.filter(c => !taken.has(c)), cyc = free.length ? free : CYCLE;
-      let k = 0; for (const id of kids) heads.set(id, hit(id) || cyc[k++ % cyc.length]);
-    };
-    level(scope);
-    const topLevel = new Map(); // 不在这两层里的（传送门指向的别处 / 祖先）：按最顶层分组轮色，只求有个色
-    { const top = graph.nodes.get(ROOT)?.children || []; let k = 0; for (const id of top) topLevel.set(id, hit(id) || CYCLE[k++ % CYCLE.length]); }
-    const out = new Map();
-    for (const id of graph.nodes.keys()) {
-      if (id === ROOT) continue;
-      let explicit = null, head = null, topId = id;
-      for (let x = id; x != null && x !== ROOT; x = graph.nodes.get(x)?.parent) {
-        if (!explicit) explicit = parseColor(getMeta(x)?.color);
-        const p = graph.nodes.get(x)?.parent;
-        if (!head && p === scope) head = x;
-        topId = x;
-      }
-      out.set(id, explicit || (head && heads.get(head)) || topLevel.get(topId) || PALETTE.灰);
-    }
-    return out;
+// >v<🎨画布-节点配色-（👤 2026-10-12「颜色不要继承父级，颜色就影响本节点」）每个节点只看自己：
+//   1. 自己写了 color: → 它；2. 自己的名字命中词表（层级词表，父级往上就近命中）→ 那一行；3. AI 语义配色；4. 灰。
+//   不再沿祖先继承、不再轮色：新建的卡默认灰，所在的层有词表就马上分到色。
+//   饱和度 sat: 25 / 50 / 75（100 = 不写）单独一个键，叠在上面算出的颜色上，不把自动色变成手动色（👤：手动标注用）。
+// graph = parseOutline 的结果；getMeta(id) → frontmatter；words = 根词表文本或 {'': 根, 分组id: 文本}；sem = {id: 颜色}
+// 不带 sat: 的颜色（饱和度按钮拿它当底色）；tables = wordTables(words)
+export const baseColor = (graph, id, m, tables, sem = null) => parseColor(m?.color) || hierHit(graph, id, tables)?.value || sem?.[id] || PALETTE.灰;
+export const satOf = m => { const s = +m?.sat; if (s > 0 && s < 100) return s; const t = String(m?.color || '').split('/')[1]; return +t > 0 && +t < 100 ? +t : 100; }; // 现在是哪一档（旧的 color: 蓝/50 也认）
+export function colorMap(graph, getMeta = () => undefined, words = null, sem = null) {
+  const tables = wordTables(words), out = new Map();
+  for (const id of graph.nodes.keys()) {
+    if (id === '') continue;
+    const m = getMeta(id) || {};
+    const base = baseColor(graph, id, m, tables, sem);
+    const sat = +m.sat;
+    out.set(id, sat > 0 && sat < 100 ? satHex(base, sat) : base);
   }
-  const ROOT = '', out = new Map();
-  // 顶层分组轮色：词表占的色先让出来
-  const top = graph.nodes.get(ROOT)?.children || [];
-  const word = wc;
-  const hit = id => word(id) || sem?.[id] || null;
-  const taken = new Set(top.map(hit).filter(Boolean));
-  const free = CYCLE.filter(c => !taken.has(c)), cyc = free.length ? free : CYCLE;
-  const topHue = new Map();
-  let k = 0;
-  for (const id of top) topHue.set(id, hit(id) || cyc[k++ % cyc.length]);
-  const of = id => {
-    if (out.has(id)) return out.get(id);
-    let explicit = null, kw = null, sk = null, topId = id;
-    for (let x = id; x != null && x !== ROOT; x = graph.nodes.get(x)?.parent) {
-      if (!explicit) explicit = parseColor(getMeta(x)?.color);
-      const h = word(x), s = sem?.[x];
-      if (h) kw = h; // 一路覆盖 → 留下最上层的
-      if (s) sk = s; // 语义配色同理，但排在词表命中之后（不然一个顶层分组被 AI 染色，下面按词表分好的颜色全被盖掉）
-      topId = x;
-    }
-    const c = explicit || kw || sk || topHue.get(topId) || PALETTE.灰;
-    out.set(id, c);
-    return c;
-  };
-  for (const id of graph.nodes.keys()) if (id !== ROOT) of(id);
   return out;
 }

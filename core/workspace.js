@@ -15,10 +15,10 @@
 //   ---
 //   正文（人写的，Synapsis 不动）
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, unlinkSync, rmdirSync, cpSync } from 'node:fs';
-import { join, dirname, relative, isAbsolute, resolve } from 'node:path';
+import { join, dirname, relative, isAbsolute, resolve, basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { PATTERN_FILE, DEFAULT_PATTERN_WORDS, parsePatternWords } from './patterns.js';
+import { PATTERN_FILE, DEFAULT_PATTERN_WORDS, parsePatternWords, WORDS_ALL, splitWords, DEFAULT_ALL, LOCAL_WORDS, joinWords, wordsHead } from './patterns.js';
 import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, withCopies, withEdge, withoutEdge, withMoved, withNode, ROOT } from './outline.js';
 import { checkSpaces } from './space.js';
 import { emptyPins, cleanPins, remapNodes } from './pins.js';
@@ -122,17 +122,24 @@ export function loadWorkspace(root) {
   }
   let layout = {};
   try { layout = JSON.parse(readFileSync(join(base, '_layout.json'), 'utf8')); } catch { /* 没有就空 */ }
-  const wf = join(base, WORDS_FILE), colorWords = existsSync(wf) ? readFileSync(wf, 'utf8') : null; // 配色词表（没有 = 用默认）
-  const pf = join(base, PATTERN_FILE), patternWords = existsSync(pf) ? readFileSync(pf, 'utf8') : null; // 图案词表
-  // 层级词表（👤 2026-10-11）：分组文件夹里也可以有自己的 _配色.md / _图案.md，管它的子孙；{分组 id: 文本}，根那份仍是 colorWords / patternWords
+  // 词表（👤 2026-10-12 合成一份）：每一层的 _词表.md 拆成 颜色 / 图案 两边；旧的 _配色.md / _图案.md 还在也照读（打开工作区时会迁进 _词表.md）
+  //   colorWords / patternWords = 项目那份（null = 用默认）；colorWordsAt / patternWordsAt = {分组 id: 文本}（有文件就有键，哪怕那一边是空的）
+  const level = d => {
+    const all = join(d, WORDS_ALL), oc = join(d, WORDS_FILE), op = join(d, PATTERN_FILE);
+    if (!existsSync(all) && !existsSync(oc) && !existsSync(op)) return null;
+    const hasAll = existsSync(all), sp = hasAll ? splitWords(readFileSync(all, 'utf8')) : { color: '', pattern: '' };
+    const old = f => existsSync(f) ? '\n' + readFileSync(f, 'utf8') : '';
+    // 哪一边既没有 _词表.md 也没有旧文件 → null（项目那份 = 用默认；分组 = 这层没有）
+    return { color: hasAll || existsSync(oc) ? sp.color + old(oc) : null, pattern: hasAll || existsSync(op) ? sp.pattern + old(op) : null };
+  };
+  const top = level(base), colorWords = top ? top.color : null, patternWords = top ? top.pattern : null, wordsFiles = top ? [ROOT] : [];
   const colorWordsAt = {}, patternWordsAt = {};
   for (const n of nodes.values()) {
     if (n.id === ROOT || !n.isGroup) continue;
-    const d = dirname(n.file), c = join(d, WORDS_FILE), p = join(d, PATTERN_FILE);
-    if (existsSync(c)) colorWordsAt[n.id] = readFileSync(c, 'utf8');
-    if (existsSync(p)) patternWordsAt[n.id] = readFileSync(p, 'utf8');
+    const l = level(dirname(n.file));
+    if (l) { if (l.color != null) colorWordsAt[n.id] = l.color; if (l.pattern != null) patternWordsAt[n.id] = l.pattern; wordsFiles.push(n.id); }
   }
-  return { root, base, graph: { nodes, edges, errors }, layout, loose, colorWords, patternWords, colorWordsAt, patternWordsAt };
+  return { root, base, graph: { nodes, edges, errors }, layout, loose, colorWords, patternWords, colorWordsAt, patternWordsAt, wordsFiles };
 }
 
 export const workspaceOutline = ws => toOutline(ws.graph);
@@ -283,12 +290,12 @@ export function saveOutline(root, text, hint = null) {
     renameSync(from, to);
     report.moved.push(relative(base, from) + ' → ' + relative(base, to));
   }
-  // 2c) 分组自己的词表（_配色.md / _图案.md，👤 2026-10-11 层级词表）跟着分组文件夹走；分组变叶子 / 被删 → 进 .junk/（只有分组才有词表）
+  // 2c) 分组自己的词表（_词表.md，旧的 _配色.md / _图案.md，👤 2026-10-11 层级词表）跟着分组文件夹走；分组变叶子 / 被删 → 进 .junk/（只有分组才有词表）
   const back = new Map([...map].filter(([, c]) => c != null).map(([n, c]) => [c, n]));
   for (const [cid, n] of cur.nodes) {
     if (cid === ROOT || !n.isGroup || !n.file || inWholeGone.has(cid)) continue;
     const nid = back.get(cid), nn = nid != null ? next.nodes.get(nid) : null, to = nn && nn.children.length ? join(base, ...pathOf(nid)) : null;
-    for (const f of [WORDS_FILE, PATTERN_FILE]) {
+    for (const f of [WORDS_ALL, WORDS_FILE, PATTERN_FILE]) {
       const from = join(dirname(n.file), f);
       if (!existsSync(from) || (to && join(to, f) === from)) continue;
       let dst = to ? join(to, f) : null;
@@ -474,25 +481,43 @@ export function codeHash(file) {
 }
 
 // >v<🎨画布-配色词表-没有 _配色.md 就按默认词表写一份（界面「词表…」按钮），返回它的路径
-// 分组自己的词表（scope = 分组 id）：建一份只有说明、没有词的空表（👤 2026-10-11 层级词表）
-const LOCAL_HEAD = (kind, eg) => `# ${kind}词表（只管这个分组里面）\n\n> 名字里含这些词的子孙用这一行的${kind === '配色' ? '颜色' : '底纹'}；这里没命中就接着往上一层的词表找（就近命中）。\n> 格式：\`${eg}\`。上面的行优先。\n\n`;
-const groupWordsFile = (root, scope, file) => {
+// >v<🎨画布-词表-每一层一份 _词表.md（👤 2026-10-12 合并）。scope = 分组 id → 那个分组自己的（没有就建一份空表）；'' = 项目那份（没有就按默认写）
+export const LOCAL_HEAD = (kind, eg) => wordsHead(LOCAL_WORDS(''));
+export const groupWordsFile = (root, scope, file = WORDS_ALL) => {
   const n = loadWorkspace(root).graph.nodes.get(scope);
   if (!n || !n.isGroup) throw new Error('只有分组（有子节点的）才能有自己的词表：' + scope);
   return join(dirname(n.file), file);
 };
-export function ensurePatternWords(root, scope = ROOT) {
-  if (scope) { const f = groupWordsFile(root, scope, PATTERN_FILE); if (!existsSync(f)) writeFileSync(f, LOCAL_HEAD('图案', '- 网格: 词, 词')); return f; }
-  const f = join(root, DIR, PATTERN_FILE);
-  if (!existsSync(f)) { mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, DEFAULT_PATTERN_WORDS); }
+export function ensureWords(root, scope = ROOT) {
+  migrateWords(root);
+  if (scope) { const f = groupWordsFile(root, scope); if (!existsSync(f)) writeFileSync(f, LOCAL_WORDS(loadWorkspace(root).graph.nodes.get(scope).label)); return f; }
+  const f = join(root, DIR, WORDS_ALL);
+  if (!existsSync(f)) { mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, DEFAULT_ALL); }
   return f;
 }
-export function ensureColorWords(root, scope = ROOT) {
-  if (scope) { const f = groupWordsFile(root, scope, WORDS_FILE); if (!existsSync(f)) writeFileSync(f, LOCAL_HEAD('配色', '- 红: 词, 词')); return f; }
-  const f = join(root, DIR, WORDS_FILE);
-  if (!existsSync(f)) { mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, DEFAULT_WORDS); }
-  else if (sameText(readFileSync(f, 'utf8'), OLD_DEFAULT_WORDS)) writeFileSync(f, DEFAULT_WORDS); // 没改过的旧默认 → 新默认
-  return f;
+export const ensureColorWords = ensureWords, ensurePatternWords = ensureWords; // 旧名字
+// 旧的两份（_配色.md / _图案.md）→ 并进同一层的 _词表.md，旧文件备份进 _过期的/（打开工作区 / 建词表时跑一次）
+export function migrateWords(root) {
+  const base = join(root, DIR); if (!existsSync(base)) return [];
+  const ws = loadWorkspace(root), done = [];
+  const levels = [[base, ROOT, ''], ...[...ws.graph.nodes.values()].filter(n => n.id !== ROOT && n.isGroup).map(n => [dirname(n.file), n.id, n.label])];
+  for (const [d, id, label] of levels) {
+    const oc = join(d, WORDS_FILE), op = join(d, PATTERN_FILE), all = join(d, WORDS_ALL);
+    if (!existsSync(oc) && !existsSync(op)) continue;
+    const had = existsSync(all), cur = had ? readFileSync(all, 'utf8') : id === ROOT ? DEFAULT_ALL : LOCAL_WORDS(label);
+    const none = { color: '', pattern: '' }, sp = splitWords(cur); // 还没有 _词表.md 时 cur 是模板（项目那份带默认词）
+    const rd = f => existsSync(f) ? splitWords(readFileSync(f, 'utf8')) : none;
+    const c = rd(oc), p = rd(op), cat = (...xs) => xs.filter(Boolean).join('\n');
+    // 已有 _词表.md：旧的追加在后面；还没有：旧文件有哪一边就用旧的那一边（人改过的），没有的那一边用模板里的默认
+    const col = had ? cat(sp.color, c.color, p.color) : existsSync(oc) ? cat(c.color, p.color) : cat(sp.color, p.color);
+    const pat = had ? cat(sp.pattern, c.pattern, p.pattern) : existsSync(op) ? cat(c.pattern, p.pattern) : cat(sp.pattern, c.pattern);
+    writeFileSync(all, joinWords(wordsHead(cur), col, pat));
+    const keep = join(base, '_过期的'); mkdirSync(keep, { recursive: true });
+    const tag = (id === ROOT ? '' : id.replace(/\//g, '～') + '_') + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    for (const f of [oc, op]) if (existsSync(f)) renameSync(f, join(keep, basename(f, '.md') + '_' + tag + '.md'));
+    done.push(relative(base, all));
+  }
+  return done;
 }
 
 // >v<💾工作区-粘贴节点-复制 ids（子孙、状态、内部边）到 parent 下，再把属性（除结构字段）、正文、节点图片跟着拷（👤 2026-10-08）
@@ -704,10 +729,10 @@ export function checkWorkspace(ws) {
       if (agg && agg !== n.status) issues.push({ level: 'info', where: n.id, msg: `分组自己标的是 ${n.status}，子节点汇总是 ${agg}` });
     }
   }
-  if (ws.colorWords != null) for (const l of parseColorWords(ws.colorWords).bad) issues.push({ level: 'warn', where: WORDS_FILE, msg: '认不出的一行（颜色写 蓝/紫/… 或 #rrggbb）：' + l });
-  if (ws.patternWords != null) for (const l of parsePatternWords(ws.patternWords).bad) issues.push({ level: 'warn', where: PATTERN_FILE, msg: '认不出的一行（图案只能是 网格 点阵 斜纹 横纹 波纹）：' + l });
-  for (const [g, t] of Object.entries(ws.colorWordsAt || {})) for (const l of parseColorWords(t).bad) issues.push({ level: 'warn', where: g + '/' + WORDS_FILE, msg: '认不出的一行（颜色写 蓝/紫/… 或 #rrggbb）：' + l });
-  for (const [g, t] of Object.entries(ws.patternWordsAt || {})) for (const l of parsePatternWords(t).bad) issues.push({ level: 'warn', where: g + '/' + PATTERN_FILE, msg: '认不出的一行（图案只能是 网格 点阵 斜纹 横纹 波纹）：' + l });
+  if (ws.colorWords != null) for (const l of parseColorWords(ws.colorWords).bad) issues.push({ level: 'warn', where: WORDS_ALL, msg: '认不出的一行（颜色写 蓝/紫/… 或 #rrggbb）：' + l });
+  if (ws.patternWords != null) for (const l of parsePatternWords(ws.patternWords).bad) issues.push({ level: 'warn', where: WORDS_ALL, msg: '认不出的一行（图案只能是 网格 点阵 斜纹 横纹 波纹）：' + l });
+  for (const [g, t] of Object.entries(ws.colorWordsAt || {})) for (const l of parseColorWords(t).bad) issues.push({ level: 'warn', where: g + '/' + WORDS_ALL, msg: '认不出的一行（颜色写 蓝/紫/… 或 #rrggbb）：' + l });
+  for (const [g, t] of Object.entries(ws.patternWordsAt || {})) for (const l of parsePatternWords(t).bad) issues.push({ level: 'warn', where: g + '/' + WORDS_ALL, msg: '认不出的一行（图案只能是 网格 点阵 斜纹 横纹 波纹）：' + l });
   const g = ws.graph;
   issues.push(...checkSpaces(g, id => g.nodes.get(id)?.meta, (from, ref) => resolveLabel(g.nodes, from, ref) || (g.nodes.has(ref) ? ref : null)));
   issues.push(...checkAnchors(ws));

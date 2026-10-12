@@ -30,8 +30,8 @@ export const USAGE = `用法：node core/cli.js <命令> [参数] [--ws <被规�
   launcher [目录]              重建项目根的快捷方式（换了 _图标/ 里的图标后用）
   manual                       打印 AI 接入手册
   init <项目目录>              给项目挂上 Synapsis`;
-import { WORDS_FILE, DEFAULT_WORDS } from './colors.js';
-import { PATTERN_FILE, DEFAULT_PATTERN_WORDS } from './patterns.js';
+import { DEFAULT_ALL, WORDS_ALL } from './patterns.js';
+
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -104,8 +104,8 @@ export function init(root, home = HOME) {
   mkdirSync(join(root, DIR), { recursive: true });
   if (S.manual && ensureWorkspaceReadme(root, manualText(root))) made.push(DIR + '/_synapsis.md（AI 接入手册）');
   if (S.blackboard && blackboardName(root) === '_Blackboard.md') put(DIR + '/_Blackboard.md', BLACKBOARD);
-  if (S.colorWords) put(DIR + '/' + WORDS_FILE, DEFAULT_WORDS);
-  if (S.patternWords) put(DIR + '/' + PATTERN_FILE, DEFAULT_PATTERN_WORDS);
+  if (S.colorWords || S.patternWords) put(DIR + '/' + WORDS_ALL, DEFAULT_ALL); // 👤 2026-10-12 颜色 + 图案合成一份 _词表.md
+
   ensureGitignore(root);
   put('.synapsis/.gitignore', '# 本机状态（视图、缓存），不进 git\n*\n');
   // 启动器是生成物：根目录一个带图标的快捷方式 + 藏在 .synapsis/ 的兜底 vbs（core/launcher.js；Synapsis 搬家后重跑 init 即可修好）
