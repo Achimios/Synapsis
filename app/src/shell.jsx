@@ -79,6 +79,7 @@ export function Shell({ name, Canvas }) {
   // >v<🧭导航-历史-Alt+A/D 后退前进，Alt+W 上一层
   // 导航历史：像浏览器一样 Alt+← / Alt+→
   const hist = useRef({ back: [], fwd: [] });
+  const rmb = useRef({ down: false, used: false }); // 右键按着没（右键 + 侧键 组合）
   const taRef = useRef(null), findRef = useRef(null);
   // >v<🔭视图投影-原地展开-不钻进去也能看子级：卡片里列出子节点（▸N 点一下 / 2），双击子项跳进去并选中
   const [expanded, setExpanded] = useState(() => DEMO ? load('syn.exp', {}) : {});
@@ -324,7 +325,8 @@ export function Shell({ name, Canvas }) {
     } else if (wsData?.nodes[id]?.meta?.file && !graph.nodes.get(id)?.children.length) { setSelected(id); openFile(wsData.nodes[id].meta.file); } // 引用外部文件的叶子：双击 = 打开那个文件（钻进去没东西可看）
     else { go(id); setSelected(null); }
   }, [graph, go, wsData]);
-  const up = () => { const p = graph.nodes.get(realScope).parent; if (p !== null) { setSelected(realScope); go(p); } };
+  // 上一层：快捷键（Alt+W / 右键 + 侧键后）回去后选中刚才那个节点（👤 2026-10-12：接着 Alt+S 就能钻回去）；菜单里点的不选
+  const up = (pick = true) => { const p = graph.nodes.get(realScope).parent; if (p !== null) { setSelected(pick ? realScope : null); go(p); } };
   const connect = useCallback((from, to, mod) => {
     const resolve = id => id.startsWith('@portal:') ? id.slice(8) : id;
     if (mod && mode === 'ws') { // 拖的是调节口：连线 + 写 kind 调节（一个请求做完）
@@ -596,7 +598,7 @@ export function Shell({ name, Canvas }) {
     edgeKind: (from, to) => { const e = (wsData?.edges || []).find(x => x.from === from && x.to === to); if (e) cycleKind(from, to, e.label || '', e.kind || ''); },
     canEdgeKind: mode === 'ws',
     pasteHint: id => { setSelected(id); setSaveState('选中了「' + graph.nodes.get(id).label + '」：现在 Ctrl+V 贴图'); },
-    up: () => up(), canUp: realScope !== ROOT,
+    up: () => up(false), canUp: realScope !== ROOT,
     // 只有 👤 在这里点了才写 color:；「自动」= 删掉 color:，回到按分组 / 关键词自动配色
     color: mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null,
     // 饱和度：单独的 sat:（👤 2026-10-12 不把自动色变手动）；旧的「色/50」写法顺手拆回底色
@@ -893,15 +895,22 @@ export function Shell({ name, Canvas }) {
       else if (e.key === '?' || e.key === 'F1') { e.preventDefault(); setHelpOpen(h => !h); }
     };
     // 鼠标侧键：3 = 后退，4 = 前进（拦掉浏览器自己的历史跳转）
+    // 👤 2026-10-12 单右手：按住右键 + 侧键后 = 上一层（同 Alt+W，回去后选中刚才那个节点）；按住右键 + 侧键前 = 钻进选中的（同 Alt+S）。
+    //   用过组合键，松开右键时那次右键菜单不弹
     const onMouse = e => {
+      if (e.button === 2) { if (e.type === 'mousedown') { rmb.current.down = true; rmb.current.used = false; } else rmb.current.down = false; return; }
       if (e.button !== 3 && e.button !== 4) return;
       e.preventDefault(); e.stopPropagation();
-      if (e.type === 'mouseup') (e.button === 3 ? back : fwd)();
+      if (e.type !== 'mouseup') return;
+      if (rmb.current.down || e.buttons & 2) { rmb.current.used = true; if (e.button === 3) up(); else if (sel && !sel.startsWith('@')) drill(sel); return; }
+      (e.button === 3 ? back : fwd)();
     };
+    const onCtx = e => { if (rmb.current.used) { rmb.current.used = false; e.preventDefault(); e.stopPropagation(); } };
     window.addEventListener('keydown', onKey, true);
     window.addEventListener('mousedown', onMouse, true);
     window.addEventListener('mouseup', onMouse, true);
-    return () => { window.removeEventListener('keydown', onKey, true); window.removeEventListener('mousedown', onMouse, true); window.removeEventListener('mouseup', onMouse, true); };
+    window.addEventListener('contextmenu', onCtx, true);
+    return () => { window.removeEventListener('keydown', onKey, true); window.removeEventListener('mousedown', onMouse, true); window.removeEventListener('mouseup', onMouse, true); window.removeEventListener('contextmenu', onCtx, true); };
   });
 
   // >v<🖼️图片-进图-粘贴 / 拖文件 / 从浏览器拖网页图：落在卡片上 = 进那个节点；落在空白处或没选中 = 在当前页新建一个节点装它（PureRef 习惯）
