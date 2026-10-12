@@ -251,7 +251,7 @@ pre.raw { margin: 0; white-space: pre-wrap; word-break: break-word; font: var(--
 .helpgrid td { padding: 2px 4px; border-top: 1px solid var(--line); vertical-align: top; }
 .helpgrid td:first-child { width: 50%; overflow-wrap: anywhere; line-height: 1.7; } /* 键名可以换行（长的不再把说明挤成窄条） */
 .helpgrid kbd { white-space: normal; }
-.helpgrid kbd { font: 600 14.5px Consolas, monospace; background: var(--panel2); border: 1px solid var(--line2); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; color: var(--strong); } /* 👤 2026-10-12 键帽太小新手看不清：放大，说明压短 */
+.helpgrid kbd { font: 400 14.5px Consolas, monospace; background: var(--panel2); border: 1px solid var(--line2); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; color: var(--strong); } /* 👤 2026-10-12 键帽太小新手看不清：放大，说明压短 */
 .helpgrid td:last-child { font-size: 13px; vertical-align: middle; }
 .hint.keys { cursor: pointer; }
 .side .bar.tabs .hint { border: 0; border-radius: 0; width: auto; height: auto; display: block; flex: 1; cursor: default; }
@@ -692,11 +692,12 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 .voicetab .row { display: flex; gap: 6px; align-items: center; }
 /* 键帽：一个键一个框（快捷键页 / 右下角速查共用） */
 .kcombo { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; }
-.kcombo .k { --kc: var(--line2); font: 600 13px Consolas, monospace; min-width: 1.4em; text-align: center; padding: 1px 5px; border: 1px solid var(--kc); border-bottom-width: 2px; border-radius: 4px; background: color-mix(in srgb, var(--kc) 14%, var(--panel2)); color: var(--strong); white-space: nowrap; }
+.kcombo .k { --kc: var(--line2); font: 400 13px Consolas, monospace; min-width: 1.4em; text-align: center; padding: 1px 5px; border: 1px solid var(--kc); border-bottom-width: 2px; border-radius: 4px; background: color-mix(in srgb, var(--kc) 14%, var(--panel2)); color: var(--strong); white-space: nowrap; }
 .kcombo .k.ctrl { --kc: #3d8bff; } .kcombo .k.shift { --kc: #e0b020; } .kcombo .k.alt { --kc: #e0483a; } .kcombo .k.tab { --kc: #3fb35a; }
 .kcombo .k.arrow { --kc: #2bb3c0; } .kcombo .k.wasd { --kc: #a070e8; }
 .kcombo .kop { color: var(--faint); font-size: 11px; padding: 0 1px; } .kcombo .kor { color: var(--faint); padding: 0 4px; } .kcombo .ksp { width: 2px; } .kcombo .ktx { font-size: 12px; color: var(--text); padding: 0 2px; }
 .helpgrid td:first-child .kcombo .k { font-size: 14px; }
-.keyhud .kcombo .k { font-size: 11.5px; padding: 0 4px; }
+.keyhud .kcombo .k { font-size: 11.5px; padding: 0 4px; border-color: color-mix(in srgb, var(--kc) 45%, var(--line)); background: color-mix(in srgb, var(--kc) 6%, var(--panel2)); color: var(--text); } /* 画布上的淡一些，别抢画面 */
 .keychip { position: absolute; right: 12px; bottom: 172px; z-index: 6; font-size: 11px; color: var(--dim); background: color-mix(in srgb, var(--panel) 85%, transparent); border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; cursor: pointer; display: flex; gap: 4px; align-items: center; } .keychip:hover { color: var(--strong); }
 .keychip .kcombo .k { font-size: 10.5px; padding: 0 4px; }
+.side .tints { display: inline-flex; gap: 2px; align-items: center; margin-left: 8px; } .side .tints .rl { margin-right: 2px; }

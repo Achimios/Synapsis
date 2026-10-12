@@ -427,7 +427,7 @@ for (const kind of ['reactflow']) {
   ok((await page.$$('.loosepic.folded')).length === 1, '全局收起也收起散图');
   await page.click('button:has-text("显示图片")'); await sleep(400);
   // 散图拖到卡片上 = 归给它；卡片里的图拖到空白 = 又变回散图
-  await page.click('.react-flow__controls-fitview'); await sleep(600); // 卡片可能被平移到左栏底下
+  await page.click('.ovbtn'); await sleep(600); // 卡片可能被平移到左栏底下
   const tc = await (await page.$('.react-flow__node[data-id="游戏AI/感知"] .lab')).boundingBox();
   let lb = await (await page.$('.loosepic')).boundingBox();
   await page.mouse.move(lb.x + lb.width / 2, lb.y + lb.height / 2); await page.mouse.down();
@@ -490,7 +490,7 @@ for (const kind of ['reactflow']) {
   ok(e1.op < e0.op * 0.7, '把节点拖远 → 连线变淡 ' + e0.op.toFixed(2) + ' → ' + e1.op.toFixed(2));
   if (SHOTS) await page.screenshot({ path: SHOTS + '/space_drag.png' });
   ok(sat(e1.stroke) < sat(e0.stroke) * 0.6, '拖远后颜色也变灰（饱和度降低） ' + e0.stroke + ' → ' + e1.stroke);
-  await page.click('.react-flow__controls-fitview'); await sleep(600); // 拖到边上会自动平移，先看全
+  await page.click('.ovbtn'); await sleep(600); // 拖到边上会自动平移，先看全
   await page.mouse.dblclick(...mid(await (await (await card('情绪空间')).$('.lab')).boundingBox())); await sleep(1000);
   ok(!!(await page.$('.planebar')) && (await page.$eval('.planebar', e => e.innerText)).includes('夹角 90°'), '钻进空间 → 投影工具条，轴夹角 90°');
   // 坐标核对：卡片中心相对坐标轴原点 / 单位长度 = (愉悦, 唤醒)
@@ -719,7 +719,7 @@ for (const kind of ['reactflow']) {
   await page.keyboard.press('Enter'); await sleep(800);
   ok(!(await page.$('.finder')) && (await page.$eval('.side h3 input', e => e.value)) === '观察属性', 'Enter → 关掉搜索框，选中它');
   // L = 连线到…：从 敌方 连到 观察属性
-  await page.click('.react-flow__controls-fitview'); await sleep(500); // 跳过去会居中放大，先看全
+  await page.click('.ovbtn'); await sleep(500); // 跳过去会居中放大，先看全
   await page.click('.react-flow__node[data-id="敌方"] .lab', { button: 'right' }); await sleep(300);
   await page.click('.ctx .mi.row2 a:has-text("连线到")'); await sleep(300);
   ok((await page.$eval('.finder .bar b', e => e.textContent)).includes('敌方'), 'L → 「连线到…」框');

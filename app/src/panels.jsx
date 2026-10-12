@@ -148,6 +148,7 @@ const countAll = n => n.descendants ?? n.children.length;
 // >v<🎨画布-属性面板-节点属性/出入边/正文（工作区模式下正文可改，失焦保存）
 // >v<🎨画布-属性可编辑-值失焦保存（清空 = 删掉这个键）；底下一行加新属性；空间相关的给快捷按钮（轴 / 坐标 / 映射）
 const LOCKED = new Set(['to', 'label', 'status', 'order']);
+const OWN_UI = new Set(['color', 'pattern', 'sat', 'tint']); // 👤 2026-10-12 系统属性和手写属性分开：这几个在上面有按钮
 // >v<🗂️属性面板-属性表-改名 / 改值失焦就存；清空值 = 值留空（不删属性），删属性点 ✕；新行填了名字，失焦也存（👤 2026-10-08）
 function MetaTable({ id, meta, editable, onMeta, hints = [] }) {
   const [k, setK] = useState(''), [v, setV] = useState('');
@@ -157,7 +158,7 @@ function MetaTable({ id, meta, editable, onMeta, hints = [] }) {
   const add = () => { const kk = k.trim(); if (!kk || LOCKED.has(kk) || keys.has(kk)) return; onMeta(id, { [kk]: v.trim() }); setK(''); setV(''); };
   // 焦点离开整行才存（在名字和值之间切换不算）
   const addBlur = e => { if (!addRef.current?.contains(e.relatedTarget)) add(); };
-  const rows = meta.filter(([key]) => !LOCKED.has(key));
+  const rows = meta.filter(([key]) => !LOCKED.has(key) && !OWN_UI.has(key)); // 有专门按钮的系统属性不在这里列（这张表 = 人自己加的标签，比如「小队长」）
   if (!editable) return rows.length > 0 ? <table className="meta"><tbody>{rows.map(([key, val]) => <tr key={key}><td>{key}</td><td>{Array.isArray(val) ? val.join('；') : val}</td></tr>)}</tbody></table> : null;
   const keyOk = (nk, old) => nk && nk !== old && !LOCKED.has(nk) && !keys.has(nk) && !/[:\r\n]/.test(nk);
   return (
@@ -236,7 +237,9 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
           {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={wsNode?.meta?.color === k ? 'on' : ''} style={{ background: c }} onClick={() => onColor(id, k)} />)}
           <button className={'auto' + (!wsNode?.meta?.color ? ' on' : '')} title="自动（按分组 / 词表配色）" onClick={() => onColor(id, null)}>自动</button>
           {!wsNode?.meta?.color && why('color')}</div>}
-        {onSat && <div className="row swatches sat"><span className="rl">饱和</span><SatButtons base={baseColor} cur={satNow} onSat={p => onSat(id, p)} /></div>}
+        {onSat && <div className="row swatches sat"><span className="rl">饱和</span><SatButtons base={baseColor} cur={satNow} onSat={p => onSat(id, p)} />
+          {editable && (n.children.length > 0 || /^true$/i.test(String(wsNode?.meta?.ui))) && <span className="tints" title="框里面（UI 框 / 展开的子图）叠多少节点色。跟随 = ⚙ 外观里亮 / 暗主题各自的默认">
+            <span className="rl">框内</span>{[0, 12, 25, 50, 75, 100].map(t => <button key={t} className={'auto' + ((+wsNode?.meta?.tint || 0) === t ? ' on' : '')} onClick={() => onMeta(id, { tint: t ? String(t) : null })}>{t || '跟随'}</button>)}</span>}</div>}
         {onPattern && <div className="row swatches pats"><span className="rl">图案</span>{Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (wsNode?.meta?.pattern === k ? ' on' : !wsNode?.meta?.pattern && pattern === k ? ' auto-on' : '')} style={{ '--c': color }} onClick={() => onPattern(id, k)} />)}
           <button className={'auto' + (!wsNode?.meta?.pattern ? ' on' : '')} title="自动（按图案词表 / AI 归类）" onClick={() => onPattern(id, null)}>自动</button>
           <button className={'auto' + (wsNode?.meta?.pattern === '无' ? ' on' : '')} title="不要底纹" onClick={() => onPattern(id, '无')}>无</button>

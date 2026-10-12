@@ -36,7 +36,7 @@ const api = (path, opts) => fetch(withWs(path), opts && { ...opts, headers: { 'c
 initStash(api); // 界面暂存（关窗口不丢，托盘重启才清）：先去服务端取回来
 
 // >v<🎨画布-卡片属性-人加的属性显示在卡片上（👤 2026-10-08：加了属性画布上看不到）；结构 / 显示用的字段不算，最多 4 条
-const SYS_META = new Set(['to', 'label', 'status', 'order', 'color', 'vec', 'axes', 'evidence', 'evidence_hash', 'rate', 'picw', 'img', 'kind']);
+const SYS_META = new Set(['to', 'label', 'status', 'order', 'color', 'pattern', 'sat', 'tint', 'vec', 'axes', 'evidence', 'evidence_hash', 'rate', 'picw', 'img', 'kind']); // 👤 2026-10-12 有专门按钮的（颜色 / 图案 / 饱和 / 框内）不当标签列在卡片上
 const CARD_HIDE = new Set(['file', 'ref', 'ui', 'w', 'h']); // 这些有专门的样子（📎 / ↗ / UI 框），不再当普通属性列在卡片上
 const cardProps = meta => Object.entries(meta || {}).filter(([k, v]) => !SYS_META.has(k) && !CARD_HIDE.has(k) && !k.startsWith('_') && !k.startsWith('W_') && !k.startsWith('映射') && typeof v !== 'object' && String(v).trim() !== '');
 export function Shell({ name, Canvas }) {
@@ -198,7 +198,7 @@ export function Shell({ name, Canvas }) {
         props: prpE(n.id) ? cardProps(wsData?.nodes[n.id]?.meta) : [], propN: cardProps(wsData?.nodes[n.id]?.meta).length,
         vec: getMeta(n.id)?.vec ? parseVec(getMeta(n.id).vec) : null, vecAxes: pAxes,
         spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
-        picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id], body: wsData?.nodes[n.id]?.body || '', file: wsData?.nodes[n.id]?.meta?.file || null, ui: isUi(wsData?.nodes[n.id]?.meta), uiW: uiSize(wsData?.nodes[n.id]?.meta).w, uiH: uiSize(wsData?.nodes[n.id]?.meta).h, ref: wsData?.nodes[n.id]?.meta?.ref || null, refMissing: !!wsData?.nodes[n.id]?.meta?.ref && !graph.nodes.has(String(wsData.nodes[n.id].meta.ref)), textOpen: txtE(n.id),
+        picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id], body: wsData?.nodes[n.id]?.body || '', file: wsData?.nodes[n.id]?.meta?.file || null, ui: isUi(wsData?.nodes[n.id]?.meta), tint: +(wsData?.nodes[n.id]?.meta?.tint) || 0, uiW: uiSize(wsData?.nodes[n.id]?.meta).w, uiH: uiSize(wsData?.nodes[n.id]?.meta).h, ref: wsData?.nodes[n.id]?.meta?.ref || null, refMissing: !!wsData?.nodes[n.id]?.meta?.ref && !graph.nodes.has(String(wsData.nodes[n.id].meta.ref)), textOpen: txtE(n.id),
         open: expE(n.id) && n.children.length > 0 && !v.parentOf.has(n.id) && !(frmE(n.id) && !space), renaming: canvasRename === n.id,
         framed: !space && frmE(n.id) && n.children.length > 0, seeDeep: sm.frame === 'deep', // 本页开着 Shift+1 递进预览（画布据此让 UI 框里的子图超出、不裁）
         tempFrame: !space && frmE(n.id) && !framed[n.id] && n.children.length > 0, // 只是「看」临时展开的子图：不挪别的卡，也不存坐标
@@ -1493,7 +1493,7 @@ export function UiCard({ node, dim, isSel }) {
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
   };
   return (
-    <div className={'card uibox' + (compact ? ' compact' : '') + (dim ? ' dim' : '') + (isSel ? ' sel' : '')} style={{ ...(compact ? {} : { width: node.uiW, height: node.uiH }), ...(node.color ? { '--c': node.color } : {}) }}>
+    <div className={'card uibox' + (compact ? ' compact' : '') + (dim ? ' dim' : '') + (isSel ? ' sel' : '')} style={{ ...(node.tint ? { '--box-tint': node.tint + '%' } : {}), ...(compact ? {} : { width: node.uiW, height: node.uiH }), ...(node.color ? { '--c': node.color } : {}) }}>
       <div className="title">{node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
         <span className="uidim" title="宽 × 高（右下角拖着改）">{Math.round(node.uiW)}×{Math.round(node.uiH)}</span>
         {node.children.length > 0 && <span className="kids" title="展开子级列表（2）；双击钻进去" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggle(node.id); }}>{node.open ? '▾' : '▸'} {node.children.length}</span>}
@@ -1509,7 +1509,7 @@ export function UiCard({ node, dim, isSel }) {
 }
 export function FrameCard({ node, dim, isSel }) {
   return (
-    <div className={'frame' + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (node.dropped ? ' dropped' : '')} style={{ '--c': node.color }}>
+    <div className={'frame' + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (node.dropped ? ' dropped' : '')} style={{ '--c': node.color, ...(node.tint ? { '--box-tint': node.tint + '%' } : {}) }}>
       <div className="fhead" onDoubleClick={e => { e.stopPropagation(); cardActions.drill(node.id); }} title="双击钻进去">
         {node.status && <span className="st">{STATUS_ICON[node.status]}</span>}
         {node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
