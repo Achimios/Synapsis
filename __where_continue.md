@@ -1,6 +1,15 @@
 # 从哪继续（一屏；旧的在 `_过期的/__where_continue*.md`）
 
 **2026-10-08 夜** —— 在本目录开的新对话（不再是 SimuWeb 里）。两个会话分工：一个 Opus 聊认知 / 信息论 / 工程方法，一个 Sonnet 实现；共用 `_Blackboard.md`。
+
+- ⌨ **2026-10-12 下午（最新，全部已提交到 `74a3511`）**：一整轮「人机合一」键盘 / 提示优化，细节见 `_开发进度.md` 键位那几行和 `__synapsis/Synapsis/界面`：
+  - 方向键挪卡 / Ctrl(Alt)+方向键改 UI 框（参数 ⚙ `nudge`）；R / Alt+R / T；E 键盘右键菜单（WASD 走）；F 看全局（选中展开的子图 = 只管它里面）；Alt(Shift)+←→ 扩选、Shift+WASD 只本层；去掉 Electron 菜单栏
+  - **就近提示**规矩（`_工程规矩.md` §4）：单键写在按钮旁、H 开关组合键 + 右下角速查；快捷键页一键一框、彩色、说明压短
+  - ⚙ 设置：init 那几项合进「📄 项目文件…」对话框（没挂过的文件夹打开自动弹）；外观「框内不透明度」；设置窗点框外不关
+  - 右键 / 属性栏：饱和（12–100）、不透（`tint:`，12–100 + 跟随）各一行放在状态上面；有按钮的系统属性不再当标签显示
+  - **内置 AI 语音**（`core/voice.js`，指令框 📢 + 「🔊 语音」页，`.synapsis/语音.md`）：**没用真 DeepSeek 跑过**；声线 `hastings` 等 👤 在 TTS 里加
+  - ⚠️ 托盘要重启（vite.config / core / electron 都改了）。只跑了相关 UI 块，没跑全量
+  - ⚠️ 测试别碰真 `settings.yaml`：「挂新项目」那条会把勾选记进去（这次手动恢复过一次）
 - 🌅 **下次从这里开**（👤 2026-10-08 夜）：地基打完，**从 Life Games 研究图里的「从一个游戏NPC开始」起，用实际小案例一步步按需求长功能**；别再预先铺大功能（罗马不是一天建成的）。FK 读回 L2 已做但默认静默、界面 ⚠ 不做；删除的临时去处是 `__synapsis/.junk/`（关窗口送回收站，见 `_TODO.md`「删除的临时去处」）；手动验的还没做：Electron 关窗口 / 托盘退出真触发清空、右键菜单观感、DSH 的 lite 预设实际省了多少 token
 - 📌 **2026-10-09 做的：钉子（原名钩子）第 1、2 步都做完了**。代码 `core/pins.js`（纯函数，含 `locateLine`）+ `core/workspace.js`（`loadPins` / `savePins` / `migratePinsFile` / `findFilesByName`，存 `.synapsis/pins.json`，兼容读旧 `hooks.json`）+ `app/src/pindock.jsx`（浮窗，反引号 / 顶栏 📌 开关）+ `panels.jsx`（`RawText` 一行一个 span、选中文字右键菜单）+ `shell.jsx`（`editPins` 进撤销栈 `op: 'pins'`、`pinSelection` / `jumpPin`）。第 1 步 = 节点钉子；第 2 步 = 正文框 / 原文页 / 文件预览里选中文字右键 → 钉到…，存 文件 + 行号 + 整行，双击高亮那一行，文件改过能找回（详见 `_TODO.md`「导航」）。**全部未提交**（一大批：钉子两步、文档补全、`__synapsis` 图补全、UI 测试改动）。
   - 自检：core 各项全过（pins 70）；界面和桌面自检的数字见 `_开发进度.md` 顶上
