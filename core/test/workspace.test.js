@@ -376,5 +376,22 @@ try {
 } finally {
   rmSync(root, { recursive: true, force: true });
 }
+// 👤 2026-10-11 层级词表：分组文件夹里的 _配色.md / _图案.md 读得到，改名 / 搬家跟着走，变叶子进 .junk/
+{
+  const r = mkdtempSync(join(tmpdir(), 'syn-words-'));
+  try {
+    saveOutline(r, '战斗\n  弓兵\n  杂兵\n城镇\n  铺子\n');
+    writeFileSync(join(r, DIR, '战斗', '_配色.md'), '- 红: 弓兵\n');
+    writeFileSync(join(r, DIR, '战斗', '_图案.md'), '- 网格: 弓兵\n');
+    let ws = loadWorkspace(r);
+    ok(ws.colorWordsAt['战斗']?.includes('红') && ws.patternWordsAt['战斗']?.includes('网格') && !('城镇' in ws.colorWordsAt), '分组自己的词表读进 colorWordsAt / patternWordsAt');
+    saveOutline(r, '战场\n  弓兵\n  杂兵\n城镇\n  铺子\n', [['战场', '战斗']]);
+    ok(existsSync(join(r, DIR, '战场', '_配色.md')) && existsSync(join(r, DIR, '战场', '_图案.md')) && !existsSync(join(r, DIR, '战斗')), '分组改名 → 词表跟着搬，旧文件夹没留下');
+    saveOutline(r, '城镇\n  铺子\n  战场\n    弓兵\n    杂兵\n');
+    ok(existsSync(join(r, DIR, '城镇', '战场', '_配色.md')), '分组挪进别的分组 → 词表跟着走');
+    const rep = saveOutline(r, '城镇\n  铺子\n  战场\n');
+    ok(!existsSync(join(r, DIR, '城镇', '战场')) && rep.moved.some(m => m.includes('.junk') && m.includes('_配色.md')), '分组没了子级（变叶子）→ 词表进 .junk/ ' + JSON.stringify(rep.moved));
+  } finally { rmSync(r, { recursive: true, force: true }); }
+}
 console.log(`workspace: ${pass} 过 / ${fail} 挂`);
 process.exit(fail ? 1 : 0);

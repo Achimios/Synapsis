@@ -124,7 +124,15 @@ export function loadWorkspace(root) {
   try { layout = JSON.parse(readFileSync(join(base, '_layout.json'), 'utf8')); } catch { /* 没有就空 */ }
   const wf = join(base, WORDS_FILE), colorWords = existsSync(wf) ? readFileSync(wf, 'utf8') : null; // 配色词表（没有 = 用默认）
   const pf = join(base, PATTERN_FILE), patternWords = existsSync(pf) ? readFileSync(pf, 'utf8') : null; // 图案词表
-  return { root, base, graph: { nodes, edges, errors }, layout, loose, colorWords, patternWords };
+  // 层级词表（👤 2026-10-11）：分组文件夹里也可以有自己的 _配色.md / _图案.md，管它的子孙；{分组 id: 文本}，根那份仍是 colorWords / patternWords
+  const colorWordsAt = {}, patternWordsAt = {};
+  for (const n of nodes.values()) {
+    if (n.id === ROOT || !n.isGroup) continue;
+    const d = dirname(n.file), c = join(d, WORDS_FILE), p = join(d, PATTERN_FILE);
+    if (existsSync(c)) colorWordsAt[n.id] = readFileSync(c, 'utf8');
+    if (existsSync(p)) patternWordsAt[n.id] = readFileSync(p, 'utf8');
+  }
+  return { root, base, graph: { nodes, edges, errors }, layout, loose, colorWords, patternWords, colorWordsAt, patternWordsAt };
 }
 
 export const workspaceOutline = ws => toOutline(ws.graph);
@@ -274,6 +282,21 @@ export function saveOutline(root, text, hint = null) {
     mkdirSync(dirname(to), { recursive: true });
     renameSync(from, to);
     report.moved.push(relative(base, from) + ' → ' + relative(base, to));
+  }
+  // 2c) 分组自己的词表（_配色.md / _图案.md，👤 2026-10-11 层级词表）跟着分组文件夹走；分组变叶子 / 被删 → 进 .junk/（只有分组才有词表）
+  const back = new Map([...map].filter(([, c]) => c != null).map(([n, c]) => [c, n]));
+  for (const [cid, n] of cur.nodes) {
+    if (cid === ROOT || !n.isGroup || !n.file || inWholeGone.has(cid)) continue;
+    const nid = back.get(cid), nn = nid != null ? next.nodes.get(nid) : null, to = nn && nn.children.length ? join(base, ...pathOf(nid)) : null;
+    for (const f of [WORDS_FILE, PATTERN_FILE]) {
+      const from = join(dirname(n.file), f);
+      if (!existsSync(from) || (to && join(to, f) === from)) continue;
+      let dst = to ? join(to, f) : null;
+      if (!dst || existsSync(dst)) { junkDir(graveyard); dst = join(graveyard, `${stamp()}_${cid.replace(/\//g, '～')}${f}`); report.restore.push([relative(base, dst), relative(base, from)]); }
+      mkdirSync(dirname(dst), { recursive: true });
+      renameSync(from, dst);
+      report.moved.push(relative(base, from) + ' → ' + relative(base, dst));
+    }
   }
   // 3) 搬走的旧文件删掉（内容已在新位置）
   for (const [, { old }] of writes) {
@@ -451,12 +474,21 @@ export function codeHash(file) {
 }
 
 // >v<🎨画布-配色词表-没有 _配色.md 就按默认词表写一份（界面「词表…」按钮），返回它的路径
-export function ensurePatternWords(root) {
+// 分组自己的词表（scope = 分组 id）：建一份只有说明、没有词的空表（👤 2026-10-11 层级词表）
+const LOCAL_HEAD = (kind, eg) => `# ${kind}词表（只管这个分组里面）\n\n> 名字里含这些词的子孙用这一行的${kind === '配色' ? '颜色' : '底纹'}；这里没命中就接着往上一层的词表找（就近命中）。\n> 格式：\`${eg}\`。上面的行优先。\n\n`;
+const groupWordsFile = (root, scope, file) => {
+  const n = loadWorkspace(root).graph.nodes.get(scope);
+  if (!n || !n.isGroup) throw new Error('只有分组（有子节点的）才能有自己的词表：' + scope);
+  return join(dirname(n.file), file);
+};
+export function ensurePatternWords(root, scope = ROOT) {
+  if (scope) { const f = groupWordsFile(root, scope, PATTERN_FILE); if (!existsSync(f)) writeFileSync(f, LOCAL_HEAD('图案', '- 网格: 词, 词')); return f; }
   const f = join(root, DIR, PATTERN_FILE);
   if (!existsSync(f)) { mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, DEFAULT_PATTERN_WORDS); }
   return f;
 }
-export function ensureColorWords(root) {
+export function ensureColorWords(root, scope = ROOT) {
+  if (scope) { const f = groupWordsFile(root, scope, WORDS_FILE); if (!existsSync(f)) writeFileSync(f, LOCAL_HEAD('配色', '- 红: 词, 词')); return f; }
   const f = join(root, DIR, WORDS_FILE);
   if (!existsSync(f)) { mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, DEFAULT_WORDS); }
   else if (sameText(readFileSync(f, 'utf8'), OLD_DEFAULT_WORDS)) writeFileSync(f, DEFAULT_WORDS); // 没改过的旧默认 → 新默认
@@ -674,6 +706,8 @@ export function checkWorkspace(ws) {
   }
   if (ws.colorWords != null) for (const l of parseColorWords(ws.colorWords).bad) issues.push({ level: 'warn', where: WORDS_FILE, msg: '认不出的一行（颜色写 蓝/紫/… 或 #rrggbb）：' + l });
   if (ws.patternWords != null) for (const l of parsePatternWords(ws.patternWords).bad) issues.push({ level: 'warn', where: PATTERN_FILE, msg: '认不出的一行（图案只能是 网格 点阵 斜纹 横纹 波纹）：' + l });
+  for (const [g, t] of Object.entries(ws.colorWordsAt || {})) for (const l of parseColorWords(t).bad) issues.push({ level: 'warn', where: g + '/' + WORDS_FILE, msg: '认不出的一行（颜色写 蓝/紫/… 或 #rrggbb）：' + l });
+  for (const [g, t] of Object.entries(ws.patternWordsAt || {})) for (const l of parsePatternWords(t).bad) issues.push({ level: 'warn', where: g + '/' + PATTERN_FILE, msg: '认不出的一行（图案只能是 网格 点阵 斜纹 横纹 波纹）：' + l });
   const g = ws.graph;
   issues.push(...checkSpaces(g, id => g.nodes.get(id)?.meta, (from, ref) => resolveLabel(g.nodes, from, ref) || (g.nodes.has(ref) ? ref : null)));
   issues.push(...checkAnchors(ws));

@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { describeChange } from './history.js';
 import { uiLayoutText, isUi, uiSize } from '../../core/uilayout.js';
 import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, withReordered, replaceLabels, autoLayout, lineOf, resolveLabel, isDropped, withCopies, withoutEdge, ROOT } from './outline.js';
-import { colorMap } from './colors.js';
-import { patternMap, PATTERNS } from './patterns.js';
+import { colorMap, wordTables, hierHit, upperTable } from './colors.js';
+import { patternMap, patternTables, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
 import { ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, HistoryPanel, OutlineTree, HelpModal, SettingsModal, ReplaceBar, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
 const DRAG_PIC = 'application/x-synapsis-pic';
@@ -142,14 +142,23 @@ export function Shell({ name, Canvas }) {
     const t = setTimeout(() => api('/ai/colors').then(d => setSemCols(d.colors)).catch(() => {}), 1200); // 改大纲时别每个字都问
     return () => clearTimeout(t);
   }, [mode, aiStatus, wsData?.outline, wsData?.colorWords]);
-  const colors = useMemo(() => colorMap(graph, getMeta, wsData?.colorWords, semCols, { scope: realScope }), [graph, getMeta, wsData?.colorWords, semCols, realScope]); // 👤 2026-10-10 本页的颜色取决于本页的节点（子孙跟组头）；选中不改色
+  const cWords = useMemo(() => ({ '': wsData?.colorWords ?? null, ...(wsData?.colorWordsAt || {}) }), [wsData?.colorWords, wsData?.colorWordsAt]), pWords = useMemo(() => ({ '': wsData?.patternWords ?? null, ...(wsData?.patternWordsAt || {}) }), [wsData?.patternWords, wsData?.patternWordsAt]); // 层级词表（👤 2026-10-11）：根 + 各分组自己的
+  const cTables = useMemo(() => wordTables(cWords), [cWords]), pTables = useMemo(() => patternTables(pWords), [pWords]);
+  const colors = useMemo(() => colorMap(graph, getMeta, cWords, semCols, { scope: realScope }), [graph, getMeta, cWords, semCols, realScope]); // 👤 2026-10-10 本页的颜色取决于本页的节点（子孙跟组头）；选中不改色
   const [semPats, setSemPats] = useState(null);
   useEffect(() => {
     if (mode !== 'ws' || !aiStatus?.ok || !aiStatus.cfg?.semColors) { setSemPats(null); return; }
     const t = setTimeout(() => api('/ai/patterns').then(d => setSemPats(d.patterns)).catch(() => {}), 2500);
     return () => clearTimeout(t);
   }, [mode, aiStatus, wsData?.outline, wsData?.patternWords]);
-  const patterns = useMemo(() => patternMap(graph, getMeta, wsData?.patternWords, semPats), [graph, getMeta, wsData?.patternWords, semPats]);
+  const patterns = useMemo(() => patternMap(graph, getMeta, pWords, semPats), [graph, getMeta, pWords, semPats]);
+  // 属性栏「词表」一行 + 「为什么是这个色 / 底纹」：上级 = 父级往上第一个有表的；本层 = 这个分组自己的（只有分组才有）
+  const wordsInfo = id => {
+    if (id == null || !graph.nodes.has(id) || id === ROOT) return null;
+    const lab = sc => sc === ROOT ? '项目' : graph.nodes.get(sc)?.label || sc;
+    const one = (tables, cur, pick) => { const h = hierHit(graph, id, tables, pick); const up = upperTable(graph, id, tables); return { why: h && h.value === cur ? { word: h.word, from: h.from, fromLabel: lab(h.from) } : null, upper: { scope: up, label: lab(up) }, own: tables.has(id) }; };
+    return { group: graph.nodes.get(id).children.length > 0, color: one(cTables, colors.get(id), r => r.color), pattern: one(pTables, patterns.get(id), r => r.pattern) };
+  };
   // 边标签 / 节点副标题来自工作区文件（大纲里没有）
   const sm = seeModes[realScope] || {};
   const pre = (m, id) => m === 'deep' || (m === 'on' && (graph.nodes.get(id)?.parent ?? ROOT) === realScope); // 本页「看」盖一层：on = 只展开本页直接的节点；deep = 子孙也一起（Shift+数字）
@@ -587,8 +596,10 @@ export function Shell({ name, Canvas }) {
     // 只有 👤 在这里点了才写 color:；「自动」= 删掉 color:，回到按分组 / 关键词自动配色
     color: mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null,
     pattern: mode === 'ws' ? (id, p) => saveMeta(id, { pattern: p }) : null,
-    patternWords: mode === 'ws' ? () => api('/pattern-words', { method: 'POST' }).then(d => { reveal(d.file, 'open'); setSaveState('图案词表：' + d.file + '（改完保存，Synapsis 会自动刷新）'); }).catch(e => setSaveState('❌ ' + e.message)) : null,
-    colorWords: mode === 'ws' ? () => api('/color-words', { method: 'POST' }).then(d => { reveal(d.file, 'open'); setSaveState('配色词表：' + d.file + '（改完保存，Synapsis 会自动刷新）'); }).catch(e => setSaveState('❌ ' + e.message)) : null,
+    // 右键「转为 ▸」：普通节点 ⇄ UI 框（👤 2026-10-11 常建错）。只动 ui / w / h（进 Ctrl+Z）；转成 UI 框且有子级 → 展开成子图（UI 框默认那样）
+    convert: mode === 'ws' ? (id, to) => { const m = wsData?.nodes[id]?.meta || {}; if (to === 'ui') { saveMeta(id, { ui: 'true', w: m.w || '220', h: m.h || '140' }); if (graph.nodes.get(id)?.children.length) setFramed(x => ({ ...x, [id]: true })); } else saveMeta(id, { ui: null, w: null, h: null }); } : null,
+    patternWords: mode === 'ws' ? (scope = '') => api('/pattern-words', { method: 'POST', body: JSON.stringify({ scope }) }).then(d => { reveal(d.file, 'open'); setSaveState('图案词表：' + d.file + '（改完保存，Synapsis 会自动刷新）'); }).catch(e => setSaveState('❌ ' + e.message)) : null,
+    colorWords: mode === 'ws' ? (scope = '') => api('/color-words', { method: 'POST', body: JSON.stringify({ scope }) }).then(d => { reveal(d.file, 'open'); setSaveState('配色词表：' + d.file + '（改完保存，Synapsis 会自动刷新）'); }).catch(e => setSaveState('❌ ' + e.message)) : null,
     toggleAll: () => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; }),
   };
   const onEdgeMenu = useCallback((edgeId, x, y) => { const e = view.edges.find(q => q.id === edgeId); if (e) setMenu({ edge: e, x, y }); }, [view]);
@@ -1218,7 +1229,7 @@ export function Shell({ name, Canvas }) {
       {propsOpen && propId && (
         <PropsPanel id={propId} graph={graph} wsNode={wsData?.nodes[propId]} edges={mode === 'ws' ? (wsData?.edges || []) : graph.edges}
           editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} onMeta={saveMeta} metaHints={mode === 'ws' ? metaHints(propId) : []} file={nodeFile(propId)} tab={propsTab} onTab={setPropsTab} raw={rawText} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)}
-          onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} onEdgeRemove={(from, to) => removeEdges([[from, to]])} color={colors.get(propId)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} onColorWords={menuActions.colorWords} pattern={patterns.get(propId)} onPattern={menuActions.pattern} onPatternWords={menuActions.patternWords}
+          onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} onEdgeRemove={(from, to) => removeEdges([[from, to]])} color={colors.get(propId)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} pattern={patterns.get(propId)} onPattern={menuActions.pattern} words={wordsInfo(propId)} onWords={mode === 'ws' ? (k, sc) => (k === 'color' ? menuActions.colorWords : menuActions.patternWords)(sc) : null}
           hl={rawHl && rawHl.file === nodeFile(propId) ? rawHl : null} onSelMenu={mode === 'ws' ? (e, s) => setMenu({ x: e.clientX, y: e.clientY, sel: s }) : null} />
       )}
       {propsOpen && !propId && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（Shift+Tab 开关）</div></aside>}

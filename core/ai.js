@@ -7,8 +7,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from
 import { join, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { loadWorkspace, listTree, DIR } from './workspace.js';
-import { PALETTE, WORDS_FILE, DEFAULT_WORDS, parseColorWords, wordColor } from './colors.js';
-import { PATTERNS, PATTERN_HINT, PATTERN_FILE, DEFAULT_PATTERN_WORDS, parsePatternWords, wordPattern } from './patterns.js';
+import { PALETTE, WORDS_FILE, DEFAULT_WORDS, parseColorWords, wordColor, wordTables, hierHit } from './colors.js';
+import { PATTERNS, PATTERN_HINT, PATTERN_FILE, DEFAULT_PATTERN_WORDS, parsePatternWords, wordPattern, patternTables } from './patterns.js';
 import { isDropped } from './outline.js';
 
 // agentSrc = AI 指令框 / 问答 / 生成词表 / 「?」关系说明 用本地还是在线；bulkSrc = 高频后台（潜在关联重排、语义配色归类），默认本地（👤「高频调用的默认不用在线」）
@@ -292,7 +292,8 @@ export async function semColors(root, cfg) {
   const ws = loadWorkspace(root), g = ws.graph;
   const { rules } = parseColorWords(ws.colorWords ?? DEFAULT_WORDS);
   if (!rules.length) return {};
-  const chainHit = id => { for (let x = id; x; x = g.nodes.get(x)?.parent) if (wordColor(g.nodes.get(x).label, rules)) return true; return false; };
+  const tables = wordTables({ '': ws.colorWords, ...ws.colorWordsAt }); // 层级词表：哪一层命中都算命中，不再问 AI
+  const chainHit = id => { for (let x = id; x; x = g.nodes.get(x)?.parent) if (hierHit(g, x, tables)) return true; return false; };
   const ids = [...g.nodes.keys()].filter(x => x && !isDropped(g, x) && !chainHit(x));
   const cache = await classifyLabels(cfg, join(root, '.synapsis', 'ai_colors.json'), rules.map(r => r.words.join('、')), ids.map(x => g.nodes.get(x).label),
     '你在帮人给思维导图的节点归类配色。', '语义配色');
@@ -326,7 +327,8 @@ export async function semPatterns(root, cfg) {
   const ws = loadWorkspace(root), g = ws.graph;
   const { rules } = parsePatternWords(ws.patternWords ?? DEFAULT_PATTERN_WORDS);
   if (!rules.length) return {};
-  const ids = [...g.nodes.keys()].filter(x => x && !isDropped(g, x) && !g.nodes.get(x).meta?.pattern && !wordPattern(g.nodes.get(x).label, rules));
+  const ptables = patternTables({ '': ws.patternWords, ...ws.patternWordsAt });
+  const ids = [...g.nodes.keys()].filter(x => x && !isDropped(g, x) && !g.nodes.get(x).meta?.pattern && !hierHit(g, x, ptables, r => r.pattern));
   const cache = await classifyLabels(cfg, join(root, '.synapsis', 'ai_patterns.json'), rules.map(r => `${r.pattern}（${PATTERN_HINT[r.pattern]}）：${r.words.join('、')}`), ids.map(x => g.nodes.get(x).label),
     '你在帮人给节点标注「性质」底纹（不是主题，是这个东西是什么性质：几何空间、读数数据、结构流程、文档规则、情绪信号）。', '语义图案');
   const out = {};

@@ -72,7 +72,6 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         <span>颜色</span>
         {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={String(node.colorSet || '').split('/')[0] === k ? 'on' : ''} style={{ background: c }} onClick={() => { actions.color(node.id, k); }} />)}
         <button title="自动（按分组 / 名字配色，子节点跟着父节点）" className={!node.colorSet ? 'on auto' : 'auto'} onClick={() => { actions.color(node.id, null); }}>自动</button>
-        {actions.colorWords && <button title="自动配色按名字里的词认颜色：打开这个工作区的词表 __synapsis/_配色.md（没有就按默认建一份）" className="auto" onClick={() => { onClose(); actions.colorWords(); }}>配色词表…</button>}
       </div>}
       {actions.color && (() => { // 饱和度档（👤 2026-10-10）：在颜色上调 25 / 50 / 75 / 100%；自动色也能调（按现在看到的颜色写成手动色）
         const cs = String(node.colorSet || ''), b0 = cs.split('/')[0], pct = +(cs.split('/')[1] || 100), hex = b0 ? parseColor(b0) : (node.color || null), base = b0 || hex;
@@ -87,7 +86,6 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         {Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (node.patternSet === k ? ' on' : !node.patternSet && node.pattern === k ? ' auto-on' : '')} style={{ '--c': node.color }} onClick={() => { actions.pattern(node.id, k); }} />)}
         <button title="自动（按图案词表 / AI 归类）" className={!node.patternSet ? 'on auto' : 'auto'} onClick={() => { actions.pattern(node.id, null); }}>自动</button>
         <button title="不要底纹" className={node.patternSet === '无' ? 'on auto' : 'auto'} onClick={() => { actions.pattern(node.id, '无'); }}>无</button>
-        {actions.patternWords && <button title="打开图案词表 __synapsis/_图案.md" className="auto" onClick={() => { onClose(); actions.patternWords(); }}>图案词表…</button>}
       </div>}
       <div className="msep" />
       <div className="mi row2" onPointerDown={e => e.stopPropagation()}>
@@ -103,6 +101,10 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         </>;
       })()}
       {item('＋ 新建子节点', () => actions.addChild(node.id))}
+      {actions.convert && !node.ref && !node.file && <div className="mi sub" onPointerDown={e => e.stopPropagation()}><span>转为 ▸</span>
+        <div className={'ctx submenu' + (menu.x > innerWidth - 420 ? ' flip' : '')}>{/* 👤 2026-10-11 常建错类型：普通节点 ⇄ UI 框，只改 ui / w / h，名字、子级、正文都不动 */}
+          {node.ui ? item('▢ 普通节点', () => actions.convert(node.id, 'node')) : item('▭ UI 框', () => actions.convert(node.id, 'ui'))}
+        </div></div>}
 
       <div className="msep" />
       {actions.hasFile(node.id) && item('看 md 原文', () => actions.openMd(node.id))}
@@ -165,7 +167,9 @@ export function RawText({ text, hl, file, onSelMenu }) {
   return <pre className="raw" ref={ref} onContextMenu={menu}>{lines.map((l, i) => <span key={i} data-ln={i + 1} className={hl?.line === i + 1 ? 'ln hl' : 'ln'}>{l}{i < lines.length - 1 ? '\n' : ''}</span>)}</pre>;
 }
 
-export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, tab, onTab, raw, onReveal, onRename, color, onColor, onColorWords, pattern, onPattern, onPatternWords, onEdgeKind, onEdgeRemove, hl, onSelMenu }) {
+export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, tab, onTab, raw, onReveal, onRename, color, onColor, pattern, onPattern, words, onWords, onEdgeKind, onEdgeRemove, hl, onSelMenu }) {
+  // 自动色 / 底纹是哪一层词表的哪个词给的（👤 2026-10-11 层级词表）：点 = 打开那份词表
+  const why = k => { const w = words?.[k]?.why; return w ? <a className="why" title={`自动${k === 'color' ? '颜色' : '底纹'}来自「${w.fromLabel}」的词表，命中「${w.word}」；点 = 打开那份词表`} onClick={() => onWords?.(k, w.from)}>词：{w.word}（{w.fromLabel}）</a> : null; };
   const n = graph.nodes.get(id);
   const [body, setBody] = useState(wsNode?.body || '');
   useEffect(() => setBody(wsNode?.body || ''), [id, wsNode?.body]);
@@ -199,7 +203,7 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
         {onColor && <div className="row swatches"><span className="rl">颜色</span><span className="cur" style={{ background: color }} title={'现在：' + color + (wsNode?.meta?.color ? '（手动）' : '（自动）')} />
           {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={wsNode?.meta?.color === k ? 'on' : ''} style={{ background: c }} onClick={() => onColor(id, k)} />)}
           <button className={'auto' + (!wsNode?.meta?.color ? ' on' : '')} title="自动（按分组 / 词表配色）" onClick={() => onColor(id, null)}>自动</button>
-          {onColorWords && <button className="auto words" title="自动配色按名字里的词认颜色：打开这个工作区的词表 __synapsis/_配色.md" onClick={onColorWords}>配色词表…</button>}</div>}
+          {!wsNode?.meta?.color && why('color')}</div>}
         {onColor && (() => { const cs = String(wsNode?.meta?.color || ''), b0 = cs.split('/')[0], pct = +(cs.split('/')[1] || 100), hex = b0 ? parseColor(b0) : (color || null), base = b0 || hex;
           return <div className="row swatches sat"><span className="rl">饱和</span>
             {[25, 50, 75, 100].map(p => <button key={p} disabled={!hex} title={hex ? p + '%' + (b0 ? '' : '（自动色会变成手动色）') : '没有可调的颜色'} className={hex && b0 && pct === p ? 'on' : ''} style={{ background: hex ? satHex(hex, p) : 'var(--line2)', opacity: hex ? 1 : .35 }}
@@ -207,7 +211,16 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
         {onPattern && <div className="row swatches pats"><span className="rl">图案</span>{Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (wsNode?.meta?.pattern === k ? ' on' : !wsNode?.meta?.pattern && pattern === k ? ' auto-on' : '')} style={{ '--c': color }} onClick={() => onPattern(id, k)} />)}
           <button className={'auto' + (!wsNode?.meta?.pattern ? ' on' : '')} title="自动（按图案词表 / AI 归类）" onClick={() => onPattern(id, null)}>自动</button>
           <button className={'auto' + (wsNode?.meta?.pattern === '无' ? ' on' : '')} title="不要底纹" onClick={() => onPattern(id, '无')}>无</button>
-          {onPatternWords && <button className="auto words" title="打开图案词表 __synapsis/_图案.md" onClick={onPatternWords}>图案词表…</button>}</div>}
+          {!wsNode?.meta?.pattern && why('pattern')}</div>}
+        {words && onWords && <div className="row wordsrow" title="词表：名字里含某个词 → 自动用那一行的颜色 / 底纹。分组可以有自己的词表，管它里面；找词时从父级往上，哪一层先命中用哪层">
+          <span className="rl">词表</span>
+          <span className="wl">上级</span>
+          <a onClick={() => onWords('color', words.color.upper.scope)} title={'对这张卡生效的配色词表在「' + words.color.upper.label + '」（再往上没命中的接着找）；点 = 打开'}>🎨 {words.color.upper.label}</a>
+          <a onClick={() => onWords('pattern', words.pattern.upper.scope)} title={'图案词表在「' + words.pattern.upper.label + '」；点 = 打开'}>▦ {words.pattern.upper.label}</a>
+          {words.group && <><span className="wsep">│</span><span className="wl">本层</span>
+            <a className={words.color.own ? '' : 'add'} onClick={() => onWords('color', id)} title={words.color.own ? '这个分组自己的配色词表（管它里面）；点 = 打开' : '给这个分组建一份自己的配色词表（管它里面，空表）'}>🎨{words.color.own ? '' : ' ＋'}</a>
+            <a className={words.pattern.own ? '' : 'add'} onClick={() => onWords('pattern', id)} title={words.pattern.own ? '这个分组自己的图案词表；点 = 打开' : '给这个分组建一份自己的图案词表（空表）'}>▦{words.pattern.own ? '' : ' ＋'}</a></>}
+        </div>}
         <MetaTable id={id} meta={meta} editable={editable} onMeta={onMeta} hints={metaHints} />
         {(ins.length > 0 || outs.length > 0) && <div className="edges">
           {ins.length > 0 && <><div className="eh in">← 输入{sub.size > 1 ? '（含子节点）' : ''}</div><ul>{ins.map(e => edgeRow(e, e.from, e.to))}</ul></>}

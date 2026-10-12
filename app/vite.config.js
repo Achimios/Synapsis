@@ -46,7 +46,7 @@ function workspaceApi() {
     const nodes = {};
     // file = 相对项目根的路径（文件树和「打开 md」用）；pics = 相对 __synapsis 的图片路径
     for (const [id, n] of ws.graph.nodes) if (id) nodes[id] = { meta: n.meta, body: n.body, file: relative(root, n.file).split('\\').join('/'), pics: n.pics };
-    return { root, outline: workspaceOutline(ws), layout: ws.layout, nodes, edges: ws.graph.edges, errors: ws.graph.errors, loose: ws.loose, colorWords: ws.colorWords, patternWords: ws.patternWords, pins: loadPins(root) };
+    return { root, outline: workspaceOutline(ws), layout: ws.layout, nodes, edges: ws.graph.edges, errors: ws.graph.errors, loose: ws.loose, colorWords: ws.colorWords, patternWords: ws.patternWords, colorWordsAt: ws.colorWordsAt, patternWordsAt: ws.patternWordsAt, pins: loadPins(root) };
   };
   return {
     name: 'synapsis-workspace',
@@ -94,8 +94,11 @@ function workspaceApi() {
             return send(200, payload(root));
           }
           // 配色词表：没有就按默认写一份，返回相对项目根的路径（前端接着用默认程序打开）
-          if (url.pathname === '/pattern-words' && req.method === 'POST') return send(200, { file: relative(root, ensurePatternWords(root)).split('\\').join('/') });
-          if (url.pathname === '/color-words' && req.method === 'POST') return send(200, { file: relative(root, ensureColorWords(root)).split('\\').join('/') });
+          // scope = 分组 id → 那个分组自己的词表（👤 2026-10-11 层级词表；没有就建一份空表）
+          if ((url.pathname === '/pattern-words' || url.pathname === '/color-words') && req.method === 'POST') {
+            const b = await body(req).catch(() => ({})), ensure = url.pathname === '/color-words' ? ensureColorWords : ensurePatternWords;
+            try { return send(200, { file: relative(root, ensure(root, b?.scope || '')).split('\\').join('/') }); } catch (e) { return send(400, { error: e.message }); }
+          }
           // 连线（带类型）/ 改已有边的标签类型
           if (url.pathname === '/link' && req.method === 'POST') { const b = await body(req); const r = linkNodes(root, b.from, b.to, b.label || '', b.kind || ''); return send(200, { report: r, ...payload(root) }); }
           if (url.pathname === '/move-pic' && req.method === 'POST') { const b = await body(req); const r = movePic(root, b.path, b.to ?? null, b.scope ?? ''); return send(200, { pic: r, ...payload(root) }); }

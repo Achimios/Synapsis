@@ -2,6 +2,7 @@
 //   （场景信息、路径可能性 = 几何 / 空间类；身体读数、短期记忆 = 读数 / 数据类；行为树、状态机 = 结构 / 流程类）。
 //   只看节点自己（不像颜色那样沿祖先继承 —— 同一个颜色组里的兄弟正是要靠图案区分）：
 //   1. 自己写了 pattern: → 用它；2. 名字含词表 _图案.md 某一行的词 → 那一行；3. AI 归类（core/ai.js semPatterns）；4. 无
+import { wordTables, hierHit } from './colors.js';
 export const PATTERNS = { 网格: 'grid', 点阵: 'dots', 斜纹: 'hatch', 横纹: 'lines', 波纹: 'wave' };
 export const PATTERN_HINT = { 网格: '几何 / 空间 / 地图 / 路径', 点阵: '读数 / 数据 / 记忆 / 参数', 斜纹: '结构 / 流程 / 行为树 / 状态机', 横纹: '文档 / 说明 / 表 / 规则', 波纹: '情绪 / 信号 / 波动 / 噪声' };
 export const PATTERN_FILE = '_图案.md';
@@ -33,14 +34,15 @@ export const wordPattern = (label, rules = DEFAULT_RULES) => {
   const l = label.toLowerCase();
   return rules.find(r => r.words.some(w => l.includes(w.toLowerCase())))?.pattern || null;
 };
+export const patternTables = words => wordTables(words, t => parsePatternWords(t).rules, DEFAULT_RULES);
 // → Map(id → 图案名)；sem = {id: 图案名}（AI 归类）
 export function patternMap(graph, getMeta = () => undefined, words = null, sem = null) {
-  const rules = words == null ? DEFAULT_RULES : parsePatternWords(words).rules;
+  const tables = patternTables(words); // 层级词表（同配色：父级往上就近命中）
   const out = new Map();
   for (const [id, n] of graph.nodes) {
     if (id === '') continue;
     const own = getMeta(id)?.pattern;
-    const p = own === '无' ? null : PATTERNS[own] ? own : wordPattern(n.label, rules) || sem?.[id] || null;
+    const p = own === '无' ? null : PATTERNS[own] ? own : hierHit(graph, id, tables, r => r.pattern)?.value || sem?.[id] || null;
     if (p) out.set(id, p);
   }
   return out;

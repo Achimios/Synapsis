@@ -82,6 +82,30 @@ export const wordColor = (label, rules = DEFAULT_RULES) => {
   const l = label.toLowerCase();
   return rules.find(r => r.words.some(w => l.includes(w.toLowerCase())))?.color || null;
 };
+// 命中了哪一行的哪个词（「为什么是这个色」用）
+const ruleHit = (label, rules) => { const l = label.toLowerCase(); for (const r of rules) { const w = r.words.find(w => l.includes(w.toLowerCase())); if (w) return { r, word: w }; } return null; };
+
+// >v<🎨画布-层级词表-（👤 2026-10-11「几千个节点项目级管不过来，颜色也有限」）分组可以有自己的词表，管它的子孙。
+//   words = 根那份的文本（旧调用）或 {'': 根文本 | null, 分组id: 文本, …}；根是 null = 默认词表。
+//   找一个节点的词：从它的父级开始往上，哪一层的表先命中它的名字就用哪一层（就近命中，没命中接着往上），都没命中 = 不算命中
+export function wordTables(words, parse = t => parseColorWords(t).rules, dflt = DEFAULT_RULES) {
+  const o = words != null && typeof words === 'object' ? words : { '': words };
+  const m = new Map();
+  for (const [k, t] of Object.entries(o)) m.set(k, k === '' && t == null ? dflt : parse(t));
+  if (!m.has('')) m.set('', dflt);
+  return m;
+}
+// → { value（颜色 / 图案）, from（哪一层的词表：'' = 项目）, word } 或 null；pick(r) 取规则里的值
+export function hierHit(graph, id, tables, pick = r => r.color) {
+  const label = graph.nodes.get(id)?.label; if (label == null) return null;
+  for (let a = graph.nodes.get(id)?.parent; a != null; a = a === '' ? null : graph.nodes.get(a)?.parent) {
+    const rules = tables.get(a); if (!rules) continue;
+    const h = ruleHit(label, rules); if (h) return { value: pick(h.r), from: a, word: h.word };
+  }
+  return null;
+}
+// 对 id 的子孙生效的「上级」词表在哪一层：从 id 自己的父级往上第一个有表的（根总是有）。本层 = tables.has(id)
+export const upperTable = (graph, id, tables) => { for (let a = graph.nodes.get(id)?.parent; a != null; a = a === '' ? null : graph.nodes.get(a)?.parent) if (tables.has(a)) return a; return ''; };
 
 // graph = parseOutline 的结果（nodes: Map id → {label, parent, children}），getMeta(id) → frontmatter 或 undefined；
 // words = 词表 md 文本（undefined / null → 默认词表）；sem = {id: 颜色}（LM Studio 语义配色，core/ai.js semColors）—— 词表没命中时当命中用
@@ -89,10 +113,10 @@ export const wordColor = (label, rules = DEFAULT_RULES) => {
 //   自己的名字命中词表就用那一行，没命中就轮色（跳过同层已被词表占掉的）；组头下面的子孙（展开在它里面的）继承组头的色，
 //   有 color: 的照旧优先；选中不改变配色。不给 focus = 旧算法（最外层命中，自检里的老用例）
 export function colorMap(graph, getMeta = () => undefined, words = null, sem = null, focus = null) {
-  const rules = words == null ? DEFAULT_RULES : parseColorWords(words).rules;
+  const tables = wordTables(words), wc = id => hierHit(graph, id, tables)?.value || null; // 层级词表：就近命中
   if (focus) {
     const ROOT = '', scope = graph.nodes.has(focus.scope) ? focus.scope : ROOT;
-    const hit = id => wordColor(graph.nodes.get(id).label, rules) || sem?.[id] || null;
+    const hit = id => wc(id) || sem?.[id] || null;
     const heads = new Map(); // 组头 id → 色
     const level = parent => {
       const kids = graph.nodes.get(parent)?.children || [];
@@ -119,7 +143,7 @@ export function colorMap(graph, getMeta = () => undefined, words = null, sem = n
   const ROOT = '', out = new Map();
   // 顶层分组轮色：词表占的色先让出来
   const top = graph.nodes.get(ROOT)?.children || [];
-  const word = id => wordColor(graph.nodes.get(id).label, rules);
+  const word = wc;
   const hit = id => word(id) || sem?.[id] || null;
   const taken = new Set(top.map(hit).filter(Boolean));
   const free = CYCLE.filter(c => !taken.has(c)), cyc = free.length ? free : CYCLE;

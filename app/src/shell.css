@@ -649,8 +649,15 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 .card.uibox .title { padding: 2px 6px; gap: 8px; }
 .card.uibox .uidim { margin-left: auto; font-size: 10px; color: var(--dim); font-weight: normal; }
 .card.uibox .uigrip { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 50%, var(--c, var(--accent)) 50%); opacity: .7; } .card.uibox .uigrip:hover { opacity: 1; }
-.ctx .swatches.sat button { font-size: 8px; line-height: 1; color: rgba(0,0,0,.65); padding: 0; } .ctx .swatches.sat button:disabled { cursor: default; }
+.ctx .swatches.sat button, .side .swatches.sat button { font-size: 8px; line-height: 1; color: rgba(0,0,0,.65); padding: 0; } .ctx .swatches.sat button:disabled, .side .swatches.sat button:disabled { cursor: default; }
 .taskrows { display: flex; flex-direction: column; gap: 5px; } .taskrows .srcrow.task { border-top: 1px dashed var(--line); padding-top: 4px; flex-wrap: wrap; } .taskrows .srcrow.task select { max-width: 160px; font-size: 11px; }
 .taskrows .embedrow select { max-width: 260px; font-size: 11px; } .taskrows .embedrow { border-top: 1px dashed var(--line); padding-top: 4px; }
 .card.uibox .uiall, .frame .frall { position: absolute; left: 4px; bottom: 3px; font-size: 10px; line-height: 12px; padding: 0 5px; border-radius: 8px; background: var(--chip); color: var(--dim); cursor: pointer; user-select: none; z-index: 3; } .card.uibox .uiall:hover, .frame .frall:hover { background: var(--chip2); color: var(--strong); } .frame .frall { position: static; margin-left: auto; margin-right: 4px; }
 .card.uibox.compact { width: auto; height: auto; min-width: 140px; max-width: 260px; } .card.uibox.compact .uidim { display: none; }
+/* 👤 2026-10-11 层级词表：属性栏「词表」一行 + 自动色旁边的「词：xx（层）」 */
+.side .wordsrow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; }
+.side .wordsrow a { cursor: pointer; color: var(--text); background: var(--chip); border-radius: 8px; padding: 0 6px; white-space: nowrap; }
+.side .wordsrow a:hover { background: var(--chip2); color: var(--strong); }
+.side .wordsrow a.add { color: var(--dim); }
+.side .wordsrow .wl { color: var(--dim); } .side .wordsrow .wsep { color: var(--line2); }
+.side .swatches .why { font-size: 10px; color: var(--dim); cursor: pointer; margin-left: 4px; white-space: nowrap; } .side .swatches .why:hover { color: var(--strong); text-decoration: underline; }
