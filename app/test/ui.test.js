@@ -114,10 +114,10 @@ for (const kind of ['reactflow']) {
   await page.keyboard.down('Shift'); await page.mouse.click(...center(await cardBox('行动'))); await page.keyboard.up('Shift'); await sleep(400);
   ok(await selLabs() === '决策,感知,行动,记忆与人格', 'Shift+单击 = 两点之间路径上的都选上（兜底不在路径上） ' + await selLabs());
   await page.keyboard.press('Escape'); await page.mouse.click(...center(await cardBox('行动'))); await sleep(300);
-  await page.keyboard.press('Shift+KeyA'); await sleep(400);
-  ok(await selLabs() === '兜底,决策,行动', 'Shift+A = 沿入线扩一层 ' + await selLabs());
-  await page.keyboard.press('Alt+Shift+KeyA'); await sleep(400);
-  ok((await page.$$('.card.sel')).length === 5, 'Alt+Shift+A = 一直扩到头 ' + await selLabs());
+  await page.keyboard.press('Alt+ArrowLeft'); await sleep(400);
+  ok(await selLabs() === '兜底,决策,行动', 'Alt+← = 沿入线扩一层 ' + await selLabs());
+  await page.keyboard.press('Alt+Shift+ArrowLeft'); await sleep(400);
+  ok((await page.$$('.card.sel')).length === 5, 'Alt+Shift+← = 一直扩到头 ' + await selLabs());
   await page.keyboard.press('Escape'); await sleep(200);
   await page.keyboard.press('Control+KeyA'); await sleep(300);
   ok((await page.$$('.card.sel')).length === (await page.$$('.react-flow__node.react-flow__node-card, .card')).length && (await page.$$('.card.sel')).length > 1, 'Ctrl+A = 全选本页的卡');
@@ -232,7 +232,7 @@ for (const kind of ['reactflow']) {
   ok((await page.$eval('.crumbs', e => e.innerText)).includes('游戏AI'), 'Alt+← 后退回游戏AI');
   ok(await cam() === camIn, `返回再进来视图还原 ${camIn} vs ${await cam()}`);
   await page.keyboard.press('Alt+KeyD'); await sleep(600);
-  ok((await page.$eval('.crumbs', e => e.innerText)) === '根', 'Alt+→ 前进');
+  ok(/^根( › 游戏AI)?$/.test((await page.$eval('.crumbs', e => e.innerText)).trim()), 'Alt+→ 前进（恢复离开时选中的） ' + await page.$eval('.crumbs', e => e.innerText));
   await page.keyboard.press('Alt+KeyA'); await sleep(600);
 
   // 刷新：坐标持久
@@ -1496,14 +1496,13 @@ for (const kind of ['reactflow']) {
     ok(!!(await page.$('.bar.tabs a.gear')), '左栏最左上有 ⚙');
     await page.click('.bar.tabs a.gear'); await sleep(700);
     const rows = await page.$$eval('.settings .srow b', e => e.map(x => x.textContent));
-    ok(rows.length === 5 && rows.includes('AI 接入手册') && rows.includes('启动快捷方式'), '设置窗里列出 init 的 5 项 ' + rows.join('|'));
-    const first = '.settings .srow:has-text("黑板") input';
-    const was = await page.isChecked(first);
-    await page.click(first); await sleep(900);
-    ok((await page.isChecked(first)) === !was, '点一下 → 勾选翻转');
-    ok(new RegExp('blackboard: ' + !was).test(readFileSync(SF, 'utf8')), '立刻写进 settings.yaml');
-    await page.click(first); await sleep(900);
-    ok(new RegExp('blackboard: ' + was).test(readFileSync(SF, 'utf8')), '再点回来');
+    ok(rows.includes('每步距离') && rows.includes('框底色（亮色）') && !rows.includes('AI 接入手册'), '设置窗：外观 + 方向键微调；init 那几项不在这（合进「📄 项目文件…」） ' + rows.join('|'));
+    const inp = '.settings .srow:has-text("每步距离") input';
+    const was = await page.inputValue(inp);
+    await page.fill(inp, '13'); await page.press(inp, 'Enter'); await sleep(900);
+    ok(/step: 13/.test(readFileSync(SF, 'utf8')), '数字项回车就写进 settings.yaml');
+    await page.fill(inp, was); await page.press(inp, 'Enter'); await sleep(900);
+    ok(new RegExp('step: ' + was).test(readFileSync(SF, 'utf8')), '再改回来');
     await page.click('.settings .bar button'); await sleep(300);
     ok(!(await page.$('.settings')), '✕ 关掉');
   } finally {

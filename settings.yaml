@@ -9,12 +9,17 @@ init:
   launcher: true       # 启动快捷方式（项目根目录 .lnk + .synapsis/ 兜底脚本）
   docs: false          # 项目文档骨架（_开发进度.md、_TODO.md、AGENTS.md 那一套）
 
+# look：外观（数字，%）
+look:
+  boxLight: 28         # 亮色：UI 框 / 展开的分组框里面叠多少节点色
+  boxDark: 14          # 暗色：同上
+
 # nudge：方向键挪卡片 / Ctrl+方向键 撑大 UI 框（数字）
 nudge:
-  step: 8              # 每步距离（画布单位，网格一格 = 24）
+  step: 6              # 每步距离（画布单位，网格一格 = 24）
   fast: 4              # 按住 Shift 时每步 × 几
-  delay: 200           # 按下走一步后，停多久（毫秒）开始连续走
-  interval: 100        # 连续走时每步隔多久（毫秒）
+  delay: 100           # 按下走一步后，停多久（毫秒）开始连续走
+  interval: 50        # 连续走时每步隔多久（毫秒）
 
 # 快捷键自定义：下一步做（现在的键位见界面里的 ⌨ 快捷键）
 # keys: {}

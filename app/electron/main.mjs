@@ -57,10 +57,14 @@ const wins = new Map(); // dir -> BrowserWindow
 let launcher = null, tray = null;
 const winOpts = (w, h) => ({ width: w, height: h, show: !HIDDEN, autoHideMenuBar: true, icon: trayIcon(), backgroundColor: '#1c1c1c', webPreferences: { preload: join(APP, 'electron', 'preload.cjs'), contextIsolation: true } });
 
-// 界面缩放：Electron 自带菜单的「放大」只认 Ctrl+Shift+=，Ctrl+= 没反应（👤 2026-10-08「只能 ctrl - 不能 ctrl +」）
+// 界面缩放：Electron 自带菜单的「放大」只认 Ctrl+Shift+=，Ctrl+= 没反应（👤 2026-10-08「只能 ctrl - 不能 ctrl +」）；菜单去掉后 F12 / Ctrl+R 也在这里
 function zoomKeys(w) {
   w.webContents.on('before-input-event', (e, i) => {
-    if (i.type !== 'keyDown' || !(i.control || i.meta) || i.alt) return;
+    if (i.type !== 'keyDown') return;
+    // 菜单栏去掉了（按 Alt 不再弹 File / Edit…，👤 2026-10-12），它带的两个开发用快捷键自己补上
+    if (i.key === 'F12' || ((i.control || i.meta) && i.shift && i.code === 'KeyI')) { w.webContents.toggleDevTools(); e.preventDefault(); return; }
+    if (i.key === 'F5' || ((i.control || i.meta) && !i.shift && !i.alt && i.code === 'KeyR')) { w.webContents.reload(); e.preventDefault(); return; }
+    if (!(i.control || i.meta) || i.alt) return;
     const z = w.webContents.getZoomLevel();
     if (i.key === '=' || i.key === '+' || i.code === 'NumpadAdd') w.webContents.setZoomLevel(Math.min(z + 0.5, 5));
     else if (i.key === '-' || i.key === '_' || i.code === 'NumpadSubtract') w.webContents.setZoomLevel(Math.max(z - 0.5, -5));
@@ -211,6 +215,7 @@ function trayIcon() {
 }
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null); // 👤 2026-10-12 按 Alt 弹出 File / Edit / View / Window 碍事：整个菜单不要（缩放、F12、Ctrl+R 在 zoomKeys 里自己处理）
   await startServer();
   launcherFor(HOME); // Synapsis 根目录的两个快捷方式，没有就补
   syncIcons(); watchIcons();

@@ -796,9 +796,18 @@ export function Shell({ name, Canvas }) {
     text: { name: '正文', field: 'textOpen', ok: n => !!wsData?.nodes[n.id]?.body?.trim(), own: id => !!textOpen[id], tip: '卡片里渲染 md 正文' },
   };
   const [settingsOpen, setSettingsOpen] = useState(false); // 左上角 ⚙
-  // 方向键微调的参数（settings.yaml 的 nudge 段；样例模式 / 读不到 = 默认）。画布那边读 cardActions.nudge
+  // 👤 2026-10-12 H = 键位提示开关：按钮旁边显示组合键小字（data-keyx）+ 画布右下角导航 / 选择速查；单键的（data-key：1 2 3 4 Q ` ?）一直显示。
+  //   默认开（给新手），记在本机。原则：快捷键提示放在用到它的界面旁边，快捷键页不暴露全部
+  const [keyHints, setKeyHints] = useState(() => load('syn.keyhints', true));
+  useEffect(() => { try { localStorage.setItem('syn.keyhints', JSON.stringify(keyHints)); } catch { /* 无痕模式 */ } }, [keyHints]);
+  // 方向键微调（nudge）和框底色（look）的参数（settings.yaml；样例模式 / 读不到 = 默认）。画布那边读 cardActions.nudge
   useEffect(() => {
-    const put = s => { if (s?.nudge) cardActions.nudge = { ...NUDGE, ...s.nudge }; };
+    const put = s => {
+      if (s?.nudge) cardActions.nudge = { ...NUDGE, ...s.nudge };
+      const L = s?.look || {}, st = document.documentElement.style; // 框底色浓度 → CSS 变量（shell.css 的 --box-tint）
+      if (+L.boxDark >= 0) st.setProperty('--box-tint-dark', +L.boxDark + '%');
+      if (+L.boxLight >= 0) st.setProperty('--box-tint-light', +L.boxLight + '%');
+    };
     if (mode === 'ws') api('/settings').then(d => put(d.settings)).catch(() => {});
     const on = e => put(e.detail); window.addEventListener('syn-settings', on);
     return () => window.removeEventListener('syn-settings', on);
@@ -890,6 +899,7 @@ export function Shell({ name, Canvas }) {
       else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); setLeftHidden(h => !h); } // 👤 Tab = 侧栏开关
       else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) focusLabel(sel); }
       else if (e.code === 'KeyR' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) focusLabel(sel); } // 👤 2026-10-12 R = 改名（左手，同 Enter）；Alt+R = 改完
+      else if (e.code === 'KeyH' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { e.preventDefault(); e.stopPropagation(); setKeyHints(o => !o); }
       else if (e.code === 'KeyT' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@') && graph.nodes.has(sel)) menuActions.addChild(sel); } // 👤 2026-10-12 T = 给选中的建子节点，直接进改名（同右键 ＋ 新建子节点） // 👤 2026-10-10 选中了 Enter = 重命名；没选中什么都不做（常误触）。👤 2026-10-11 键盘新建（Shift+Enter / Insert / Ctrl+Enter）和 F2 都去掉：新建走鼠标（右键），改名只留 Enter
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyS') { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) drill(sel); } // Alt+S = 钻进去（没选中不管）
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyW') { e.preventDefault(); e.stopPropagation(); up(); } // 👤 2026-10-10 Alt+W/A/D = 上一层 / 后退 / 前进（单手）
@@ -1162,7 +1172,7 @@ export function Shell({ name, Canvas }) {
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
   };
   return (
-    <div className="shell" style={{ '--leftw': panelW.left + 'px', '--rightw': panelW.right + 'px' }}>
+    <div className={'shell' + (keyHints ? ' showkeys' : '')} style={{ '--leftw': panelW.left + 'px', '--rightw': panelW.right + 'px' }}>
       {!leftHidden && <div className="resizer left" title="拖动调宽度" onPointerDown={e => dragPanel(e, 'left')} />}
       <aside className={'outline' + (leftCols > 1 ? ' cols cols' + leftCols : '')} style={leftHidden ? { display: 'none' } : undefined}>
         <div className="bar tabs">
@@ -1195,19 +1205,19 @@ export function Shell({ name, Canvas }) {
             {selTail.map((c, i) => <span key={c.id}>{' › '}{i === selTail.length - 1 ? <a className="cur" title="当前选中的节点">{c.label}</a> : <a title="选中这个上级节点" onClick={() => pick(c.id)}>{c.label}</a>}</span>)}</span>
           <span className="grow" />
           <span className="save-wrap"><span className={'save' + (saveState.startsWith('❌') || saveState.startsWith('⚠') ? ' bad' : '')} title={wsData?.root || ''}>{mode === 'ws' ? (wsData?.root || '').split(/[\\/]/).slice(-1)[0] + ' · ' : mode === 'demo' ? '样例 · ' : ''}{saveState}</span></span>
-          <button className="ghost sidetoggle" onClick={() => setPropsOpen(o => !o)} title="显示 / 隐藏右栏（属性）  Shift+Tab">{propsOpen ? '▸' : '◂'}</button>
+          <button className="ghost sidetoggle" data-keyx="Shift+Tab" onClick={() => setPropsOpen(o => !o)} title="显示 / 隐藏右栏（属性）  Shift+Tab">{propsOpen ? '▸' : '◂'}</button>
         </div>
         <OverflowBar>
           <button onClick={() => addNode(false)} title="在当前层新建（选中节点时建在它后面）；建完直接打字改名">＋ 节点</button>
-          {mode === 'ws' && <button className={histOpen ? '' : 'off'} title="操作历史：每一步改了什么，点一行回到那一步（Shift+`）" onClick={() => setHistOpen(o => !o)}>🕘 历史</button>}
+          {mode === 'ws' && <button className={histOpen ? '' : 'off'} data-keyx="Shift+`" title="操作历史：每一步改了什么，点一行回到那一步（Shift+`）" onClick={() => setHistOpen(o => !o)}>🕘 历史</button>}
           {withPics.length > 0 && <button onClick={() => setPicFold(f => { const g = { ...f }; for (const n of withPics) g[n.id] = !allPicsFolded; return g; })} title="当前页所有卡片的图片一起收起 / 显示">{allPicsFolded ? '显示图片' : '收起图片'}</button>}
           <button onClick={() => setExportText(exportForLLM(graph, realScope, id => wsData?.nodes[id]))}>导出给 LLM</button>
-          {mode === 'ws' && <button title="AI 指令框（Shift+F）：用一句话让本地模型在当前页对齐 / 排列 / 连线 / 改状态…，先预览再执行" onClick={() => setAgentOpen(o => !o)}>💬 指令</button>}
+          {mode === 'ws' && <button data-keyx="Shift+F" title="AI 指令框（Shift+F）：用一句话让本地模型在当前页对齐 / 排列 / 连线 / 改状态…，先预览再执行" onClick={() => setAgentOpen(o => !o)}>💬 指令</button>}
           {mode === 'ws' && <button className={'aibtn ' + (aiStatus?.ok ? 'on' : 'off')} title={aiStatus?.ok ? 'LM Studio 已连上：语义配色 / 潜在关联 / 生成词表' : 'AI 辅助（LM Studio）：' + (aiStatus?.error || '检查中')} onClick={() => { setAiOpen(true); aiCheck(); }}>🤖 AI</button>}
           {mode === 'ws' && <button title="给这个项目补 Synapsis 的几样（手册 / 黑板 / 词表 / 快捷方式）和开发进度 / 待办 / 规矩那套文档（先检测，已有的不覆盖）" onClick={() => api('/scaffold').then(setScaffold).catch(e => setSaveState('❌ ' + e.message))}>📄 项目文件…</button>}
           {local && <button onClick={() => { if (confirm('重置大纲为样例、清空坐标与图片？')) { setText(SAMPLE); setPositions({}); setImages({}); } }}>重置</button>}
           <button className="themebtn" title={theme === 'light' ? '换深色主题' : '换白色主题'} onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}>{theme === 'light' ? '🌙' : '☀'}</button>
-          <button className="keysbtn" title="快捷键一览（? 或 F1）" onClick={() => setHelpOpen(true)}>⌨ 快捷键</button>
+          <button className="keysbtn" data-key="?" title="快捷键一览（? 或 F1）" onClick={() => setHelpOpen(true)}>⌨ 快捷键</button>
         </OverflowBar>
         <div className="cwrap">
         {mode !== 'loading' && <div className="expbar">
@@ -1219,16 +1229,17 @@ export function Shell({ name, Canvas }) {
           <div className="exphead" title="预览展开：只在本页临时盖一层，节点自己的状态不动、不进历史、切页不继承。要真的展开，点上面的 ⋯">预览展开</div>
           {Object.entries(EXP).map(([k, E]) => {
             const m = sm[k], none = !expIds(k).length;
-            return <button key={k} className={'exprow see' + (m === 'on' ? ' on' : m === 'deep' ? ' on deep' : '') + (none ? ' none' : '')}
+            return <button key={k} data-key={EXP_KEY[k]} className={'exprow see' + (m === 'on' ? ' on' : m === 'deep' ? ' on deep' : '') + (none ? ' none' : '')}
               title={`${E.name}（${E.tip}）\n预览展开：只在本页临时盖一层，节点自己的状态不动，切页不继承\n点一下 = 只展开本页的节点（快捷键 ${EXP_KEY[k]}）；Shift+点 = 连子孙一起（Shift+${EXP_KEY[k]}）\n现在：${m === 'on' ? '预览展开中' : m === 'deep' ? '预览展开中（含子孙）' : '没开'}`} onClick={e => expSee(k, e.shiftKey)}>{E.name}{m === 'deep' ? '∞' : ''}</button>;
           })}
           <div className="expsep" />
-          {mode === 'ws' && <button className={'tool pinbtn' + (pinsOpen ? ' on' : '')} title={'钉子：临时翻阅用的书签组（右键卡片 → 📌 钉到…；反引号 ` 开关）' + (pins.groups.some(g => g.items.length) ? '\n现有 ' + pins.groups.reduce((s, g) => s + g.items.length, 0) + ' 个钉子' : '')} onClick={() => setPinsOpen(o => !o)}>📌钉</button>}
-          <button className={'tool linebtn' + (seeLines ? ' on' : '')} title="看清连线（Q）：卡片缩小变淡（选中节点和它相连的不变），连线变粗变亮。再点一下恢复" onClick={() => setSeeLines(o => !o)}>🔍线</button>
+          {mode === 'ws' && <button className={'tool pinbtn' + (pinsOpen ? ' on' : '')} data-key="`" title={'钉子：临时翻阅用的书签组（右键卡片 → 📌 钉到…；反引号 ` 开关）' + (pins.groups.some(g => g.items.length) ? '\n现有 ' + pins.groups.reduce((s, g) => s + g.items.length, 0) + ' 个钉子' : '')} onClick={() => setPinsOpen(o => !o)}>📌钉</button>}
+          <button className={'tool linebtn' + (seeLines ? ' on' : '')} data-key="Q" title="看清连线（Q）：卡片缩小变淡（选中节点和它相连的不变），连线变粗变亮。再点一下恢复" onClick={() => setSeeLines(o => !o)}>🔍线</button>
           {view.portals.length + (portalModes[realScope] === 'hide' ? 1 : 0) > 0 && (() => { const pm = portalModes[realScope] || 'show'; // 👤 2026-10-11 传送门三档是「改观察」，从顶栏挪到钉 / 线旁边
             return <button className={'tool portalbtn' + (pm !== 'show' ? ' on' : '')} title={'这一页的传送门（别的层的节点）：显示 → 淡化 → 隐藏（隐藏时和选中节点相连的仍显示）\n现在：' + { show: '显示', fade: '淡化', hide: '隐藏' }[pm]} onClick={() => setPortalModes(m => ({ ...m, [realScope]: { show: 'fade', fade: 'hide', hide: 'show' }[m[realScope] || 'show'] }))}>↗{{ show: '门', fade: '淡化', hide: '隐藏' }[pm]}</button>; })()}
         </div>}
         {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className={'canvas' + (seeLines ? ' seelines' : '') + (sel ? ' hassel' : '')} onDragOver={e => e.preventDefault()} onDrop={onDrop}>
+          {keyHints && <div className="keyhud" title="键位提示（H 关掉）">{KEY_HUD.map(([k, v]) => <div key={k}><kbd>{k}</kbd><span>{v}</span></div>)}<div className="hk">H 关掉 · ? 全部</div></div>}
           {plane && <div className="planebar" title="投影方向可以是轴，也可以是某个成员的方向（= 换一组基看同一批点）。拖动卡片 = 改它在这两个方向上的坐标">
             <b>空间</b>
             {['X', 'Y'].map((a, i) => <label key={a}>{a}<select value={plane.keys[i]} onChange={e => setSpaceAxes(m => { const k = [...plane.keys]; k[i] = e.target.value; return { ...m, [realScope]: k }; })}>
@@ -1339,6 +1350,8 @@ export function nodeDim(id, view, selected) {
   return !view.edges.some(e => (e.from === selected && e.to === id) || (e.to === selected && e.from === id));
 }
 // 卡片上的交互回调（外壳每次渲染时填好；画布组件不用逐层传）
+// 画布右下角的导航 / 选择速查（H 开关）。只放画布上随时要用、按钮上看不到的
+const KEY_HUD = [['W A S D', '选卡'], ['Shift+W A S D', '只本层'], ['Alt+W / S', '上一层 / 进去'], ['Alt+A / D', '后退 / 前进'], ['Alt(Shift)+← →', '扩选'], ['(Shift) ← → ↑ ↓', '挪卡'], ['Ctrl(Alt)+← → ↑ ↓', 'UI 框大小'], ['R / T', '改名 / 建子节点']];
 const NUDGE = { step: 8, fast: 4, delay: 200, interval: 100 }; // 和 core/settings.js 的 nudge 默认值一致
 export const cardActions = { toggle: () => {}, openChild: () => {}, foldPics: () => {}, resizePics: () => {}, nudge: { ...NUDGE } };
 // pointerdown 也要拦住，否则 React Flow 会把它当成选中或拖动的开始

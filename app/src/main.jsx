@@ -166,7 +166,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   const centered = new Set(plane?.ids || []); // 空间成员：卡片中心对准坐标点
   // >v<🎨画布-多选-选择由这里自己管（不用 React Flow 的 Ctrl 多选：两边各管一份会互相触发 → 死循环黑屏，👤 2026-10-08）：
   // 单击 = 只选它；Ctrl+单击 = 加入 / 移出；Shift+单击 = 加上它和当前选中之间路径上的节点；Shift+拖空白 = 框选；
-  // Shift+A / D = 沿入线 / 出线扩一层，Alt+Shift+A / D = 扩到头，Ctrl+A = 全选（core/select.js）
+  // Alt+← / → = 沿入线 / 出线扩一层，Alt+Shift+← / → = 扩到头，Ctrl+A = 全选（core/select.js）
   // 多选（≥2 张）由外壳管（大纲里 Ctrl / Shift 点选也进同一组）；这里只看得到本页上有的；单选仍由外壳的 selected 管
   const multi = useMemo(() => { const ids = new Set(view.nodes.map(n => n.id)); return multiSel.filter(id => id.startsWith('@') || ids.has(id)); }, [multiSel, view]); // @ 开头的（传送门 / 散图 / 坐标轴）不在 view.nodes 里，但都是本页的 // 引用要稳定：下面的 effect 依赖它
   const setMulti = ids => { const next = ids.length > 1 ? [...new Set(ids)].sort() : []; onMultiSel?.(m => m.join('|') === next.join('|') ? m : next); };
@@ -323,7 +323,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   }, []);
   nodesRef.current = nodes;
   // >v<🎨画布-方向键微调（👤 2026-10-12 打字时双手不离键盘）：方向键 = 挪选中的卡（多选一起），Shift = × fast；
-  //   Ctrl+方向键 = UI 框往那边撑大，Ctrl+Alt = 那一边往回缩（普通卡大小跟内容走，不管）。
+  //   Ctrl+方向键 = UI 框那一边往外撑，Ctrl+Alt+方向键 = 对面那一边往箭头方向缩（箭头 = 边移动的方向；普通卡大小跟内容走，不管）。
   //   按下先走一步，停 delay 毫秒后每 interval 毫秒一步（不用系统的按键重复）；几个方向键一起按 = 斜着走；中途按 / 松 Shift、Ctrl 立刻生效。
   //   全松开才存：一次按住 = 一次挪动（Ctrl+Z 一步；往左 / 上撑大 = 改大小 + 挪位置两步）。参数在 ⚙ 设置（settings.yaml 的 nudge）
   const hold = useRef({ keys: new Set(), base: new Map(), acc: new Map(), pend: new Map(), timer: null, mods: {} });
@@ -351,9 +351,10 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
           const [dx, dy] = DIR[c];
           if (!H.mods.ctrl) { a.x += dx * s; a.y += dy * s; continue; }
           if (!b.ui) continue;
-          const d = H.mods.alt ? -s : s; // 撑大 / 往回缩那一边
-          if (dx) { const w0 = b.w + a.w, w1 = Math.max(40, w0 + d); a.w += w1 - w0; if (dx < 0) a.x -= w1 - w0; }
-          else { const h0 = b.h + a.h, h1 = Math.max(30, h0 + d); a.h += h1 - h0; if (dy < 0) a.y -= h1 - h0; }
+          // 箭头指哪边，边就往哪边走：Ctrl = 那一边往外撑（Ctrl+← 左边往左）；Ctrl+Alt = 对面那一边往这边缩（Ctrl+Alt+← 右边往左，👤 2026-10-12）
+          const alt = H.mods.alt, d = alt ? -s : s, moveNear = (dx || dy) < 0 ? !alt : alt; // 动的是左 / 上边 → 位置跟着挪
+          if (dx) { const w0 = b.w + a.w, w1 = Math.max(40, w0 + d); a.w += w1 - w0; if (moveNear) a.x -= w1 - w0; }
+          else { const h0 = b.h + a.h, h1 = Math.max(30, h0 + d); a.h += h1 - h0; if (moveNear) a.y -= h1 - h0; }
         }
         H.acc.set(id, a);
       }
@@ -446,11 +447,15 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
       if (e.target.closest?.('textarea, input, [contenteditable="true"]')) return;
       if (e.key === 'Escape') { setMulti([]); return; }
       if (e.ctrlKey && !e.altKey && !e.shiftKey && e.code === 'KeyA') { e.preventDefault(); e.stopPropagation(); setMulti(view.nodes.map(n => n.id)); return; } // Ctrl+A = 全选本页的卡（不再选中界面文字）
-      if (!e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && ['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code) && !e.repeat) { // W A S D = 选中跳到上 / 左 / 下 / 右最近的卡
+      if (!e.ctrlKey && !e.altKey && !e.metaKey && ['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code) && !e.repeat) { // W A S D = 选中跳到上 / 左 / 下 / 右最近的卡
+        // 👤 2026-10-12 Shift+WASD = 只在本页这一层的卡之间跳（框里的子节点跳过；从框里出发 = 从它所在的最外层框算）
         const dir = { KeyW: [0, -1], KeyA: [-1, 0], KeyS: [0, 1], KeyD: [1, 0] }[e.code];
-        const els = [...document.querySelectorAll('.react-flow__node')].filter(el => el.offsetParent !== null && el.dataset.id);
+        const parentOf = new Map(nodesRef.current.map(n => [n.id, n.parentId]));
+        const top = id => { while (parentOf.get(id)) id = parentOf.get(id); return id; };
+        const els = [...document.querySelectorAll('.react-flow__node')].filter(el => el.offsetParent !== null && el.dataset.id && (!e.shiftKey || !parentOf.get(el.dataset.id)));
         const mid = el => { const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; };
-        const from = selected ? els.find(el => el.dataset.id === selected) : null;
+        const start = selected && e.shiftKey ? top(selected) : selected;
+        const from = start ? els.find(el => el.dataset.id === start) : null;
         e.preventDefault(); e.stopPropagation();
         let pick = null;
         if (from) {
@@ -465,11 +470,11 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
         if (pick) { setMulti([]); onSelect(pick.dataset.id); const r = pick.getBoundingClientRect(); if (r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight) setTimeout(() => cardActions.centerOn(pick.dataset.id, true), 0); }
         return;
       }
-      // Shift+A / D = 沿入线 / 出线扩一层；Alt+Shift+A / D = 扩到头
-      if (e.ctrlKey || !e.shiftKey || (e.code !== 'KeyA' && e.code !== 'KeyD')) return;
+      // 👤 2026-10-12 Alt+← / → = 沿入线 / 出线扩一层；Alt+Shift+← / → = 扩到头（原来的 Shift+A / D 让给 Shift+WASD）
+      if (e.ctrlKey || e.metaKey || !e.altKey || (e.code !== 'ArrowLeft' && e.code !== 'ArrowRight')) return;
+      e.preventDefault(); e.stopPropagation(); // 浏览器里 Alt+← 是后退一页，拦掉
       const b = base(); if (!b.length) return;
-      e.preventDefault(); e.stopPropagation();
-      setMulti([...expand(view.edges, b, e.code === 'KeyA' ? 'in' : 'out', e.altKey)]);
+      setMulti([...expand(view.edges, b, e.code === 'ArrowLeft' ? 'in' : 'out', e.shiftKey)]);
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);

@@ -20,6 +20,14 @@ export const SCHEMA = {
       docs: [false, '项目文档骨架', '_开发进度.md、_TODO.md、AGENTS.md 那一套（只做规划 / 研究可以不要）'],
     },
   },
+  // 👤 2026-10-12 框（UI 框 / 展开成框的分组）里面叠多少节点色：亮色底白，要叠得多才看得出
+  look: {
+    title: '外观',
+    keys: {
+      boxLight: [28, '框底色（亮色）', 'UI 框 / 展开的分组框里面叠多少节点色（%）'],
+      boxDark: [14, '框底色（暗色）', '同上，暗色主题（%）'],
+    },
+  },
   // 👤 2026-10-12 方向键挪卡片 / Ctrl+方向键 撑大 UI 框：打字时双手不离键盘
   nudge: {
     title: '方向键微调',
@@ -99,6 +107,11 @@ init:
   words: true          # 分层词表  __synapsis/_词表.md（颜色 + 图案）
   launcher: true       # 启动快捷方式（项目根目录 .lnk + .synapsis/ 兜底脚本）
   docs: false          # 项目文档骨架（_开发进度.md、_TODO.md、AGENTS.md 那一套）
+
+# look：外观（数字，%）
+look:
+  boxLight: 28         # 亮色：UI 框 / 展开的分组框里面叠多少节点色
+  boxDark: 14          # 暗色：同上
 
 # nudge：方向键挪卡片 / Ctrl+方向键 撑大 UI 框（数字）
 nudge:

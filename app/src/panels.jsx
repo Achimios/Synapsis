@@ -556,10 +556,11 @@ export function SearchModal({ title, items, exclude, onPick, onClose }) {
   return (
     <div className="modal" onPointerDown={onClose}>
       <div className="finder" onPointerDown={e => e.stopPropagation()}>
-        <div className="bar"><b>{title}</b><span className="hint">名字 / 属性 / 正文 · Tab</span></div>
+        <div className="bar"><b>{title}</b><span className="hint">名字 / 属性 / 正文</span></div>
         <div className="ftabs">
           <a className={tab === 'node' ? 'on' : ''} onClick={() => setTab('node')}>节点{q.trim() ? ' ' + resN.length : ''}</a>
           <a className={(tab === 'file' ? 'on' : '') + (hasFiles ? '' : ' off')} onClick={() => hasFiles && setTab('file')}>📎 项目文件{q.trim() && hasFiles ? ' ' + resF.length : ''}</a>
+          {hasFiles && <span className="tabkey" title="按 Tab 切页签">Tab</span>}
         </div>
         <input autoFocus ref={inRef} value={q} placeholder={tab === 'file' ? '搜项目文件…' : '搜索节点…'} onChange={e => setQ(e.target.value)}
           onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') onClose(); else if (e.key === 'ArrowDown') { e.preventDefault(); setI(x => Math.min(res.length - 1, x + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setI(x => Math.max(0, x - 1)); } else if (e.key === 'Enter') pick(res[i]); }} />
