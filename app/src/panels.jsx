@@ -568,6 +568,19 @@ export function ScaffoldModal({ data, onCreate, onClose }) {
   );
 }
 
+// >v<⌨快捷键-键帽-👤 2026-10-12：一个键一个框，一眼看出要按几个键；Ctrl 蓝、Shift 黄、Alt 红、Tab 绿、方向键一个色系、WASD 一个色系。
+//   「Ctrl(Shift)+Z / Ctrl+Y」→ [Ctrl]([Shift])+[Z] / [Ctrl]+[Y]；不是键的字（按住右键、单击、拖空白…）照原样写
+const KEY_RE = /^(Ctrl|Shift|Alt|Tab|Enter|Del|Esc|Space|Backspace|F\d{1,2}|[A-Za-z0-9]|[←→↑↓`?=\-])$/;
+const keyKind = k => /^Ctrl$/.test(k) ? 'ctrl' : k === 'Shift' ? 'shift' : k === 'Alt' ? 'alt' : k === 'Tab' ? 'tab' : /^[←→↑↓]$/.test(k) ? 'arrow' : /^[WASDwasd]$/.test(k) ? 'wasd' : '';
+export function KeyCombo({ text }) {
+  const parts = String(text).split(/(\s*\/\s*|\+|\(|\)|\s+)/).filter(x => x !== '');
+  return <span className="kcombo">{parts.flatMap((p, i) => {
+    if (/^[←→↑↓]{2,}$/.test(p)) return [...p].map((c, j) => <kbd key={i + '-' + j} className="k arrow">{c}</kbd>);
+    if (KEY_RE.test(p)) return [<kbd key={i} className={'k ' + keyKind(p)}>{p.length === 1 ? p.toUpperCase() : p}</kbd>];
+    if (/^\s+$/.test(p)) return [<span key={i} className="ksp" />];
+    return [<span key={i} className={/^\s*\/\s*$/.test(p) ? 'kor' : /^[+()]$/.test(p) ? 'kop' : 'ktx'}>{p.trim()}</span>];
+  })}</span>;
+}
 const KEY_HUE = { 导航与查看: ['🧭', '#5cc46a'], 选择与查看: ['👆', '#4d9bff'], AI: ['🤖', '#a97cff'], 搜索: ['🔎', '#36c6c0'], 导航: ['🧭', '#5cc46a'], 编辑: ['✏️', '#ff9636'], 复制: ['📋', '#e6c440'], 移动与复制: ['📦', '#e6c440'], 移动: ['📦', '#36c6c0'], 选择: ['🎯', '#ff79c2'], 排列: ['📐', '#9a9a9a'], 图片: ['🖼️', '#ff5f5f'], 界面: ['🎛️', '#7aa2c8'] };
 export { KEYMAP };
 // >v<🔎搜索-搜索框-Ctrl+F 跳到节点 / 右键「连线到…」选目标：同一个框（↑↓ 选，Enter 确定，Esc 关）
@@ -668,7 +681,7 @@ export function HelpModal({ onClose }) {
           <input className="htext" value={tq} onChange={e => setTq(e.target.value)} placeholder="搜文字…" title="搜说明文字；和左边的键位一起用 = 两个都要满足" />
           <span className="grow" /><button onClick={onClose}>✕</button></div>
         <div className="helpgrid">{groups.map(([g, rows]) => (
-          <section key={g} style={{ '--hue': KEY_HUE[g]?.[1] }}><h4>{KEY_HUE[g]?.[0] || '•'} {g}</h4><table><tbody>{rows.map(([k, v]) => <tr key={k}><td><kbd>{k}</kbd></td><td>{v}</td></tr>)}</tbody></table></section>
+          <section key={g} style={{ '--hue': KEY_HUE[g]?.[1] }}><h4>{KEY_HUE[g]?.[0] || '•'} {g}</h4><table><tbody>{rows.map(([k, v]) => <tr key={k}><td><KeyCombo text={k} /></td><td>{v}</td></tr>)}</tbody></table></section>
         ))}
         {!groups.length && <div className="hint" style={{ padding: 16 }}>没有符合的条目。</div>}</div>
       </div>

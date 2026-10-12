@@ -7,7 +7,7 @@ import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode
 import { colorMap, wordTables, hierHit, upperTable, baseColor, satOf } from './colors.js';
 import { patternMap, patternTables, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
-import { ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, HistoryPanel, OutlineTree, HelpModal, SettingsModal, ReplaceBar, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
+import { KeyCombo, ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, HistoryPanel, OutlineTree, HelpModal, SettingsModal, ReplaceBar, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
 const DRAG_PIC = 'application/x-synapsis-pic';
 import { initStash, useStash, putStash } from './stash.js';
 import { AiPanel, RelatedDock, AgentBox } from './ai.jsx';
@@ -1247,7 +1247,8 @@ export function Shell({ name, Canvas }) {
             return <button className={'tool portalbtn' + (pm !== 'show' ? ' on' : '')} title={'这一页的传送门（别的层的节点）：显示 → 淡化 → 隐藏（隐藏时和选中节点相连的仍显示）\n现在：' + { show: '显示', fade: '淡化', hide: '隐藏' }[pm]} onClick={() => setPortalModes(m => ({ ...m, [realScope]: { show: 'fade', fade: 'hide', hide: 'show' }[m[realScope] || 'show'] }))}>↗{{ show: '门', fade: '淡化', hide: '隐藏' }[pm]}</button>; })()}
         </div>}
         {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className={'canvas' + (seeLines ? ' seelines' : '') + (sel ? ' hassel' : '')} onDragOver={e => e.preventDefault()} onDrop={onDrop}>
-          {keyHints && <div className="keyhud" title="键位提示（H 关掉）">{KEY_HUD.map(([k, v]) => <div key={k}><kbd>{k}</kbd><span>{v}</span></div>)}<div className="hk">H 关掉 · ? 全部</div></div>}
+          {keyHints ? <div className="keyhud" title="键位提示（H 关掉）">{KEY_HUD.map(([k, v]) => <div key={k}><KeyCombo text={k} /><span>{v}</span></div>)}<div className="hk">H 关掉 · ? 全部</div></div>
+            : <div className="keychip" title="打开按键提示（H）" onClick={() => setKeyHints(true)}><KeyCombo text="H" /> 按键提示</div>} {/* 👤 2026-10-12 右下角始终有个入口 */}
           {plane && <div className="planebar" title="投影方向可以是轴，也可以是某个成员的方向（= 换一组基看同一批点）。拖动卡片 = 改它在这两个方向上的坐标">
             <b>空间</b>
             {['X', 'Y'].map((a, i) => <label key={a}>{a}<select value={plane.keys[i]} onChange={e => setSpaceAxes(m => { const k = [...plane.keys]; k[i] = e.target.value; return { ...m, [realScope]: k }; })}>

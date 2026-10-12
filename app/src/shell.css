@@ -690,3 +690,13 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 .voicetab { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; flex: 1; min-height: 0; }
 .voicetab textarea { flex: 1; min-height: 220px; resize: none; font: 12px/1.5 Consolas, 'Microsoft YaHei', monospace; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; }
 .voicetab .row { display: flex; gap: 6px; align-items: center; }
+/* 键帽：一个键一个框（快捷键页 / 右下角速查共用） */
+.kcombo { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.kcombo .k { --kc: var(--line2); font: 600 13px Consolas, monospace; min-width: 1.4em; text-align: center; padding: 1px 5px; border: 1px solid var(--kc); border-bottom-width: 2px; border-radius: 4px; background: color-mix(in srgb, var(--kc) 14%, var(--panel2)); color: var(--strong); white-space: nowrap; }
+.kcombo .k.ctrl { --kc: #3d8bff; } .kcombo .k.shift { --kc: #e0b020; } .kcombo .k.alt { --kc: #e0483a; } .kcombo .k.tab { --kc: #3fb35a; }
+.kcombo .k.arrow { --kc: #2bb3c0; } .kcombo .k.wasd { --kc: #a070e8; }
+.kcombo .kop { color: var(--faint); font-size: 11px; padding: 0 1px; } .kcombo .kor { color: var(--faint); padding: 0 4px; } .kcombo .ksp { width: 2px; } .kcombo .ktx { font-size: 12px; color: var(--text); padding: 0 2px; }
+.helpgrid td:first-child .kcombo .k { font-size: 14px; }
+.keyhud .kcombo .k { font-size: 11.5px; padding: 0 4px; }
+.keychip { position: absolute; right: 12px; bottom: 172px; z-index: 6; font-size: 11px; color: var(--dim); background: color-mix(in srgb, var(--panel) 85%, transparent); border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; cursor: pointer; display: flex; gap: 4px; align-items: center; } .keychip:hover { color: var(--strong); }
+.keychip .kcombo .k { font-size: 10.5px; padding: 0 4px; }
