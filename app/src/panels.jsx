@@ -109,7 +109,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         <button title="自动（按分组 / 名字配色，子节点跟着父节点）" className={!node.colorSet ? 'on auto' : 'auto'} onClick={() => { actions.color(node.id, null); }}>自动</button>
       </div>}
       {actions.sat && <div className="mi row swatches sat" onPointerDown={e => e.stopPropagation()}><span>饱和</span><SatButtons base={node.baseColor} cur={node.satNow} onSat={p => actions.sat(node.id, p)} /></div>}
-      {actions.tint && (node.ui || node.children?.length > 0) && <div className="mi row swatches tints" onPointerDown={e => e.stopPropagation()} title="框里面（UI 框 / 展开的子图）叠多少节点色；跟随 = ⚙ 外观的默认"><span>亮度</span><TintButtons cur={node.tintNow} onTint={t => actions.tint(node.id, t)} /></div>}
+      {actions.tint && (node.ui || node.children?.length > 0) && <div className="mi row swatches tints" onPointerDown={e => e.stopPropagation()} title="框里面（UI 框 / 展开的子图）叠多少节点色；跟随 = ⚙ 外观的默认"><span>不透</span><TintButtons cur={node.tintNow} onTint={t => actions.tint(node.id, t)} /></div>}
       {actions.pattern && <div className="mi row swatches pats" onPointerDown={e => e.stopPropagation()}>
         <span>图案</span>
         {Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (node.patternSet === k ? ' on' : !node.patternSet && node.pattern === k ? ' auto-on' : '')} style={{ '--c': node.color }} onClick={() => { actions.pattern(node.id, k); }} />)}
@@ -198,7 +198,7 @@ export function RawText({ text, hl, file, onSelMenu }) {
 }
 
 // >v<🎨画布-饱和度档-25 / 50 / 75 / 100（👤 2026-10-12：单独的 sat: 键，叠在自动色 / 手动色上，不把自动色变成手动；手动标注用）
-function TintButtons({ cur = 0, onTint }) { // 框里的「亮度」= 叠多少节点色：跟随 / 12 / 25 / 50 / 75 / 100（👤 2026-10-12）
+function TintButtons({ cur = 0, onTint }) { // 框里的「不透」（不透明度）= 叠多少节点色：跟随 / 12 / 25 / 50 / 75 / 100（👤 2026-10-12）
   return [0, 12, 25, 50, 75, 100].map(t => <button key={t} className={'tint' + (cur === t ? ' on' : '')} onClick={() => onTint(t)}>{t || '跟随'}</button>);
 }
 function SatButtons({ base, cur = 100, onSat }) {
@@ -243,7 +243,7 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
           {!wsNode?.meta?.color && why('color')}</div>}
         {onSat && <div className="row swatches sat"><span className="rl">饱和</span><SatButtons base={baseColor} cur={satNow} onSat={p => onSat(id, p)} />
           {editable && (n.children.length > 0 || /^true$/i.test(String(wsNode?.meta?.ui))) && <span className="tints" title="框里面（UI 框 / 展开的子图）叠多少节点色。跟随 = ⚙ 外观里亮 / 暗主题各自的默认">
-            <span className="rl">亮度</span><TintButtons cur={+wsNode?.meta?.tint || 0} onTint={t => onMeta(id, { tint: t ? String(t) : null })} /></span>}</div>}
+            <span className="rl">不透</span><TintButtons cur={+wsNode?.meta?.tint || 0} onTint={t => onMeta(id, { tint: t ? String(t) : null })} /></span>}</div>}
         {onPattern && <div className="row swatches pats"><span className="rl">图案</span>{Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (wsNode?.meta?.pattern === k ? ' on' : !wsNode?.meta?.pattern && pattern === k ? ' auto-on' : '')} style={{ '--c': color }} onClick={() => onPattern(id, k)} />)}
           <button className={'auto' + (!wsNode?.meta?.pattern ? ' on' : '')} title="自动（按图案词表 / AI 归类）" onClick={() => onPattern(id, null)}>自动</button>
           <button className={'auto' + (wsNode?.meta?.pattern === '无' ? ' on' : '')} title="不要底纹" onClick={() => onPattern(id, '无')}>无</button>

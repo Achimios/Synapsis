@@ -1496,7 +1496,7 @@ for (const kind of ['reactflow']) {
     ok(!!(await page.$('.bar.tabs a.gear')), '左栏最左上有 ⚙');
     await page.click('.bar.tabs a.gear'); await sleep(700);
     const rows = await page.$$eval('.settings .srow b', e => e.map(x => x.textContent));
-    ok(rows.includes('每步距离') && rows.includes('框内亮度（亮色主题）') && !rows.includes('AI 接入手册'), '设置窗：外观 + 方向键微调；init 那几项不在这（合进「📄 项目文件…」） ' + rows.join('|'));
+    ok(rows.includes('每步距离') && rows.includes('框内不透明度（亮色主题）') && !rows.includes('AI 接入手册'), '设置窗：外观 + 方向键微调；init 那几项不在这（合进「📄 项目文件…」） ' + rows.join('|'));
     const inp = '.settings .srow:has-text("每步距离") input';
     const was = await page.inputValue(inp);
     await page.fill(inp, '13'); await page.press(inp, 'Enter'); await sleep(900);
