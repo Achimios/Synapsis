@@ -685,3 +685,8 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 /* F 看全局中：左下角 ⛶ 底变黄；框里的 ⛶ 同理 */
 .react-flow__controls-button.ovbtn.on, .card.uibox .uiall.on, .frame .frall.on { background: #e6c440 !important; color: #222 !important; }
 .react-flow__controls-button.ovbtn.on svg { fill: #222 !important; }
+/* 🔊 指令框：语音开关 + 语音页 */
+.agentbox .bar .voicebtn { padding: 0 6px; opacity: .55; } .agentbox .bar .voicebtn.on { opacity: 1; border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.voicetab { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; flex: 1; min-height: 0; }
+.voicetab textarea { flex: 1; min-height: 220px; resize: none; font: 12px/1.5 Consolas, 'Microsoft YaHei', monospace; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; }
+.voicetab .row { display: flex; gap: 6px; align-items: center; }

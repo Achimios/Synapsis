@@ -10,6 +10,7 @@ import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText, synItems, synWrite } from '../core/cli.js';
 import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, suggestPatternWords, readAiLog, readUsage } from '../core/ai.js';
 import { lmsEstimate, lmsReload, lmsServerStart } from '../core/lmstudio.js';
+import { loadVoice, saveVoice, speak } from '../core/voice.js';
 let lmsTried = false;
 import { runAgent, applyPlan, loadChat, clearChat, estimateContext, isLoose, loadSummary, compactChat, needCompact } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
@@ -167,7 +168,9 @@ function workspaceApi() {
                 const b = await body(req), st = STASH.get(root) || {}; STASH.set(root, st);
                 st.thinking = String(b.text || '').slice(0, 40); // 关掉框再打开时，界面看这个知道「还在想」
                 try {
-                  const r = await runAgent(root, b, cfg, { home: SYN_HOME });
+                  const vo = b.voice ? loadVoice(SYN_HOME) : null; // 📢 开着才带语音说明
+                  const r = await runAgent(root, b, cfg, { home: SYN_HOME, voice: vo });
+                  if (vo && r.voice) r.spoke = speak(vo, r.voice, Date.now().toString(36)); // 念出来（不等播完）
                   if (r.actions.length) st.plan = r; else delete st.plan;
                   // 短记忆超了 → 后台压缩（不等它：这一轮的回答先回去，下一轮用上新摘要）
                   if (!st.compacting && needCompact(root, isLoose(cfg), cfg)) { st.compacting = true; r.compacting = true; compactChat(root, isLoose(cfg), cfg).catch(() => {}).finally(() => { delete st.compacting; }); }
@@ -175,6 +178,11 @@ function workspaceApi() {
                   return send(200, r);
                 } finally { delete st.thinking; }
               } // 待确认的动作服务端也记一份：AI 还在想时关掉框，回来照样能确认
+              if (url.pathname === '/ai/voice') { // 🔊 语音页：读 / 存 <Synapsis>/.synapsis/语音.md
+                if (req.method === 'PUT') { const b = await body(req); return send(200, saveVoice(SYN_HOME, b.text)); }
+                if (req.method === 'POST') { const v = loadVoice(SYN_HOME); return send(200, speak(v, { text: (await body(req)).text || '试音：一二三。' }, 'test-' + Date.now().toString(36))); } // 试听
+                return send(200, loadVoice(SYN_HOME));
+              }
               if (url.pathname === '/ai/related') return send(200, { items: await related(root, url.searchParams.get('id') || '', cfg) });
               if (url.pathname === '/ai/rerank' && req.method === 'POST') { const b = await body(req); return send(200, { items: await rerank(root, b.id, b.items, cfg) }); }
               if (url.pathname === '/ai/explain' && req.method === 'POST') { const b = await body(req); return send(200, { text: await explainRelation(root, b.id, b.other, cfg) }); }

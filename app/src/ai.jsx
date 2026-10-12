@@ -229,6 +229,21 @@ export function RelatedDock({ api, id, label, onJump, onOpenFile, onLink }) {
 //   「日志」页 = 每次调对话模型的原始记录（core/ai.js aiLog）。短记忆存在工作区（「清空记忆」= 新话题）
 // >v<🤖AI辅助-生成词表-按这个工作区的节点让对话模型起草 _配色.md（看过、可手改，再写入；旧的进 _过期的/）。
 //   👤 2026-10-08「这种操作不该丢 AI 配置页面…丢指令页面」→ 指令框的一页
+// >v<🤖AI指令-语音页-👤 2026-10-12：TTS 路径、声线、短人格（每次进提示词）、长人格（模型想看自己翻）都在这一份 md 里，本机（Synapsis 目录 .synapsis/语音.md，不进 git）
+function VoiceTab({ api }) {
+  const [d, setD] = useState(null), [txt, setTxt] = useState(''), [msg, setMsg] = useState('');
+  useEffect(() => { api('/ai/voice').then(r => { setD(r); setTxt(r.text); }).catch(e => setMsg('❌ ' + e.message)); }, []);
+  const save = () => api('/ai/voice', { method: 'PUT', body: JSON.stringify({ text: txt }) }).then(r => { setD(r); setMsg('已保存：声线 ' + r.role + (r.short ? '' : '；⚠ 短人格是空的')); }).catch(e => setMsg('❌ ' + e.message));
+  const test = () => api('/ai/voice', { method: 'POST', body: JSON.stringify({ text: '试音。严格来说，这句话没有任何意义。' }) }).then(r => setMsg(r.ok ? '🔊 已送去念（' + r.role + '）' : '❌ ' + r.why)).catch(e => setMsg('❌ ' + e.message));
+  if (!d) return <div className="hint pad">{msg || '读取中…'}</div>;
+  const long = txt.length > 1500;
+  return <div className="voicetab">
+    <div className="hint">右上角 📢 打开后，☁ 在线模型可以自己决定发一句语音（不是全念）。「短人格」每次都给它，「长人格」它想细看才翻。文件：{d.file}</div>
+    <textarea value={txt} onChange={e => setTxt(e.target.value)} spellCheck={false} onKeyDown={e => { e.stopPropagation(); if (e.ctrlKey && e.key === 's') { e.preventDefault(); save(); } }} />
+    <div className="row"><button onClick={save} disabled={txt === d.text}>保存（Ctrl+S）</button><button onClick={test} title="用现在保存的声线念一句">🔊 试听</button>
+      {txt !== d.text && <button onClick={() => setTxt(d.text)}>撤回没保存的</button>}<span className="hint">{long ? '⚠ 有点长了：短人格每次都发给模型，长的放「长人格」　' : ''}{msg}</span></div>
+  </div>;
+}
 function WordsTab({ api, onWordsApplied, scope = '', label = '项目' }) { // 👤 2026-10-12 按层起草：画布没选中 = 当前画布那个节点，选中分组 = 它；写进那一层的 _词表.md
   const [draft, setDraft] = useState(null), [pdraft, setPDraft] = useState(null), [busy, setBusy] = useState('');
   const gen = () => {
@@ -309,6 +324,8 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   const takeChat = d => { setTurns(d.turns.map(t => ({ ...t, done: t.executed || [] }))); setSummary(d.summary || {}); setCompacting(!!d.compacting); }; // done = 人确认执行了的（服务端的 done 只是提议）
   // 关掉框 / 关窗口不丢（托盘重启才清，见 stash.js）：没发出的话、在哪一页、待确认的动作
   const [tab, setTab] = useStash('agent.tab', 'chat');
+  const [voiceOn, setVoiceOn] = useState(() => { try { return localStorage.getItem('syn.voice') === '1'; } catch { return false; } }); // 📢 AI 可以自己发语音（本机记住）
+  const flipVoice = () => setVoiceOn(o => { try { localStorage.setItem('syn.voice', o ? '0' : '1'); } catch { /* */ } return !o; });
   const [turns, setTurns] = useState([]);
   const [text, setText] = useStash('agent.text', '');
   const [busy, setBusy] = useState('');
@@ -345,10 +362,10 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   const send = () => {
     const t = text.trim(), im = imgs; if ((!t && !im.length) || (busy && !busy.startsWith('❌'))) return;
     setBusy('🧠 思考中…（第一次要等模型加载）' + (im.length ? `　附 ${im.length} 张图` : '')); setPlan(null); setNote('');
-    api('/ai/agent', { method: 'POST', body: JSON.stringify({ scope, selected, text: t, images: im, boxes: boxes?.() || {} }) })
+    api('/ai/agent', { method: 'POST', body: JSON.stringify({ scope, selected, text: t, images: im, boxes: boxes?.() || {}, voice: voiceOn }) })
       .then(d => {
         setText(''); setImgs([]); setBusy(''); setUsage(d.usage?.total_tokens ? d.usage : null); if (d.compacting) setCompacting(true);
-        setTurns(ts => [...ts, { t: new Date().toISOString(), user: t || '（看图）', ...(im.length ? { imgs: im } : {}), say: d.say, done: [], know: d.knowledge, memRead: d.memRead, looked: d.looked }]); // imgs 在这里是图本身（这次会话里还能点开看），刷新后只剩张数
+        setTurns(ts => [...ts, { t: new Date().toISOString(), user: t || '（看图）', ...(im.length ? { imgs: im } : {}), say: d.say, done: [], know: d.knowledge, memRead: d.memRead, looked: d.looked, ...(d.voice ? { voice: d.voice.text } : {}) }]); if (d.spoke && !d.spoke.ok) setNote('🔊 没念出来：' + d.spoke.why); // imgs 在这里是图本身（这次会话里还能点开看），刷新后只剩张数
         const good = d.actions.filter(a => a.ok);
         if (d.actions.length) { setPlan(d); onPreview([...new Set(good.flatMap(a => a.ids || [a.id, a.from, a.to].filter(Boolean)))]); }
       })
@@ -377,8 +394,10 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
         <b>🤖 AI 指令</b>
         <a className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')}>💬 对话</a>
         <a className={tab === 'log' ? 'on' : ''} onClick={() => setTab('log')}>📜 日志</a>
-        <a className={tab === 'words' ? 'on' : ''} onClick={() => setTab('words')}>🎨 配色词表</a>
+        <a className={tab === 'words' ? 'on' : ''} onClick={() => setTab('words')}>🎨 词表</a>
+        <a className={tab === 'voice' ? 'on' : ''} onClick={() => setTab('voice')}>🔊 语音</a>
         <span style={{ flex: 1 }} />
+        <button className={'voicebtn' + (voiceOn ? ' on' : '')} title={voiceOn ? '📢 开着：AI 可以自己决定发一句语音（只有 ☁ 在线模型）。点一下关' : '📢 关着：AI 不发语音。点一下打开（只有 ☁ 在线模型；声线、人格在「🔊 语音」页）'} onClick={flipVoice}>📢</button>
         <CtxMeter ctx={ctx} usage={usage} />
         {tab === 'chat' && <button title={'压缩短记忆：除了最近几轮，旧的对话让模型写成一段摘要（原文不删，只是不再发给模型）。自动压缩的参数在 ⋯ → 🤖 AI 设置' + (mySum ? '\n\n现在的摘要：\n' + mySum.text : '')} disabled={compacting} onClick={compact}>{compacting ? '🗜 压缩中…' : '🗜 压缩'}</button>}
         {tab === 'chat' && <button title="清空短记忆（换个话题；摘要一起清）" onClick={() => api('/ai/chat', { method: 'DELETE' }).then(d => { takeChat(d); setPlan(null); setUsage(null); setNote(''); })}>🧹 清空记忆</button>}
@@ -389,6 +408,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
           {!turns.length && !plan && <div className="hint pad">在当前页交代要做的事，比如：<br />「把这几个左对齐」「按流程从左到右排开」「观测做完了」「在决策后面加一个执行」「个性调节决策」<br />它只能做：选中 / 对齐 / 排列 / 大纲排序 / 配色 / 状态 / 连线 / 删线 / 新建 / 改名 / 移进别的节点（不能删节点）。每一步都先给你看，Enter 才执行，Ctrl+Z 能撤销。<br />也可以问怎么用：「怎么连线」「有哪些快捷键」「怎么切白色主题」—— 它查快捷键表和 AI 接入手册回答。</div>}
           {turns.map((t, i) => <div key={i} className={'turn' + (mySum?.upto && t.t && t.t <= mySum.upto ? ' squashed' : '')}>
             <div className="u">🙂 {t.user}{Array.isArray(t.imgs) ? <span className="timgs">{t.imgs.map((u, j) => <img key={j} src={u} title="单击放大" onClick={() => onZoom?.(t.imgs, j)} />)}</span> : t.imgs ? <span className="hint">　🖼 附了 {t.imgs} 张图（没保存）</span> : null}</div>
+            {t.voice && <div className="know">🔊 {t.voice}</div>}
             {t.say && <div className="a">{t.say.includes('\n') ? <><span>🤖</span><MdLite text={t.say} /></> : '🤖 ' + t.say}</div>}
             {t.know?.length > 0 && !t.done?.length && <div className="know" title={t.know.join('\n')}>📖 参考了：{[...new Set(t.know.map(k => k.split('·')[0]))].join('、')}（{t.know.length} 段）</div>}
             {t.memRead?.length > 0 && <div className="know">🧠 读了记忆：{t.memRead.join('、')}</div>}
@@ -409,7 +429,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
         {imgs.length > 0 && <div className="askimgs">{imgs.map((u, i) => <span key={i}><img src={u} title="单击放大" onClick={() => onZoom?.(imgs, i)} /><a title="不附这张" onClick={() => setImgs(a => a.filter((_, j) => j !== i))}>✕</a></span>)}<span className="hint">{loose ? '随下一句发出（不进短记忆）' : '随下一句发出（本地模型要能看图，比如 Qwen VL）'}</span></div>}
         <textarea ref={inp} className="ask" rows={2} value={text} onChange={e => setText(e.target.value)}
           placeholder={plan?.actions.some(a => a.ok) ? 'Enter = 执行上面的动作；或者接着说（改主意 / 补充）' : '说要做什么…（Enter 发送，Shift+Enter 换行，Ctrl+V / 拖进来 = 附图）' + (selected.length ? `　已选 ${selected.length} 个` : '')} />
-      </> : tab === 'words' ? <WordsTab api={api} onWordsApplied={onWordsApplied} scope={wordsScope} label={wordsLabel} /> : <div className="logs">
+      </> : tab === 'voice' ? <VoiceTab api={api} /> : tab === 'words' ? <WordsTab api={api} onWordsApplied={onWordsApplied} scope={wordsScope} label={wordsLabel} /> : <div className="logs">
         <UsageBar api={api} tick={log} />
         {!log ? <div className="hint pad">读取中…</div> : !log.length ? <div className="hint pad">还没有调用记录</div> : log.map((l, i) => <div key={i} className="logrow">
           <div className="head" onClick={() => setOpenLog(openLog === i ? null : i)}>

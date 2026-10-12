@@ -12,6 +12,7 @@ import { validateAction, planMoves, VALIDATORS } from './plan.js';
 import { chat, chatModel } from './ai.js';
 import { pickKnowledge, knowledgeText, knowledgeChunks } from './knowledge.js';
 import { memoryIndex, readMemories, writeMemory, indexStatus } from './memory.js';
+import { voicePrompt, VOICE_MAX } from './voice.js';
 
 const SKILL_DIR = join(dirname(fileURLToPath(import.meta.url)), 'skills');
 export function loadSkills(dir = SKILL_DIR) {
@@ -121,7 +122,7 @@ export function parseReply(raw, max = 1200) {
   if (a < 0 || b <= a) throw new Error('输出里没有 JSON 对象');
   const j = JSON.parse(s.slice(a, b + 1));
   if (typeof j !== 'object' || Array.isArray(j)) throw new Error('不是 JSON 对象');
-  return { say: typeof j.say === 'string' ? j.say.slice(0, max) : '', actions: Array.isArray(j.actions) ? j.actions.slice(0, 60) : [], read: Array.isArray(j.read) ? j.read.slice(0, 6).map(String) : [], look: Array.isArray(j.look) ? j.look.slice(0, 6).filter(x => x && typeof x === 'object' && !Array.isArray(x)) : [] };
+  return { voice: j.voice && typeof j.voice === 'object' && j.voice.text ? { text: String(j.voice.text), role: j.voice.role ? String(j.voice.role) : '' } : null, say: typeof j.say === 'string' ? j.say.slice(0, max) : '', actions: Array.isArray(j.actions) ? j.actions.slice(0, 60) : [], read: Array.isArray(j.read) ? j.read.slice(0, 6).map(String) : [], look: Array.isArray(j.look) ? j.look.slice(0, 6).filter(x => x && typeof x === 'object' && !Array.isArray(x)) : [] };
 }
 
 // —— 短记忆 ——
@@ -280,7 +281,8 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   }
   const idx = loose && opts.home ? memoryIndex(opts.home, root) : '';
   const memNote = idx && !recent.some(t => t.memNote) ? `【记忆索引】（想看全文就只回 {"read": ["名字"]}）\n${idx}` : '';
-  const sys = loose ? loosePrompt(undefined, undefined, { model: chatModel(cfg).replace(/^\w+:/, ''), online: true, ctx: opts.ctx || null, ...memCfg(cfg, true) }) : systemPrompt();
+  const vo = loose && opts.voice ? opts.voice : null; // 📢 开着（只给在线宽松版）：提示词后面加几行语音说明 + 短人格
+  const sys = (loose ? loosePrompt(undefined, undefined, { model: chatModel(cfg).replace(/^\w+:/, ''), online: true, ctx: opts.ctx || null, ...memCfg(cfg, true) }) : systemPrompt()) + (vo ? voicePrompt(vo) : '');
   const lastNote = outcomeNote(recent.at(-1));
   let user = `${ctx.text}\n\n${lastNote ? lastNote + '\n\n' : ''}人说：${String(text).trim()}${memNote ? '\n\n' + memNote : ''}`;
   const out = loose ? 3000 : 1200, temp = loose ? 0.6 : 0.1; // 宽松版：话可以长、温度高些（有个性）
@@ -299,6 +301,8 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
       memRead.push(...m.names);
       add += `\n\n【记忆全文】\n${m.text || '（没有叫这些名字的记忆）'}`;
     }
+    const vLook = reply.look.filter(it => it && it.voice != null); // look {"voice": "人格"} = 长人格
+    if (vLook.length) { reply.look = reply.look.filter(it => !(it && it.voice != null)); looked.push('人格'); add += `\n\n【人格全文】\n${vo?.long || '（没有长人格）'}`; }
     if (reply.look.length) {
       const l = lookAt(root, ctx, reply.look);
       looked.push(...l.said);
@@ -315,8 +319,9 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   const actions = reply.actions.map(a => validateAction(a, { refs: ctx.refs, graph: g, scope: ctx.scope }));
   // 嘴上说做了、手上没给动作（8B 实测会这样）→ 明说，别让人以为做了
   if (!actions.some(a => a.ok) && (loose ? /^已(经)?(将|把|为|创建|新建|标记|改|连|设|排|对齐|选|挪|收紧)/ : /^(已|将|会|我会|我将)|已(经)?(将|把|为|创建|新建|标记|删除|改|连|设|完成|排|对齐|选)/).test(reply.say)) reply.say += /删/.test(text) ? '（⚠ 删除节点不归 AI 做：请右键节点 → 删除）' : '（⚠ 模型没有给出能执行的动作，实际什么都没做）';
-  pushChat(root, { t: new Date().toISOString(), mode: loose ? 'loose' : 'strict', scope: ctx.scope, user: String(text).trim(), ...(images.length ? { imgs: images.length } : {}), say: reply.say, actions: reply.actions, done: actions.filter(a => a.ok).map(a => a.desc), ...(memNote ? { memNote } : {}), ...(memRead.length ? { memRead } : {}), ...(looked.length ? { looked } : {}) });
-  return { say: reply.say, actions, raw, knowledge: loose ? [] : know.map(c => c.src), usage, mode: loose ? 'loose' : 'strict', memRead, looked, memIndex: !!memNote };
+  pushChat(root, { t: new Date().toISOString(), mode: loose ? 'loose' : 'strict', scope: ctx.scope, user: String(text).trim(), ...(vo && reply.voice ? { voice: reply.voice.text.slice(0, VOICE_MAX) } : {}), ...(images.length ? { imgs: images.length } : {}), say: reply.say, actions: reply.actions, done: actions.filter(a => a.ok).map(a => a.desc), ...(memNote ? { memNote } : {}), ...(memRead.length ? { memRead } : {}), ...(looked.length ? { looked } : {}) });
+  const voice = vo && reply.voice ? { text: reply.voice.text.slice(0, VOICE_MAX), role: reply.voice.role } : null; // 念不念由服务端（vite）调 speak，这里只交回去
+  return { say: reply.say, actions, raw, knowledge: loose ? [] : know.map(c => c.src), usage, mode: loose ? 'loose' : 'strict', memRead, looked, memIndex: !!memNote, voice };
 }
 
 // >v<🤖AI指令-执行-👤 确认后：大纲类（新建 / 改名 / 状态 / 连线 / 删线 / 大纲排序）一次存盘 = 一步撤销；
