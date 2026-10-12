@@ -605,6 +605,7 @@ export function Shell({ name, Canvas }) {
     // 只有 👤 在这里点了才写 color:；「自动」= 删掉 color:，回到按分组 / 关键词自动配色
     color: mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null,
     // 饱和度：单独的 sat:（👤 2026-10-12 不把自动色变手动）；旧的「色/50」写法顺手拆回底色
+    tint: mode === 'ws' ? (id, t) => saveMeta(id, { tint: t ? String(t) : null }) : null, // 框内浓度：0 = 跟随 ⚙ 外观
     sat: mode === 'ws' ? (id, p) => { const c = getMeta(id)?.color, patch = { sat: p === 100 ? null : String(p) }; if (c && String(c).includes('/')) patch.color = String(c).split('/')[0]; saveMeta(id, patch); } : null,
     pattern: mode === 'ws' ? (id, p) => saveMeta(id, { pattern: p }) : null,
     // 右键「转为 ▸」：普通节点 ⇄ UI 框（👤 2026-10-11 常建错）。只动 ui / w / h（进 Ctrl+Z）；转成 UI 框且有子级 → 展开成子图（UI 框默认那样）
@@ -1305,7 +1306,7 @@ export function Shell({ name, Canvas }) {
       {scaffold && <ScaffoldModal data={scaffold} onClose={() => setScaffold(null)}
         onCreate={(syn, files, mount) => api('/scaffold', { method: 'POST', body: JSON.stringify({ syn, files, mount }) }).then(async d => { setScaffold(null); setTree(null); setWsData(await api('/ws')); setSaveState(d.made.length ? '已创建 ' + d.made.join('、') : '没有新建（都已存在）'); }).catch(e => setSaveState('❌ ' + e.message))} />}
       {fileView && <FilePanel file={fileView.text !== undefined || fileView.error || fileView.note ? fileView : null} onClose={() => setFileView(null)} hl={fileHl && fileHl.file === fileView.path ? fileHl : null} onSelMenu={mode === 'ws' ? (e, s) => setMenu({ x: e.clientX, y: e.clientY, sel: s }) : null} />}
-      {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), color: colors.get(menu.id), baseColor: graph.nodes.has(menu.id) ? baseColor(graph, menu.id, getMeta(menu.id), cTables, semCols) : null, satNow: satOf(getMeta(menu.id)), colorSet: getMeta(menu.id)?.color || null, patternSet: getMeta(menu.id)?.pattern || null, pattern: patterns.get(menu.id) || null, open: !!expanded[menu.id], file: wsData?.nodes[menu.id]?.meta?.file || null, ref: wsData?.nodes[menu.id]?.meta?.ref || null, ui: isUi(wsData?.nodes[menu.id]?.meta), descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
+      {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), color: colors.get(menu.id), baseColor: graph.nodes.has(menu.id) ? baseColor(graph, menu.id, getMeta(menu.id), cTables, semCols) : null, satNow: satOf(getMeta(menu.id)), tintNow: +getMeta(menu.id)?.tint || 0, colorSet: getMeta(menu.id)?.color || null, patternSet: getMeta(menu.id)?.pattern || null, pattern: patterns.get(menu.id) || null, open: !!expanded[menu.id], file: wsData?.nodes[menu.id]?.meta?.file || null, ref: wsData?.nodes[menu.id]?.meta?.ref || null, ui: isUi(wsData?.nodes[menu.id]?.meta), descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
         actions={{ ...menuActions, allOpen }} onClose={() => setMenu(null)} />}
       {exportText !== null && (
         <div className="modal" onClick={() => setExportText(null)}>
