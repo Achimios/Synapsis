@@ -88,7 +88,7 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .card { --c: var(--line2); border-top-color: color-mix(in srgb, var(--c) 70%, var(--line2)); border-right-color: color-mix(in srgb, var(--c) 70%, var(--line2)); border-bottom-color: color-mix(in srgb, var(--c) 70%, var(--line2)); background: color-mix(in srgb, var(--c) 9%, var(--panel2)); }
 .card .title .lab { color: color-mix(in srgb, var(--c) 35%, var(--text)); }
 /* 👤 2026-10-11 亮色下卡片 / 框太淡：只在亮色里把节点色压深一截当边框、底色多染一点（深色不动） */
-:root[data-theme="light"] .card.uibox { border-color: color-mix(in srgb, var(--c, var(--accent)) 70%, #444); }
+:root[data-theme="light"] .card.uibox { border-color: color-mix(in srgb, var(--c, var(--accent)) 70%, #444); background: color-mix(in srgb, var(--c, var(--accent)) 14%, var(--hover)); } /* 👤 2026-10-12 亮色框里太白：原来 7% 的色叠在近白的 panel 上 → 换成灰底 + 14% 色，和里面的白卡分得开 */
 :root[data-theme="light"] .card.sel, :root[data-theme="light"] .frame.sel { border-color: var(--sel); }
 :root[data-theme="light"] .card:not(.uibox):not(.sel) { border-top-color: color-mix(in srgb, var(--c) 70%, #444); border-right-color: color-mix(in srgb, var(--c) 70%, #444); border-bottom-color: color-mix(in srgb, var(--c) 70%, #444); }
 :root[data-theme="light"] .card:not(.uibox) { background: color-mix(in srgb, var(--c) 14%, var(--panel2)); }

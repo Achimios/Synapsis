@@ -888,7 +888,9 @@ export function Shell({ name, Canvas }) {
       if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); e.stopPropagation(); setPropsOpen(o => !o); } // 👤 2026-10-10 Shift+Tab = 右栏（属性）开关
       else if (e.code === 'Backquote' && e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); e.stopPropagation(); setHistOpen(o => !o); } // 👤 Shift+` = 操作历史栏（和 ` 钉子窗口统一）
       else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); setLeftHidden(h => !h); } // 👤 Tab = 侧栏开关
-      else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) focusLabel(sel); } // 👤 2026-10-10 选中了 Enter = 重命名；没选中什么都不做（常误触）。👤 2026-10-11 键盘新建（Shift+Enter / Insert / Ctrl+Enter）和 F2 都去掉：新建走鼠标（右键），改名只留 Enter
+      else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) focusLabel(sel); }
+      else if (e.code === 'KeyR' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) focusLabel(sel); } // 👤 2026-10-12 R = 改名（左手，同 Enter）；Alt+R = 改完
+      else if (e.code === 'KeyT' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@') && graph.nodes.has(sel)) menuActions.addChild(sel); } // 👤 2026-10-12 T = 给选中的建子节点，直接进改名（同右键 ＋ 新建子节点） // 👤 2026-10-10 选中了 Enter = 重命名；没选中什么都不做（常误触）。👤 2026-10-11 键盘新建（Shift+Enter / Insert / Ctrl+Enter）和 F2 都去掉：新建走鼠标（右键），改名只留 Enter
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyS') { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) drill(sel); } // Alt+S = 钻进去（没选中不管）
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyW') { e.preventDefault(); e.stopPropagation(); up(); } // 👤 2026-10-10 Alt+W/A/D = 上一层 / 后退 / 前进（单手）
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyA') { e.preventDefault(); e.stopPropagation(); back(); }
@@ -1353,7 +1355,7 @@ function RenameInput({ id, label }) {
   }, []);
   return <input ref={el} className="rename nodrag nopan" defaultValue={label} size={Math.max(4, label.length + 2)}
     onPointerDown={stop} onMouseDown={stop} onClick={stop} onDoubleClick={stop}
-    onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') { done.current = true; cardActions.commitRename(id, e.target.value); } else if (e.key === 'Escape') { done.current = true; cardActions.cancelRename(); } }}
+    onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter' || (e.altKey && e.code === 'KeyR')) { e.preventDefault(); done.current = true; cardActions.commitRename(id, e.target.value); } else if (e.key === 'Escape') { done.current = true; cardActions.cancelRename(); } }}
     onBlur={e => { if (!done.current) cardActions.commitRename(id, e.target.value); }} />;
 }
 export function NodeCard({ node, img, dim, isSel }) {
