@@ -1,6 +1,7 @@
 # TTS 调用方法（Synapsis）
 
-> 规格来源：`C:\Users\Administrator\Desktop\Obsidian_V_Hyper\1_DeepSeek_TTS\_TTS_详细规则.md`（出问题查那份）。
+> 规格来源：`C:\Users\Administrator\Desktop\Obsidian_V_Hyper\1_DeepSeek_TTS\__TTS_详细规则.md`（出问题查那份；写台词的标点 / 停顿技巧见同目录 `__TTS_写台词技巧.md`）。
+> 2026-10-14：TTS 项目整理过目录，入口脚本路径不变（仍是根目录 `tts_v1.py`）；新增了可选字段 `mood`（情绪，只有复刻角色如 cortana 才有区别）。
 > 人格见 `0_人格_伊丽莎白.md`；暂用角色 **Eva**（没有伊丽莎白专属声线）。
 
 ## 硬规则
