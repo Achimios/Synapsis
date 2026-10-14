@@ -15,7 +15,7 @@ export const DEFAULT_VOICE = `# 🔊 内置 AI 的语音（本机，不进 git�
 改完点「保存」就生效。下面「设置」里每行「- 键: 值」；语言留空 = 自动识别（中英混着说也行），语气只对 qwen 声线有效。
 
 ## 设置
-- TTS 脚本: C:/Users/Administrator/Desktop/Obsidian_V_Hyper/1_DeepSeek_TTS/tts_v1.py
+- TTS 脚本: C:/Users/Administrator/Desktop/Vault_Automata/1_TTS/tts_v1.py
 - 声线: hastings
 - 可用声线: hastings, victor, asuka, eva, cortana, emma, klara, robot
 - 语气: 英式、慢条斯理、阴阳怪气
