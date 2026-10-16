@@ -354,6 +354,17 @@ const shrink = url => new Promise(ok => {
 });
 const imgFiles = dt => [...(dt?.items || [])].filter(i => i.kind === 'file' && i.type.startsWith('image/')).map(i => i.getAsFile()).filter(Boolean);
 
+// 日志页：连不上本地 LM Studio 的连续报错合成一行（👤 2026-10-16：没开 LLM 时别刷一屏 fetch failed）
+const connErr = e => /fetch failed|ECONNREFUSED|连不上/.test(String(e || ''));
+function groupLog(log) {
+  const out = [];
+  for (const l of log) {
+    const last = out.at(-1);
+    if (last && connErr(l.error) && connErr(last.error) && l.model === last.model) { last.n++; last.tEnd = l.t; if (!last.kinds.includes(l.kind)) last.kinds.push(l.kind); continue; }
+    out.push({ ...l, n: 1, tEnd: l.t, kinds: [l.kind] });
+  }
+  return out;
+}
 export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, onClose, onWordsApplied, onZoom, preset = null, wordsScope = '', wordsLabel = '项目' }) {
   const [imgs, setImgs] = useState([]); // 这一句要附的图（dataURL）
   const addImgs = files => Promise.all(files.map(f => readImg(f).then(shrink))).then(us => setImgs(a => [...a, ...us].slice(0, 6)));
@@ -495,9 +506,10 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
           placeholder={plan?.actions.some(a => a.ok) ? 'Enter = 执行上面的动作；或者接着说（改主意 / 补充）' : '说要做什么…（Enter 发送，Shift+Enter 换行，Ctrl+V / 拖进来 = 附图）' + (selected.length ? `　已选 ${selected.length} 个` : '')} />
       </> : tab === 'voice' ? <VoiceTab api={api} /> : tab === 'words' ? <WordsTab api={api} onWordsApplied={onWordsApplied} scope={wordsScope} label={wordsLabel} /> : <div className="logs">
         <UsageBar api={api} tick={log} />
-        {!log ? <div className="hint pad">读取中…</div> : !log.length ? <div className="hint pad">还没有调用记录</div> : log.map((l, i) => <div key={i} className="logrow">
-          <div className="head" onClick={() => setOpenLog(openLog === i ? null : i)}>
-            <span className="t">{fmt(l.t)}</span><b>{l.kind}</b><span className="hint">{l.model} · {l.ms} ms</span>{l.error && <span className="bad">❌ {l.error}</span>}
+        {!log ? <div className="hint pad">读取中…</div> : !log.length ? <div className="hint pad">还没有调用记录</div> : groupLog(log).map((l, i) => <div key={i} className="logrow">
+          <div className="head" onClick={() => l.n > 1 ? null : setOpenLog(openLog === i ? null : i)}>
+            <span className="t">{l.n > 1 ? fmt(l.tEnd) + '–' + fmt(l.t) : fmt(l.t)}</span><b>{l.n > 1 ? l.kinds.join(' / ') : l.kind}</b><span className="hint">{l.model}{l.n > 1 ? '' : ' · ' + l.ms + ' ms'}</span>
+            {l.error && <span className="bad">❌ {connErr(l.error) ? '连不上本地 LM Studio（没开？）' : l.error}{l.n > 1 ? ` × ${l.n} 次` : ''}</span>}
           </div>
           {openLog === i && <div className="body">
             {(l.messages || []).map((m, j) => <details key={j} open={m.role !== 'system'}><summary>{m.role}（{m.content.length} 字）</summary><pre>{m.content}</pre></details>)}
