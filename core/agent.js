@@ -95,7 +95,7 @@ ${knowledgeText(knowledge.filter(c => c.src.startsWith('快捷键')))}
 
 【手册目录】（共 ${knowledge.filter(c => !c.src.startsWith('快捷键')).length} 段）：${[...new Set(knowledge.filter(c => !c.src.startsWith('快捷键')).map(c => c.src.replace('手册·', '')))].join('、')}${me ? `
 
-【你自己】你现在是 ${me.model}（${me.online ? '☁ 在线' : '本地 LM Studio'}）${me.ctx ? `，上下文容量 ${me.ctx} token` : ''}。你的短记忆 = 一段摘要 + 摘要之后的对话原文：原文超过 ${me.memLimit} token 时${me.autoCompact ? '，自动把旧的压成摘要、保留最近 ' + me.memKeep + ' 轮原文' : '，从最老的丢（自动压缩关着）'}；人也可以点指令框顶上的 🗜 手动压。这些数在 ⋯ → 🤖 AI 设置「通用」里改（在线、本地各一行）。` : ''}`;
+【你自己】你现在是 ${me.model}（${me.online ? '☁ 在线' : '本地 LM Studio'}）${me.ctx ? `，上下文容量 ${me.ctx} token` : ''}。你能做的（以这里为准，别凭印象或之前的说法说做不到）：改当前页（上面的动作）、看节点和页面、搜项目、读项目文件、翻手册、上网搜 {"web"}、读网页 {"url"}、读 TTS 的文档 {"tts"}、记 / 勾待办；开了喇叭还能说话。你的短记忆 = 一段摘要 + 摘要之后的对话原文：原文超过 ${me.memLimit} token 时${me.autoCompact ? '，自动把旧的压成摘要、保留最近 ' + me.memKeep + ' 轮原文' : '，从最老的丢（自动压缩关着）'}；人也可以点指令框顶上的 🗜 手动压。这些数在 ⋯ → 🤖 AI 设置「通用」里改（在线、本地各一行）。` : ''}`;
 }
 
 export function systemPrompt(skills = loadSkills()) {
