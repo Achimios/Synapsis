@@ -1431,11 +1431,13 @@ for (const kind of ['reactflow']) {
   ok(!!(await page.$('.ctx .mi:has-text("打开引用的文件")')), '右键这张卡有「📎 打开引用的文件」');
   await page.keyboard.press('Escape'); await sleep(200);
   // 撤销
-  await page.mouse.click(600, 720); await page.keyboard.press('Control+z'); await sleep(1500);
+  // 文件预览 + 右栏开着时画布很窄，(600, 720) 会点进右栏正文框（Ctrl+Z 就撤成了打字）→ 点画布空白处
+  const pane = () => page.click('.react-flow__pane', { position: { x: 15, y: 15 } });
+  await pane(); await page.keyboard.press('Control+z'); await sleep(1500);
   ok((await page.$$('.card')).length === 2 && existsSync(join(ws, 'docs', '设计笔记.md')), 'Ctrl+Z → 卡片没了，原文件还在');
   // Ctrl+F 跳转：同样两个页签，Tab 切到项目文件，选一个 = 打开那个文件的预览
-  await page.mouse.click(600, 720); await page.keyboard.press('Control+f'); await sleep(700);
-  ok(!!(await page.$('.finder .ftabs')) && (await page.textContent('.finder .bar')).includes('Tab') && !(await page.textContent('.finder .bar')).includes('Esc'), 'Ctrl+F：页签永远在，提示只留「名字 / 属性 / 正文 · Tab」');
+  await pane(); await page.keyboard.press('Control+f'); await sleep(700);
+  ok(!!(await page.$('.finder .ftabs')) && !!(await page.$('.finder .ftabs .tabkey')) && !(await page.textContent('.finder .bar')).includes('Esc'), 'Ctrl+F：页签永远在，提示只留「名字 / 属性 / 正文 · Tab」');
   await page.fill('.finder input', '设计笔记'); await page.keyboard.press('Tab'); await sleep(400);
   await page.click('.finder li:has-text("设计笔记.md")'); await sleep(1200);
   ok((await page.textContent('body')).includes('笔记正文XYZ'), 'Ctrl+F → 项目文件页选文件 → 打开预览');
@@ -1822,6 +1824,38 @@ for (const kind of ['reactflow']) {
   ok(!(await page.$('.replbar')), '✕ 关掉替换条');
   await page.mouse.click(700, 700); await page.keyboard.press('Control+z'); await sleep(1800);
   ok((await labs()) === '友军,怪物A,敌人B', 'Ctrl+Z → 全部替换一步撤回 ' + await labs());
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
+{
+  console.log('== Ctrl+Tab 生效区');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-zone-ui-')); noAi(ws);
+  saveOutline(ws, '甲\n  甲一\n乙\n丙\n丁\n戊');
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
+  const zone = () => page.evaluate(() => document.body.dataset.kbzone || 'canvas');
+  const osel = () => page.$eval('.orow.sel', e => e.textContent.replace(/[·▾▸→\s]/g, '')).catch(() => '');
+  await page.mouse.click(700, 700); if (!(await page.$('aside.side'))) { await page.keyboard.press('Shift+Tab'); await sleep(300); } // 右栏要开着
+  await page.keyboard.press('Control+Tab'); await sleep(200);
+  ok(await zone() === 'right' && await page.$eval('aside.outline', e => e.offsetParent !== null), 'Ctrl+Tab：画布 → 右栏（左栏没被当成 Tab 关掉）');
+  await page.keyboard.press('Control+Tab'); await sleep(200);
+  ok(await zone() === 'left', '再按 → 左栏（轮转）');
+  await page.keyboard.press('s'); await sleep(200);
+  const first = await osel();
+  await page.keyboard.press('Shift+S'); await sleep(400);
+  ok(first && (await osel()) !== first && (await page.$eval('.card.sel .lab', e => e.textContent).catch(() => '')) === await osel(), '左栏 S / Shift+S 在大纲里走，选中跟画布同步 ' + first + ' → ' + await osel());
+  await page.keyboard.press('Control+Tab'); await sleep(200); await page.keyboard.press('Control+Tab'); await sleep(200);
+  ok(await zone() === 'right', '再轮两下 → 右栏');
+  for (let i = 0; i < 15 && !(await page.$('aside.side textarea.zkb')); i++) { await page.keyboard.press('s'); await sleep(60); }
+  await page.keyboard.press('e'); await sleep(200);
+  ok(await page.evaluate(() => document.activeElement?.matches('aside.side textarea')), '右栏 S 走到正文、E 光标进去');
+  await page.keyboard.press('Escape'); await sleep(200);
+  ok(await page.evaluate(() => document.activeElement === document.body) && await zone() === 'right', '正文里 Esc = 退出来，还在右栏');
+  await page.click('.bar.tabs a:text-is("文本")'); await sleep(300);
+  await page.keyboard.press('Control+Tab'); await sleep(200); const z1 = await zone(); await page.keyboard.press('Control+Tab'); await sleep(200); const z2 = await zone();
+  ok(z1 !== 'left' && z2 !== 'left', '左栏是「文本」页：轮转跳过它 ' + z1 + ' ' + z2);
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });

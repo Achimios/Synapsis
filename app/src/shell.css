@@ -217,6 +217,9 @@ textarea.body:focus { border-color: var(--line2); }
 pre.raw { margin: 0; white-space: pre-wrap; word-break: break-word; font: var(--mono); }
 
 /* 左栏页签 + 文件树 */
+/* 👤 2026-10-16 Ctrl+Tab 生效区：WASD 在哪一栏，哪一栏描一圈强调色；走到的那一格同右键菜单的键盘框（zones.js） */
+body[data-kbzone="left"] aside.outline, body[data-kbzone="right"] aside.side { outline: 2px solid var(--accent); outline-offset: -2px; } /* outline 画在子元素上面，不会被栏里的底色盖住 */
+aside .zkb { outline: 2px solid var(--accent) !important; outline-offset: 1px; background: var(--selbg); }
 /* 👤 2026-10-16 左右栏顶部过窄：换行，别被裁掉（不做 ⋯ 二级菜单） */
 .outline > .bar.tabs, .side > .bar.tabs { height: auto; min-height: 28px; flex-wrap: wrap; row-gap: 2px; padding-top: 2px; padding-bottom: 2px; box-sizing: border-box; }
 .side > .bar.tabs .hint { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }

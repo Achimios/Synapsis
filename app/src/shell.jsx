@@ -2,6 +2,7 @@
 // 画布组件（main.jsx，React Flow）只负责「显示 view + 回报用户操作」。
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { describeChange } from './history.js';
+import './zones.js'; // Ctrl+Tab 换 WASD 的生效区（左栏 / 画布 / 右栏）：一加载就装键盘监听，要比下面这些都早
 import { uiLayoutText, isUi, uiSize } from '../../core/uilayout.js';
 import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode, withoutNode, withStatus, withLabel, withReordered, replaceLabels, autoLayout, lineOf, resolveLabel, isDropped, withCopies, withoutEdge, ROOT } from './outline.js';
 import { colorMap, wordTables, hierHit, upperTable, baseColor, satOf } from './colors.js';
