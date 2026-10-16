@@ -932,8 +932,8 @@ for (const kind of ['reactflow']) {
   ok(!(await page.$('.agentbox .plan')) && !(await page.evaluate(() => fetch('/api/ui/stash' + location.search).then(r => r.json()))).plan, 'Esc 不要 → 待确认的也从暂存里清掉');
   // 拖标题栏移动框，位置记住；双击标题栏空白回默认
   const bb0 = await (await page.$('.agentbox')).boundingBox();
-  const tb0 = await (await page.$('.agentbox .bar b')).boundingBox(); // 按在标题字上拖（按钮上按下不算拖）
-  await page.mouse.move(tb0.x + 10, bb0.y + 14); await page.mouse.down(); await page.mouse.move(tb0.x + 10 - 200, bb0.y - 200, { steps: 5 }); await page.mouse.up(); await sleep(300);
+  const tb0 = await (await page.$('.agentbox .bar .atabs')).boundingBox(); // 按在标题栏空白处拖（页签 / 按钮上按下不算拖；框窄时标题字会藏起来）
+  await page.mouse.move(tb0.x + tb0.width - 6, bb0.y + 14); await page.mouse.down(); await page.mouse.move(tb0.x + tb0.width - 6 - 200, bb0.y - 200, { steps: 5 }); await page.mouse.up(); await sleep(300);
   const bb1 = await (await page.$('.agentbox')).boundingBox();
   ok(Math.abs(bb1.x - (bb0.x - 200)) < 3 && Math.abs(bb1.y - (bb0.y - 214)) < 3, '拖标题栏 → 框跟着走 ' + JSON.stringify([bb0, bb1].map(b => [Math.round(b.x), Math.round(b.y)])));
   await page.click('.agentbox .bar button[title^="关闭"]'); await sleep(300);
