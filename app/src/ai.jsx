@@ -229,7 +229,7 @@ export function RelatedDock({ api, id, label, onJump, onOpenFile, onLink }) {
 //   「日志」页 = 每次调对话模型的原始记录（core/ai.js aiLog）。短记忆存在工作区（「清空记忆」= 新话题）
 // >v<🤖AI辅助-生成词表-按这个工作区的节点让对话模型起草 _配色.md（看过、可手改，再写入；旧的进 _过期的/）。
 //   👤 2026-10-08「这种操作不该丢 AI 配置页面…丢指令页面」→ 指令框的一页
-// >v<🤖AI指令-语音页-👤 2026-10-16：只选 TTS 文件夹 / 角色 / 优先后端（存 .synapsis/语音.json）；TTS 的数据每次从它的 bridge/roles.json 现读
+// >v<🤖AI指令-语音页-👤 2026-10-16：只选 TTS 文件夹 / 角色 / 优先后端（存 settings.yaml 的 voice 段）；TTS 的数据每次从它的 bridge/roles.json 现读
 function VoiceTab({ api }) {
   // 👤 2026-10-16 Synapsis 只是 TTS 的调用端：这里只选三样（TTS 文件夹、角色、优先后端）；角色、情绪、简介、口吻都每次从 TTS 的 bridge/roles.json 现读，
   //   读不到就停用语音、提示去找文件夹。Synapsis 不存 TTS 的任何数据

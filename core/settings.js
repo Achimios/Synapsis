@@ -28,6 +28,16 @@ export const SCHEMA = {
       boxDark: [14, '框内不透明度（暗色主题）', '同上，暗色主题（%）'],
     },
   },
+  // 👤 2026-10-16 内置 AI 语音：只记人的三个选择（在指令框「🔊 语音」页选，不在 ⚙ 里列）；TTS 的数据每次从它的 bridge/roles.json 现读，这里不存
+  voice: {
+    title: '内置 AI 语音',
+    hidden: true,
+    keys: {
+      tts: ['', 'TTS 文件夹', '里面有 tts_v1.py 和 bridge/roles.json'],
+      role: ['hastings', '角色', 'TTS 角色表里的 name'],
+      backend: ['', '优先后端', 'volc / edge / qwenf / qwenp；空 = 自动'],
+    },
+  },
   // 👤 2026-10-12 方向键挪卡片 / Ctrl+方向键 撑大 UI 框：打字时双手不离键盘
   nudge: {
     title: '方向键微调',
@@ -43,7 +53,8 @@ export const SCHEMA = {
 
 export const defaults = () => Object.fromEntries(Object.entries(SCHEMA).map(([sec, { keys }]) => [sec, Object.fromEntries(Object.entries(keys).map(([k, [d]]) => [k, d]))]));
 
-const coerce = v => { const t = String(v).trim().replace(/\s+#.*$/, ''); if (t === 'true') return true; if (t === 'false') return false; if (/^-?\d+(\.\d+)?$/.test(t)) return Number(t); return t.replace(/^(["'])(.*)\1$/, '$2'); };
+// 空值后面直接跟注释（「backend:   # …」）= 空
+const coerce = v => { const t = String(v).trim().replace(/(^|\s+)#.*$/, ''); if (t === 'true') return true; if (t === 'false') return false; if (/^-?\d+(\.\d+)?$/.test(t)) return Number(t); return t.replace(/^(["'])(.*)\1$/, '$2'); };
 
 // 文本 → 设置（先放默认值，文件里有的覆盖；不认识的段 / 键原样带上，免得丢别人加的）
 export function parseSettings(text) {
@@ -119,6 +130,12 @@ nudge:
   fast: 4              # 按住 Shift 时每步 × 几
   delay: 200           # 按下走一步后，停多久（毫秒）开始连续走
   interval: 100        # 连续走时每步隔多久（毫秒）
+
+# voice：内置 AI 语音（在指令框「🔊 语音」页选；TTS 的角色 / 情绪 / 口吻每次从 TTS 现读，不存这里）
+voice:
+  tts:                 # TTS 文件夹（本机路径）
+  role: hastings       # 角色
+  backend:             # 优先后端，空 = 自动
 
 # 快捷键自定义：下一步做（现在的键位见界面里的 ⌨ 快捷键）
 # keys: {}

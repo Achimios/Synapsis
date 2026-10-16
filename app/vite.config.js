@@ -179,7 +179,7 @@ function workspaceApi() {
                   return send(200, r);
                 } finally { delete st.thinking; }
               } // 待确认的动作服务端也记一份：AI 还在想时关掉框，回来照样能确认
-              if (url.pathname === '/ai/voice') { // 🔊 语音页：人的三个选择（.synapsis/语音.json）+ TTS 现读的角色表
+              if (url.pathname === '/ai/voice') { // 🔊 语音页：人的三个选择（settings.yaml 的 voice 段）+ TTS 现读的角色表
                 if (req.method === 'PUT') { const b = await body(req); return send(200, saveVoiceCfg(SYN_HOME, b.set || {})); } // set = 人的三个选择 {tts, role, backend}
                 return send(200, loadVoice(SYN_HOME));
               }

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { voicePrompt, loadVoice, saveVoiceCfg, speak, VOICE_MAX, loadCatalog, resolveVoice } from '../voice.js';
 import { parseReply } from '../agent.js';
+import { loadSettings } from '../settings.js';
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { c ? pass++ : (fail++, console.log('  ✗', m)); };
@@ -31,11 +32,12 @@ ok(pc.includes('"mood": "usual | urgent"') && !pc.includes('口吻'), 'cortana�
 
 // 只存人的三个选择；TTS 数据不落地
 const home = mkdtempSync(join(tmpdir(), 'syn-voice-'));
-ok(!loadVoice(home).ok && !existsSync(join(home, '.synapsis', '语音.json')), '新机器：没选 TTS 文件夹 = 停用，不凭空建文件');
+ok(!loadVoice(home).ok && !existsSync(join(home, 'settings.yaml')), '新机器：没选 TTS 文件夹 = 停用，不凭空建文件');
 const v2 = saveVoiceCfg(home, { tts: join(tts, 'tts_v1.py'), role: 'cortana', backend: 'volc' });
-ok(v2.ok && v2.tts === tts && v2.role === 'cortana' && v2.moods.includes('urgent'), '选到脚本本身也认成文件夹；选完就读角色表');
-const saved = JSON.parse(readFileSync(join(home, '.synapsis', '语音.json'), 'utf8'));
-ok(Object.keys(saved).sort().join() === 'backend,role,tts', '语音.json 只有人的三个选择（不存角色 / 情绪 / 简介 / 口吻）');
+ok(v2.ok && v2.tts === tts.split('\\').join('/') && v2.role === 'cortana' && v2.moods.includes('urgent'), '选到脚本本身也认成文件夹（路径统一正斜杠）；选完就读角色表');
+const yaml = readFileSync(join(home, 'settings.yaml'), 'utf8');
+const vs = loadSettings(home).voice;
+ok(vs.role === 'cortana' && vs.backend === 'volc' && !!vs.tts && !/urgent|description|persona/.test(yaml) && !existsSync(join(home, '.synapsis')), '三个选择存进 settings.yaml 的 voice 段（不存角色 / 情绪 / 简介 / 口吻，也没有别的语音文件）');
 const r = speak(loadVoice(home), { text: '你好', mood: 'urgent' });
 ok(r.ok && r.job.mood === 'urgent' && r.job.pref === 'volc' && !('style' in r.job), '发出去：mood（这个角色有的）+ pref；不发 style');
 ok(!('mood' in speak(h, { text: '嗯', mood: 'urgent' }).job), '角色没有的情绪不发');

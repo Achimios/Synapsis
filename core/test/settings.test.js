@@ -15,6 +15,7 @@ ok(p1.init.manual === false && p1.init.launcher === false && p1.init.blackboard 
 ok(p1['未知段']?.x === 3, '不认识的段 / 键原样带上（数字）');
 ok(parseSettings(DEFAULT_TEXT).init.words === true && parseSettings(DEFAULT_TEXT).nudge.delay === 200, '自带的默认文件能读回来');
 ok(parseSettings('init:\r\n  manual: false\r\n').init.manual === false, 'CRLF 也行');
+ok(parseSettings(DEFAULT_TEXT).voice.backend === '' && parseSettings(DEFAULT_TEXT).voice.role === 'hastings' && parseSettings('voice:\n  tts: C:/A B/1_TTS   # 注释\n').voice.tts === 'C:/A B/1_TTS', '语音段：空值 + 注释 = 空；Windows 路径（带冒号、空格）读得对');
 ok(parseSettings('init:\n  colorWords: false\n  patternWords: false\n').init.words === false && !('colorWords' in parseSettings('init:\n  colorWords: true\n').init), '旧的 colorWords / patternWords → words（两个都关才关）');
 ok(parseSettings('init:\n  colorWords: true\n').init.words === true && defaults().init.docs === false, '一个开着就开；文档骨架默认不要');
 

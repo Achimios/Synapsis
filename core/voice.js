@@ -3,12 +3,12 @@
 // 👤 2026-10-16 Synapsis 只是 TTS 的调用端，项目要干净、层级要清楚：TTS 的数据（角色、情绪、简介、口吻 persona）每次从
 //   <TTS 文件夹>/bridge/roles.json 现读，Synapsis 不存任何副本、不约束它的格式（字段变了这边适配）；读不到 = 语音停用，提示人去找文件夹。
 //   persona 是可选口吻：闲聊、玩梗时才用，严肃讨论别用；description 比 persona 优先。
-//   Synapsis 只记人的三个选择：.synapsis/语音.json {tts: 文件夹, role, backend}
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+//   Synapsis 只记人的三个选择：settings.yaml 的 voice 段 {tts: 文件夹, role, backend}
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { loadSettings, saveSettings } from './settings.js';
 import { spawn } from 'node:child_process';
 
-export const voiceCfgFile = home => join(home, '.synapsis', '语音.json');
 export const VOICE_MAX = 120; // 一条语音最多多少字
 export const TTS_SCRIPT = 'tts_v1.py';
 const CFG0 = { tts: '', role: 'hastings', backend: '' }; // backend '' = 自动（不发 pref）
@@ -33,15 +33,16 @@ export function resolveVoice(cfg, catalog) {
   return { ...cfg, script: cfg.tts ? join(cfg.tts, TTS_SCRIPT) : '', ok: !error, error, roles: catalog ? catalog.map(r => r.name) : [], moods: arr(me?.moods), backends: arr(me?.backends), desc: String(me?.description || ''), persona: String(me?.persona || '').trim() };
 }
 
+// 人的三个选择存在 Synapsis 的设置里（settings.yaml 的 voice 段，👤 2026-10-16），没有单独的语音文件
 export function loadVoiceCfg(home) {
-  try { return { ...CFG0, ...JSON.parse(readFileSync(voiceCfgFile(home), 'utf8')) }; } catch { return { ...CFG0 }; }
+  const v = loadSettings(home).voice || {};
+  return { ...CFG0, ...Object.fromEntries(['tts', 'role', 'backend'].map(k => [k, v[k] == null ? CFG0[k] : String(v[k])])) };
 }
 export function saveVoiceCfg(home, patch) {
-  const next = loadVoiceCfg(home);
+  const next = {};
   for (const k of ['tts', 'role', 'backend']) if (patch && k in patch) next[k] = String(patch[k] ?? '').trim();
-  if (next.tts) next.tts = next.tts.replace(/[\\/]+$/, '').replace(new RegExp('[\\\\/]' + TTS_SCRIPT.replace('.', '\\.') + '$', 'i'), ''); // 选到了脚本本身也认
-  mkdirSync(dirname(voiceCfgFile(home)), { recursive: true });
-  writeFileSync(voiceCfgFile(home), JSON.stringify({ tts: next.tts, role: next.role, backend: next.backend }, null, 1));
+  if (next.tts) next.tts = next.tts.replace(/\\/g, '/').replace(/\/+$/, '').replace(new RegExp('/' + TTS_SCRIPT.replace('.', '\\.') + '$', 'i'), ''); // 选到了脚本本身也认；路径统一正斜杠
+  if (Object.keys(next).length) saveSettings(home, { voice: next });
   return loadVoice(home);
 }
 export function loadVoice(home) {
