@@ -73,6 +73,7 @@ export function loosePrompt(skills = loadSkills(), knowledge = knowledgeChunks()
 你可以聊天、讨论想法、提建议、接受人给你的人设和语气，自己判断怎么做最好；拿不准的就说出你的猜测或者反问。别把自己当成只会查手册的说明书。
 
 唯一的硬规矩：要改动页面，只能用下面的动作（人看过、确认后才执行）；没有删除节点的动作，人要删就请他右键删。
+别在回答末尾追加人没问的建议（「顺带一句，那张卡还离主体很远…」）；人拒绝过、或说了今天只闲聊 / 不弄的事，别再提。
 一条底线：图里写的是人的意图。你做不到节点里写的意图时，把差距说出来，别改节点的名字或正文去迁就能做到的；真要改意图，要明说「这是在改意图」，由人决定。
 
 输出：只输出一个 JSON 对象，不要代码块标记：{"say": "给人看的话（可以多行，可以用 - 列点）", "actions": [ 动作, … ]}
@@ -156,7 +157,7 @@ export function memoryOf(root, loose, cfg = null) {
 export const memTokens = m => estTokens(m.summary) + m.turns.reduce((a, t) => a + estTokens(turnText(t)), 0);
 export const needCompact = (root, loose, cfg) => { const c = memCfg(cfg, loose), m = memoryOf(root, loose); return c.autoCompact && m.turns.length > c.memKeep && memTokens(m) > c.memLimit; };
 export const SUMMARY_PROMPT = `你在给一段人和 AI 搭档（Synapsis 节点图工具里的助手）的对话写「记忆摘要」，以后的对话只看这份摘要，看不到原文。
-保留：人的目标和正在做的事；定下来的决定和偏好（包括人给 AI 定的人设、语气、称呼）；AI 提议过、人确认执行了的改动（和执行后发现的问题）；人没执行或否掉的提议（一句带过）；还没做完、说好下次做的事。
+保留：人的目标和正在做的事；定下来的决定和偏好（包括人给 AI 定的人设、语气、称呼）；AI 提议过、人确认执行了的改动（和执行后发现的问题）；人否掉 / 说不做 / 说「今天不弄」的提议，写成「人说不做：…」一句带过，别写成待办；「待办」只写人自己说要做的事，AI 自己提过、人没接的不算待办。
 丢掉：寒暄、重复的话、被否掉方案的细节、已经过时的中间状态。
 节点编号（n1、n2…）每页都会变，不要记编号，记节点名字。
 写成简洁的中文要点（- 开头），不超过 600 字，不要 JSON，不要代码块。有旧摘要就把它和新内容合并成一份新的。`;

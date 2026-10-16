@@ -404,10 +404,10 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   useEffect(() => { loadCtx(); }, [turns.length]);
   useEffect(() => { api('/ai/chat').then(takeChat).catch(() => {}); }, []);
   // 后台在压缩：等它压完，把摘要接回来（界面上「以上已压缩」那条线跟着挪）
-  useEffect(() => { if (!compacting) return; const t = setInterval(() => api('/ai/chat').then(d => { if (!d.compacting) takeChat(d); }).catch(() => {}), 1500); return () => clearInterval(t); }, [compacting]);
+  useEffect(() => { if (!compacting) return; const t = setInterval(() => api('/ai/chat').then(d => { if (!d.compacting) { takeChat(d); loadCtx(); setUsage(null); } }).catch(() => {}), 1500); return () => clearInterval(t); }, [compacting]);
   const loose = /^\w+:/.test(ctx?.model || ''), mySum = summary[loose ? 'loose' : 'strict'];
   const [note, setNote] = useState(''); // 一次性提示（不挡发送；busy 非空时发不出去）
-  const compact = () => { if (busy) return; setBusy('🗜 压缩中…'); setNote(''); api('/ai/chat/compact', { method: 'POST', body: '{}' }).then(d => { takeChat(d); setBusy(''); setNote(d.ok ? `🗜 压进摘要 ${d.n} 轮（原文还在，只是不再发给模型）` : '🗜 ' + d.why); }).catch(e => setBusy('❌ ' + e.message)); };
+  const compact = () => { if (busy) return; setBusy('🗜 压缩中…'); setNote(''); api('/ai/chat/compact', { method: 'POST', body: '{}' }).then(d => { takeChat(d); setBusy(''); loadCtx(); setUsage(null); /* 压完 🧠 跟着更新（不用等下一句） */ setNote(d.ok ? `🗜 压进摘要 ${d.n} 轮（原文还在，只是不再发给模型）` : '🗜 ' + d.why); }).catch(e => setBusy('❌ ' + e.message)); };
   useEffect(() => { if (tab === 'log') api('/ai/log').then(d => setLog(d.entries)).catch(e => setLog([{ kind: '❌', raw: e.message }])); }, [tab, turns.length]);
   // 👤 2026-10-16 滚动位置要记住：切走再切回「对话」、关掉框再打开，都回到离开时的位置（CHAT_SCROLL，存 sessionStorage：刷新窗口也在）。
   //   人在最底下时（贴底）：新消息、内容晚渲染完、框大小变都跟到底；往上翻着看时不动。自己发一句 = 回到底
@@ -434,7 +434,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   const send = () => {
     const t = text.trim(), im = imgs; if ((!t && !im.length) || (busy && !busy.startsWith('❌'))) return;
     CHAT_SCROLL.bottom = true; saveScroll(); // 自己发一句 = 回到底
-    setBusy((ctx?.thinks ? '🧠 思考中…' : /^\w+:/.test(ctx?.model || '') ? '⏳ 等回复…' : '⏳ 等回复…（第一次要等模型加载）') + (im.length ? `　附 ${im.length} 张图` : '')); // 👤 2026-10-16 只有真开了思考才说「思考中」 setPlan(null); setNote('');
+    setBusy((ctx?.thinks ? '🧠 思考中…' : /^\w+:/.test(ctx?.model || '') ? '⏳ 等回复…' : '⏳ 等回复…（第一次要等模型加载）') + (im.length ? `　附 ${im.length} 张图` : '')); setPlan(null); setNote(''); // 👤 2026-10-16 只有真开了思考才说「思考中」
     api('/ai/agent', { method: 'POST', body: JSON.stringify({ scope, selected, text: t, images: im, boxes: boxes?.() || {}, voice: voiceOn }) })
       .then(d => {
         setText(''); setImgs([]); setBusy(''); setUsage(d.usage?.total_tokens ? d.usage : null); if (d.compacting) setCompacting(true);
