@@ -1,6 +1,6 @@
 // >v<💾工作区-联网代理-👤 2026-10-16：xAI（Grok）国内直连连不上，浏览器走的是本机代理（如 Clash 127.0.0.1:7897），但 Node 的 fetch 默认不认代理。
 //   服务启动时：有代理（环境变量 HTTPS_PROXY / HTTP_PROXY，没有就读 Windows 系统代理设置）→ 全局 fetch 走它；
-//   本机 / 局域网地址（LM Studio、TTS、自己的服务）一律直连。没代理 = 什么都不做
+//   本机 / 局域网地址（LM Studio、TTS、自己的服务）和国内服务（DeepSeek、必应国内版）一律直连。没代理 = 什么都不做
 import { execFileSync } from 'node:child_process';
 import { setGlobalDispatcher, EnvHttpProxyAgent } from 'undici';
 
@@ -19,7 +19,8 @@ export function useProxy() {
   const env = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
   const proxy = env || systemProxy();
   if (!proxy) return null;
-  const local = ['localhost', '127.0.0.1', '::1', '*.local', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'];
+  const local = ['localhost', '127.0.0.1', '::1', '*.local', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16',
+    'api.deepseek.com', 'cn.bing.com']; // 国内服务也直连（👤 2026-10-16：Clash 切到全局模式时别把 DeepSeek 绕到国外）
   const noProxy = [...new Set([...(process.env.NO_PROXY || process.env.no_proxy || '').split(',').map(s => s.trim()).filter(Boolean), ...local])].join(',');
   setGlobalDispatcher(new EnvHttpProxyAgent({ httpProxy: proxy, httpsProxy: proxy, noProxy }));
   return proxy;
