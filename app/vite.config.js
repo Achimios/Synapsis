@@ -11,7 +11,7 @@ import { workspaceRoot, manualText, synItems, synWrite } from '../core/cli.js';
 import { wakeLms, aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, suggestPatternWords, readAiLog, readUsage } from '../core/ai.js';
 import { lmsEstimate, lmsReload } from '../core/lmstudio.js';
 import { loadVoice, saveVoiceCfg, speak } from '../core/voice.js';
-import { runAgent, applyPlan, loadChat, clearChat, estimateContext, isLoose, loadSummary, compactChat, needCompact } from '../core/agent.js';
+import { runAgent, applyPlan, loadChat, clearChat, setSummaryText, estimateContext, isLoose, loadSummary, compactChat, needCompact } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
 const STASH = new Map(); // 工作区 → 界面暂存（见 /ui/stash）
 const SESSION_START = Date.now() - 2000; // 这次服务进程（= 托盘）启动的时刻（留 2 秒余量：.junk 里的时间戳只到秒）。.junk/ 里比这更早的 = 上次没正常退出留下的
@@ -143,6 +143,7 @@ function workspaceApi() {
             if (url.pathname === '/ai/chat' && req.method === 'GET') return send(200, { turns: loadChat(root), summary: loadSummary(root), compacting: !!(STASH.get(root) || {}).compacting });
             if (url.pathname === '/ai/chat' && req.method === 'DELETE') { clearChat(root); return send(200, { turns: [], summary: {} }); }
             // 🗜 手动压缩：除了最近 keep 轮（默认按设置），旧原文 + 旧摘要 → 新摘要
+            if (url.pathname === '/ai/chat/summary' && req.method === 'PUT') { const b = await body(req); try { setSummaryText(root, !!b.loose, b.text); } catch (e) { return send(400, { error: e.message }); } return send(200, { turns: loadChat(root), summary: loadSummary(root) }); }
             if (url.pathname === '/ai/chat/compact' && req.method === 'POST') {
               const b = await body(req);
               try { const r = await compactChat(root, isLoose(cfg), cfg, { keep: b.keep }); return send(200, { ...r, turns: loadChat(root), summary: loadSummary(root) }); }

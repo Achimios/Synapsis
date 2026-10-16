@@ -73,7 +73,7 @@ export function loosePrompt(skills = loadSkills(), knowledge = knowledgeChunks()
 你可以聊天、讨论想法、提建议、接受人给你的人设和语气，自己判断怎么做最好；拿不准的就说出你的猜测或者反问。别把自己当成只会查手册的说明书。
 
 唯一的硬规矩：要改动页面，只能用下面的动作（人看过、确认后才执行）；没有删除节点的动作，人要删就请他右键删。
-别在回答末尾追加人没问的建议（「顺带一句，那张卡还离主体很远…」）；人拒绝过、或说了今天只闲聊 / 不弄的事，别再提。
+想到建议尽管提，但同一条别每轮都在结尾重复。
 一条底线：图里写的是人的意图。你做不到节点里写的意图时，把差距说出来，别改节点的名字或正文去迁就能做到的；真要改意图，要明说「这是在改意图」，由人决定。
 
 输出：只输出一个 JSON 对象，不要代码块标记：{"say": "给人看的话（可以多行，可以用 - 列点）", "actions": [ 动作, … ]}
@@ -143,6 +143,12 @@ const pushChat = (root, turn) => { const h = loadChat(root), last = h.at(-1)?.t;
 const sumFile = root => join(root, '.synapsis', 'ai_chat_summary.json');
 export const loadSummary = root => { try { return JSON.parse(readFileSync(sumFile(root), 'utf8')); } catch { return {}; } };
 const saveSummary = (root, s) => { mkdirSync(dirname(sumFile(root)), { recursive: true }); writeFileSync(sumFile(root), JSON.stringify(s, null, 1)); };
+// 👤 2026-10-16 人自己改摘要（指令框「以上已压缩」那里 ✏）：只换文字，压到哪一轮（upto）不变
+export function setSummaryText(root, loose, text) {
+  const s = loadSummary(root), k = loose ? 'loose' : 'strict';
+  if (!s[k]) throw new Error('还没有摘要（先压缩一次）');
+  s[k] = { ...s[k], text: String(text || '').trim() }; saveSummary(root, s); return s;
+}
 // 在线 / 本地各一套（👤 2026-10-11「1M context 你给限制 8000？」「本地模型你单独给调」）：本地键名后面加 Local
 export const MEM_DEFAULTS = { memLimit: 64000, memKeep: 4, autoCompact: true, memLimitLocal: 3000, memKeepLocal: 2, autoCompactLocal: true };
 export const memCfg = (cfg, loose) => { const c = { ...MEM_DEFAULTS, ...Object.fromEntries(Object.entries(cfg || {}).filter(([k, v]) => k in MEM_DEFAULTS && v != null)) }, s = loose ? '' : 'Local'; return { memLimit: c['memLimit' + s], memKeep: c['memKeep' + s], autoCompact: c['autoCompact' + s] }; };

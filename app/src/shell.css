@@ -723,3 +723,4 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 .voicetab .vdesc { white-space: normal; overflow: visible; color: color-mix(in srgb, var(--accent) 70%, var(--text)); font-size: 12.5px; }
 .voicetab .vpersona { white-space: pre-wrap; font-size: 12.5px; line-height: 1.55; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; overflow: auto; min-height: 0; flex: 1; }
 .aigroup .provider { border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; margin-bottom: 6px; }
+.sumline .sumedit { margin-top: 4px; font-size: 11px; } .sumline .sumeditor textarea { width: 100%; min-height: 160px; box-sizing: border-box; resize: vertical; font: 12px/1.5 'Microsoft YaHei', system-ui, sans-serif; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 6px; } .sumline .sumeditor .row { display: flex; gap: 6px; margin-top: 4px; }

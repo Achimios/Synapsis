@@ -407,6 +407,8 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   useEffect(() => { if (!compacting) return; const t = setInterval(() => api('/ai/chat').then(d => { if (!d.compacting) { takeChat(d); loadCtx(); setUsage(null); } }).catch(() => {}), 1500); return () => clearInterval(t); }, [compacting]);
   const loose = /^\w+:/.test(ctx?.model || ''), mySum = summary[loose ? 'loose' : 'strict'];
   const [note, setNote] = useState(''); // 一次性提示（不挡发送；busy 非空时发不出去）
+  const [sumEdit, setSumEdit] = useState(null); // 正在改的摘要文字（null = 没在改）
+  const saveSum = () => api('/ai/chat/summary', { method: 'PUT', body: JSON.stringify({ loose, text: sumEdit }) }).then(d => { takeChat(d); setSumEdit(null); setNote('✓ 摘要改好了：下一句起模型看的就是这份'); loadCtx(); }).catch(e => setNote('❌ ' + e.message));
   const compact = () => { if (busy) return; setBusy('🗜 压缩中…'); setNote(''); api('/ai/chat/compact', { method: 'POST', body: '{}' }).then(d => { takeChat(d); setBusy(''); loadCtx(); setUsage(null); /* 压完 🧠 跟着更新（不用等下一句） */ setNote(d.ok ? `🗜 压进摘要 ${d.n} 轮（原文还在，只是不再发给模型）` : '🗜 ' + d.why); }).catch(e => setBusy('❌ ' + e.message)); };
   useEffect(() => { if (tab === 'log') api('/ai/log').then(d => setLog(d.entries)).catch(e => setLog([{ kind: '❌', raw: e.message }])); }, [tab, turns.length]);
   // 👤 2026-10-16 滚动位置要记住：切走再切回「对话」、关掉框再打开，都回到离开时的位置（CHAT_SCROLL，存 sessionStorage：刷新窗口也在）。
@@ -490,7 +492,10 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
             {t.cache && <div className="know" title="DeepSeek 上下文缓存：请求开头和之前完全一样的部分按便宜价算、也更快。开关 📢、换优先角色、压缩 / 清空记忆会让下一轮命中掉一截">⚡ 缓存命中 {t.cache[0]} / {t.cache[1]}（{Math.round(t.cache[0] / t.cache[1] * 100)}%）</div>}
             {t.done?.length > 0 && <ul className="done">{t.done.map((d, j) => <li key={j}>✓ {d}</li>)}</ul>}
             {t.warnings?.length > 0 && <div className="know">⚠ 执行后检查：{t.warnings.join('；')}</div>}
-            {mySum?.upto && t.t === mySum.upto && <details className="sumline"><summary>🗜 以上已压缩成摘要（模型只看摘要，原文留着给你看）</summary><MdLite text={mySum.text} /></details>}
+            {mySum?.upto && t.t === mySum.upto && <details className="sumline"><summary>🗜 以上已压缩成摘要（模型只看摘要，原文留着给你看）</summary>
+              {sumEdit == null ? <><MdLite text={mySum.text} /><button className="sumedit" title="自己改摘要（比如删掉不想让它惦记的事）；改完从下一句起模型看的就是你改的" onClick={() => setSumEdit(mySum.text)}>✏ 改</button></>
+                : <div className="sumeditor"><textarea value={sumEdit} onChange={e => setSumEdit(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.ctrlKey && e.key === 's') { e.preventDefault(); saveSum(); } }} spellCheck={false} />
+                  <div className="row"><button onClick={saveSum}>保存（Ctrl+S）</button><button onClick={() => setSumEdit(null)}>取消</button></div></div>}</details>}
           </div>)}
           {plan && plan.actions.length > 0 && <div className="plan">
             <ul>{plan.actions.map((a, i) => <li key={i} className={a.ok ? 'ok' : 'no'}>{a.ok ? '✓ ' + a.desc : `✗ ${a.do || '?'}：${a.why}`}</li>)}</ul>
