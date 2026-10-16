@@ -98,15 +98,17 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       {node.file && item('📎 打开引用的文件', () => actions.openProjectFile(node.file))}
       {node.ref && item('↗ 跳到它指的节点', () => actions.gotoRef(node.id))}
       {node.ui && item('▭ 复制 UI 布局', () => actions.copyUiLayout(node.id))}
-      {/* 👤 2026-10-12 饱和 / 不透是手调、要按得快 → 放在状态上面，各一行 */}
-      {actions.sat && <div className="mi row swatches sat" onPointerDown={e => e.stopPropagation()}><span>饱和</span><SatButtons base={node.baseColor} cur={node.satNow} onSat={p => actions.sat(node.id, p)} /></div>}
-      {actions.tint && <div className="mi row swatches tints" onPointerDown={e => e.stopPropagation()} title="卡片底色 / 框里面叠多少节点色；跟随 = 默认"><span>不透</span><TintButtons cur={node.tintNow} onTint={t => actions.tint(node.id, t)} /></div>}
-      {actions.sat && <div className="tintsep" />}
       <div className="mi row" onPointerDown={e => e.stopPropagation()}>
         <span>状态</span>
         {STATUS.map(([s, ic]) => <button key={s} className={node.status === s ? 'on' : ''} onClick={() => { actions.status(node.id, s); }}>{ic}</button>)}
         <button title="清除状态（不标）" onClick={() => { actions.status(node.id, null); }}>—</button>
       </div>
+      {/* 👤 2026-10-16 饱和 / 不透 / 颜色 / 图案用得少 → 收进二级「外观 ▸」（D / 悬停打开） */}
+      {(actions.sat || actions.color || actions.pattern) && <div className="mi sub" onPointerDown={e => e.stopPropagation()}><span>外观 ▸</span>
+        <div className={'ctx submenu looks' + (menu.x > innerWidth - 640 ? ' flip' : '')}>
+      {actions.sat && <div className="mi row swatches sat" onPointerDown={e => e.stopPropagation()}><span>饱和</span><SatButtons base={node.baseColor} cur={node.satNow} onSat={p => actions.sat(node.id, p)} /></div>}
+      {actions.tint && <div className="mi row swatches tints" onPointerDown={e => e.stopPropagation()} title="卡片底色 / 框里面叠多少节点色；跟随 = 默认"><span>不透</span><TintButtons cur={node.tintNow} onTint={t => actions.tint(node.id, t)} /></div>}
+      {actions.sat && <div className="tintsep" />}
       {actions.color && <div className="mi row swatches" onPointerDown={e => e.stopPropagation()}>
         <span>颜色</span>
         {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={String(node.colorSet || '').split('/')[0] === k ? 'on' : ''} style={{ background: c }} onClick={() => { actions.color(node.id, k); }} />)}
@@ -118,6 +120,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
         <button title="自动（按图案词表 / AI 归类）" className={!node.patternSet ? 'on auto' : 'auto'} onClick={() => { actions.pattern(node.id, null); }}>自动</button>
         <button title="不要底纹" className={node.patternSet === '无' ? 'on auto' : 'auto'} onClick={() => { actions.pattern(node.id, '无'); }}>无</button>
       </div>}
+        </div></div>}
       <div className="msep" />
       <div className="mi row2" onPointerDown={e => e.stopPropagation()}>
         <a title="选一个别的节点，从它连到这个节点" onClick={() => { onClose(); actions.linkFrom(node.id); }}>← 从…连过来</a>

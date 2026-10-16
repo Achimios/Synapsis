@@ -291,9 +291,9 @@ for (const kind of ['reactflow']) {
   ok(await cc('兜底') === PALETTE.黄, '工作区词表（旧的 _配色.md 迁进 _词表.md）生效（兜底 → 黄）');
   const dash = await page.$$eval('.react-flow__edge', es => Object.fromEntries(es.map(e => [e.dataset.id, e.querySelector('.react-flow__edge-path').style.strokeDasharray])));
   ok(dash['游戏AI/行动=>游戏AI/感知'] && !dash['游戏AI/决策=>游戏AI/行动'], 'kind 离散 的边 = 虚线，其余实线 ' + JSON.stringify(dash));
-  await rclick('行动'); await page.click('.ctx .swatches button[title="粉"]'); await sleep(1500);
+  await rclick('行动'); await page.hover('.ctx .mi.sub:has(> .looks)'); await page.click('.ctx .swatches button[title="粉"]'); await sleep(1500); // 👤 2026-10-16 颜色 / 图案 / 饱和 / 不透收进「外观 ▸」
   ok(/^color: 粉$/m.test(nodeFile('游戏AI/行动/_node.md')) && await cc('行动') === PALETTE.粉, '右键点粉 → color: 粉 写进文件，卡片变粉');
-  await rclick('行动'); await page.click('.ctx .swatches button.auto'); await sleep(1500);
+  await rclick('行动'); await page.hover('.ctx .mi.sub:has(> .looks)'); await page.click('.ctx .swatches button.auto'); await sleep(1500);
   ok(!nodeFile('游戏AI/行动/_node.md').includes('color:') && await cc('行动') === PALETTE.绿, '右键「自动」→ 删掉 color:，回到绿');
   await rclick('行动'); await page.click('.ctx .mi:has-text("属性")'); await sleep(400);
   ok((await page.$eval('.side h3 input', e => e.value)) === '行动', '右键 属性 → 面板');
@@ -983,7 +983,7 @@ for (const kind of ['reactflow']) {
   ok(await patOf('传感器') === 'pat-dots' && await patOf('情绪恐惧') === 'pat-wave', '图案词表：传感器 = 点阵，情绪恐惧 = 波纹 ' + await patOf('传感器') + ' ' + await patOf('情绪恐惧'));
   ok(existsSync(join(ws, '__synapsis', '_词表.md')) && !existsSync(join(ws, '__synapsis', '_图案.md')), '打开工作区就放出 _词表.md（不再有单独的 _图案.md）');
   await page.mouse.click(...mid(await (await lab('吓坏了')).boundingBox()), { button: 'right' }); await sleep(300);
-  await page.click('.ctx .pats button.pat-grid'); await sleep(1500);
+  await page.hover('.ctx .mi.sub:has(> .looks)'); await page.click('.ctx .pats button.pat-grid'); await sleep(1500);
   ok(/pattern: 网格/.test(readFileSync(join(ws, '__synapsis', '吓坏了.md'), 'utf8')) && await patOf('吓坏了') === 'pat-grid', '右键 → 图案 → 网格：写进 pattern:，卡片带网格底纹');
   // 📄 卡片里展开正文（md：标题 / 表格 / 列表）
   await page.mouse.click(700, 760); await sleep(200);
@@ -1209,9 +1209,9 @@ for (const kind of ['reactflow']) {
   // 饱和度档：没选颜色时灰着；选了蓝 → 50% → color: 蓝/50
   await page.click('.card .lab:text-is("甲")', { button: 'right' }); await sleep(300);
   ok((await page.$$eval('.ctx .swatches.sat button', e => e.map(x => x.disabled))).every(x => !x) && (await page.$$('.ctx .swatches.sat button')).length === 5, '自动色时饱和度档也能点（不再灰着）');
-  await page.click('.swatches:not(.sat):not(.pats) button[title="蓝"]'); await sleep(1200);
+  await page.hover('.ctx .mi.sub:has(> .looks)'); await page.click('.ctx .swatches:not(.sat):not(.pats) button[title="蓝"]'); await sleep(1200);
   await page.click('.card .lab:text-is("甲")', { button: 'right' }); await sleep(300);
-  await page.click('.swatches.sat button[title^="50%"]'); await sleep(1200);
+  await page.hover('.ctx .mi.sub:has(> .looks)'); await page.click('.ctx .swatches.sat button[title^="50%"]'); await sleep(1200);
   ok(/sat: 50/.test(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8')) && /color: 蓝\s/.test(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8')), '选蓝再点 50% → sat: 50，颜色还是蓝');
   ok((await page.$eval('.card:has(.lab:text-is("甲"))', e => e.style.getPropertyValue('--c'))) !== '#4d9bff', '卡片颜色变淡了（不是原来的蓝）');
   await page.mouse.click(1000, 300); await sleep(300); await page.click('.card .lab:text-is("甲")'); await sleep(500);
