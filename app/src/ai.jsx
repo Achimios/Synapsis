@@ -373,8 +373,8 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
     let stop = false;
     const poll = () => api('/ui/stash').then(s => {
       if (stop) return;
-      if (s.thinking) { setBusy('🧠 还在想：「' + s.thinking + '」…'); setTimeout(poll, 1000); }
-      else { setBusy(b => b.startsWith('🧠') ? '' : b); if (s.plan) setPlan(s.plan); if (!('agent.text' in s) && !preset) setText(''); api('/ai/chat').then(takeChat).catch(() => {}); }
+      if (s.thinking) { setBusy('⏳ 还在等回复：「' + s.thinking + '」…'); setTimeout(poll, 1000); }
+      else { setBusy(b => /^(🧠|⏳)/.test(b) ? '' : b); if (s.plan) setPlan(s.plan); if (!('agent.text' in s) && !preset) setText(''); api('/ai/chat').then(takeChat).catch(() => {}); }
     }).catch(() => {});
     poll();
     return () => { stop = true; };
@@ -423,7 +423,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   const send = () => {
     const t = text.trim(), im = imgs; if ((!t && !im.length) || (busy && !busy.startsWith('❌'))) return;
     CHAT_SCROLL.bottom = true; saveScroll(); // 自己发一句 = 回到底
-    setBusy('🧠 思考中…（第一次要等模型加载）' + (im.length ? `　附 ${im.length} 张图` : '')); setPlan(null); setNote('');
+    setBusy((ctx?.thinks ? '🧠 思考中…' : /^\w+:/.test(ctx?.model || '') ? '⏳ 等回复…' : '⏳ 等回复…（第一次要等模型加载）') + (im.length ? `　附 ${im.length} 张图` : '')); // 👤 2026-10-16 只有真开了思考才说「思考中」 setPlan(null); setNote('');
     api('/ai/agent', { method: 'POST', body: JSON.stringify({ scope, selected, text: t, images: im, boxes: boxes?.() || {}, voice: voiceOn }) })
       .then(d => {
         setText(''); setImgs([]); setBusy(''); setUsage(d.usage?.total_tokens ? d.usage : null); if (d.compacting) setCompacting(true);
