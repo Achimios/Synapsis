@@ -728,3 +728,8 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 .agentbox > :not(.bar):not(.edge) { zoom: var(--abz, 1); }
 .agentbox .notelink { cursor: pointer; text-decoration: underline dotted; }
 .agentbox .know.cachehit { font-size: 60%; opacity: .7; } /* 👤 2026-10-16 缓存命中缩小，不抢注意力 */
+/* 左栏 / 右栏 Ctrl+滚轮缩放（--zl / --zr，shell.jsx paneZoom）：标题栏不缩 */
+aside.outline > :not(.bar) { zoom: var(--zl, 1); } aside.side > :not(.bar) { zoom: var(--zr, 1); }
+.modal > div.sumwin { width: min(720px, 94vw); height: min(70vh, 640px); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line2); border-radius: 6px; }
+.sumwin .bar { display: flex; gap: 8px; align-items: center; padding: 6px 10px; } .sumwin .bar .grow { flex: 1; }
+.sumwin textarea { flex: 1; margin: 0 10px; resize: none; font: 13px/1.6 'Microsoft YaHei', system-ui, sans-serif; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 8px; }

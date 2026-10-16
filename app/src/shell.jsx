@@ -800,6 +800,14 @@ export function Shell({ name, Canvas }) {
     text: { name: '正文', field: 'textOpen', ok: n => !!wsData?.nodes[n.id]?.body?.trim(), own: id => !!textOpen[id], tip: '卡片里渲染 md 正文' },
   };
   const [settingsOpen, setSettingsOpen] = useState(false); // 左上角 ⚙
+  // 👤 2026-10-16 左栏 / 右栏各自 Ctrl+滚轮缩放（鼠标在栏里任何地方，含空白处、正文框上；不按 Ctrl 照常滚）。只缩放标题栏以下，记在本机
+  const [paneZoom, setPaneZoom] = useState(() => { try { return { left: 1, right: 1, ...JSON.parse(localStorage.getItem('syn.paneZoom') || '{}') }; } catch { return { left: 1, right: 1 }; } });
+  useEffect(() => {
+    const w = e => { if (!e.ctrlKey) return; const p = e.target.closest?.('aside.outline') ? 'left' : e.target.closest?.('aside.side') ? 'right' : null; if (!p) return;
+      e.preventDefault(); e.stopPropagation();
+      setPaneZoom(z => { const n = { ...z, [p]: Math.round(Math.min(1.6, Math.max(0.6, z[p] + (e.deltaY < 0 ? 0.05 : -0.05))) * 100) / 100 }; try { localStorage.setItem('syn.paneZoom', JSON.stringify(n)); } catch { /* */ } return n; }); };
+    window.addEventListener('wheel', w, { capture: true, passive: false }); return () => window.removeEventListener('wheel', w, { capture: true });
+  }, []);
   // 👤 2026-10-12 H = 键位提示开关：按钮旁边显示组合键小字（data-keyx）+ 画布右下角导航 / 选择速查；单键的（data-key：1 2 3 4 Q ` ?）一直显示。
   //   默认开（给新手），记在本机。原则：快捷键提示放在用到它的界面旁边，快捷键页不暴露全部
   const [keyHints, setKeyHints] = useState(() => load('syn.keyhints', true));
@@ -1186,7 +1194,7 @@ export function Shell({ name, Canvas }) {
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
   };
   return (
-    <div className={'shell' + (keyHints ? ' showkeys' : '')} style={{ '--leftw': panelW.left + 'px', '--rightw': panelW.right + 'px' }}>
+    <div className={'shell' + (keyHints ? ' showkeys' : '')} style={{ '--zl': paneZoom.left, '--zr': paneZoom.right, '--leftw': panelW.left + 'px', '--rightw': panelW.right + 'px' }}>
       {!leftHidden && <div className="resizer left" title="拖动调宽度" onPointerDown={e => dragPanel(e, 'left')} />}
       <aside className={'outline' + (leftCols > 1 ? ' cols cols' + leftCols : '')} style={leftHidden ? { display: 'none' } : undefined}>
         <div className="bar tabs">

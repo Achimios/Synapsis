@@ -421,12 +421,13 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   const loose = /^\w+:/.test(ctx?.model || ''), mySum = summary[loose ? 'loose' : 'strict'];
   const [note, setNote] = useState(''); // 一次性提示（不挡发送；busy 非空时发不出去）
   const [sumEdit, setSumEdit] = useState(null); // 正在改的摘要文字（null = 没在改）
+  const [sumModal, setSumModal] = useState(false); // 「📝 摘要」弹窗（👤 2026-10-16：直接开窗口改，不用滚回很久以前那条线）
   const [abz, setAbz] = useState(() => { try { return +localStorage.getItem('syn.agentZoom') || 1; } catch { return 1; } }); // 框里内容的缩放（Ctrl+滚轮）
   useEffect(() => { const el = geo.ref.current; if (!el) return;
     const w = e => { if (!e.ctrlKey) return; e.preventDefault(); e.stopPropagation(); setAbz(z => { const n = Math.round(Math.min(1.8, Math.max(0.7, z + (e.deltaY < 0 ? 0.05 : -0.05))) * 100) / 100; try { localStorage.setItem('syn.agentZoom', n); } catch { /* */ } return n; }); };
     el.addEventListener('wheel', w, { passive: false }); return () => el.removeEventListener('wheel', w); }, []);
   const sumRef = useRef(null); // 「以上已压缩」那条折叠线：点底下的提示能跳过去
-  const saveSum = () => api('/ai/chat/summary', { method: 'PUT', body: JSON.stringify({ loose, text: sumEdit }) }).then(d => { takeChat(d); setSumEdit(null); setNote('✓ 摘要改好了：下一句起模型看的就是这份'); loadCtx(); }).catch(e => setNote('❌ ' + e.message));
+  const saveSum = () => api('/ai/chat/summary', { method: 'PUT', body: JSON.stringify({ loose, text: sumEdit }) }).then(d => { takeChat(d); setSumEdit(null); setSumModal(false); setNote('✓ 摘要改好了：下一句起模型看的就是这份'); loadCtx(); }).catch(e => setNote('❌ ' + e.message));
   const compact = () => { if (busy) return; setBusy('🗜 压缩中…'); setNote(''); api('/ai/chat/compact', { method: 'POST', body: '{}' }).then(d => { takeChat(d); setBusy(''); loadCtx(); setUsage(null); /* 压完 🧠 跟着更新（不用等下一句） */ setNote(d.ok ? `🗜 压进摘要 ${d.n} 轮（原文还在，只是不再发给模型）` : '🗜 ' + d.why); }).catch(e => setBusy('❌ ' + e.message)); };
   useEffect(() => { if (tab === 'log') api('/ai/log').then(d => setLog(d.entries)).catch(e => setLog([{ kind: '❌', raw: e.message }])); }, [tab, turns.length]);
   // 👤 2026-10-16 滚动位置要记住：切走再切回「对话」、关掉框再打开，都回到离开时的位置（CHAT_SCROLL，存 sessionStorage：刷新窗口也在）。
@@ -484,6 +485,12 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
       onDragOver={e => { if (tab === 'chat' && [...(e.dataTransfer?.items || [])].some(i => i.kind === 'file')) { e.preventDefault(); e.stopPropagation(); } }}
       onDrop={e => { if (tab !== 'chat') return; const fs = imgFiles(e.dataTransfer); if (!fs.length) return; e.preventDefault(); e.stopPropagation(); addImgs(fs); }}>
       {EDGES.map(d => <div key={d} className={'edge e-' + d} onPointerDown={geo.edge(d)} />)}
+      {sumModal && mySum && createPortal(<div className="modal" onPointerDown={e => e.stopPropagation()}>
+        <div className="sumwin" onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') { setSumModal(false); setSumEdit(null); } }}>
+          <div className="bar"><b>📝 压缩摘要</b><span className="hint" style={{ flex: 1 }}>模型现在记得的旧对话（更早的原文不再发给它）。改完从下一句起生效</span><button onClick={() => { setSumModal(false); setSumEdit(null); }}>✕</button></div>
+          <textarea autoFocus value={sumEdit ?? ''} onChange={e => setSumEdit(e.target.value)} spellCheck={false} onKeyDown={e => { if (e.ctrlKey && e.key === 's') { e.preventDefault(); saveSum(); } }} />
+          <div className="bar"><span className="grow" /><button onClick={() => { setSumModal(false); setSumEdit(null); }}>取消</button><button className="primary" disabled={sumEdit === mySum.text} onClick={saveSum}>保存（Ctrl+S）</button></div>
+        </div></div>, document.body)}
       <div className="bar" onPointerDown={geo.drag} onDoubleClick={e => !e.target.closest('a, button, input, select, textarea, .ctxmeter') && geo.reset()} title="拖这条移动框；拖四边四角改大小；双击空白处回到默认位置">
         <span className="atabs">{!narrow && <b>🤖 AI 指令</b>}
         <a className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')} title="对话">💬<span className="tl"> 对话</span></a>
@@ -493,7 +500,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
         <a className={tab === 'voice' ? 'on' : ''} onClick={() => setTab('voice')} title="语音">🔊<span className="tl"> 语音</span></a></span>
         <button className={'voicebtn' + (voiceOn ? ' on' : '')} title={voiceOn ? '📢 开着：AI 可以自己决定发一句语音（只有 ☁ 在线模型）。点一下关' : '📢 关着：AI 不发语音。点一下打开（只有 ☁ 在线模型；角色、后端在「🔊 语音」页）'} onClick={flipVoice}>{voiceOn ? '📢' : '🔇'}</button>
         <CtxMeter ctx={ctx} usage={usage} />
-        {tab === 'chat' && (() => { const bs = [...(mySum?.upto ? [<button key="s" title="看 / 改压缩摘要（跳到「以上已压缩」那里并打开）" onClick={() => { const d = sumRef.current; if (d) { d.open = true; d.scrollIntoView({ block: 'center', behavior: 'smooth' }); } }}>📝 摘要</button>] : []), <button key="c" title={'压缩短记忆：除了最近几轮，旧的对话让模型写成一段摘要（原文不删，只是不再发给模型）。自动压缩的参数在 ⋯ → 🤖 AI 设置' + (mySum ? '\n\n现在的摘要：\n' + mySum.text : '')} disabled={compacting} onClick={compact}>{compacting ? '🗜 压缩中…' : '🗜 压缩'}</button>, <button key="x" title="清空短记忆（换个话题；摘要一起清）" onClick={() => api('/ai/chat', { method: 'DELETE' }).then(d => { takeChat(d); setPlan(null); setUsage(null); setNote(''); })}>🧹 清空记忆</button>]; // 👤 2026-10-16 框窄时收进 ⋯（以前会被挤没）
+        {tab === 'chat' && (() => { const bs = [...(mySum?.upto ? [<button key="s" title="看 / 改压缩摘要（模型现在记得的旧对话）" onClick={() => { setSumEdit(mySum.text); setSumModal(true); }}>📝 摘要</button>] : []), <button key="c" title={'压缩短记忆：除了最近几轮，旧的对话让模型写成一段摘要（原文不删，只是不再发给模型）。自动压缩的参数在 ⋯ → 🤖 AI 设置'} disabled={compacting} onClick={compact}>{compacting ? '🗜 压缩中…' : '🗜 压缩'}</button>, <button key="x" title="清空短记忆（换个话题；摘要一起清）" onClick={() => api('/ai/chat', { method: 'DELETE' }).then(d => { takeChat(d); setPlan(null); setUsage(null); setNote(''); })}>🧹 清空记忆</button>]; // 👤 2026-10-16 框窄时收进 ⋯（以前会被挤没）
           return narrow ? <span className="amore" key="m"><button className="morebtn" title="压缩 / 清空记忆" onClick={e => { if (moreOpen) return setMoreOpen(null); const r = e.currentTarget.getBoundingClientRect(), down = innerHeight - r.bottom > 110; setMoreOpen({ right: innerWidth - r.right, ...(down ? { top: r.bottom + 4 } : { bottom: innerHeight - r.top + 4 }) }); }}>⋯</button>
             {moreOpen && createPortal(<div className="amoremenu" style={moreOpen} onClick={() => setMoreOpen(null)}>{bs}</div>, document.body)}</span> : bs; })()}
         <button title="关闭（Esc / Shift+F）" onClick={onClose} style={{ marginLeft: 'auto' }}>✕</button>
@@ -524,7 +531,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
               : <div className="hint">没有能执行的动作</div>}
           </div>}
           {busy && <div className={'hint pad' + (busy.startsWith('❌') ? ' bad' : '')}>{busy}</div>}
-          {note && !busy && <div className="hint pad">{/压进摘要|摘要改好了/.test(note) && mySum?.upto ? <a className="notelink" title="跳到「以上已压缩」那里，打开看 / 改摘要" onClick={() => { const d = sumRef.current; if (d) { d.open = true; d.scrollIntoView({ block: 'center', behavior: 'smooth' }); } }}>{note}　→ 看 / 改摘要</a> : note}</div>}
+          {note && !busy && <div className="hint pad">{/压进摘要|摘要改好了/.test(note) && mySum?.upto ? <a className="notelink" title="跳到「以上已压缩」那里，打开看 / 改摘要" onClick={() => { setSumEdit(mySum.text); setSumModal(true); }}>{note}　→ 看 / 改摘要</a> : note}</div>}
         </div>
         {imgs.length > 0 && <div className="askimgs">{imgs.map((u, i) => <span key={i}><img src={u} title="单击放大" onClick={() => onZoom?.(imgs, i)} /><a title="不附这张" onClick={() => setImgs(a => a.filter((_, j) => j !== i))}>✕</a></span>)}<span className="hint">{loose ? '随下一句发出（不进短记忆）' : '随下一句发出（本地模型要能看图，比如 Qwen VL）'}</span></div>}
         <textarea ref={inp} className="ask" rows={2} value={text} onChange={e => setText(e.target.value)}

@@ -454,11 +454,6 @@ export function OutlineTree({ graph, rootId = '', selected, scope, renaming, sta
   const [q, setQ] = useState(''); // 过滤：只留名字命中的和它们的祖先（全部展开）
   const flt = useMemo(() => filterTree(graph, q), [graph, q]);
   const box = useRef(null);
-  // 👤 2026-10-16 大纲单独缩放：鼠标在大纲上 Ctrl+滚轮（记在本机）
-  const [oz, setOz] = useState(() => { try { return +localStorage.getItem('syn.outlineZoom') || 1; } catch { return 1; } });
-  useEffect(() => { const el = box.current; if (!el) return;
-    const w = e => { if (!e.ctrlKey) return; e.preventDefault(); e.stopPropagation(); setOz(z => { const n = Math.round(Math.min(1.6, Math.max(0.6, z + (e.deltaY < 0 ? 0.05 : -0.05))) * 100) / 100; try { localStorage.setItem('syn.outlineZoom', n); } catch { /* */ } return n; }); };
-    el.addEventListener('wheel', w, { passive: false }); return () => el.removeEventListener('wheel', w); }, []);
   // 默认：前两层展开；当前页和选中节点的祖先一律展开（大纲里永远看得到「我在哪」）
   const focus = new Set();
   // 临时展开只跟「现在的焦点」：选中了节点 = 它的祖先链；没选中 = 当前页的祖先链。Alt+W 退回上一级 → 深的临时展开自动收回；选了别的节点 → 之前那条也不管了（自己点开的 open[] 不受影响）
@@ -535,7 +530,7 @@ export function OutlineTree({ graph, rootId = '', selected, scope, renaming, sta
     <button className="ghost" title="全部折叠（只留第一层）" onClick={() => setOpen(Object.fromEntries([...graph.nodes.values()].filter(n => n.children.length).map(n => [n.id, false])))}>⊟</button>
     </div>
     {grouped && blocks.length > 0 && <div className="ogchips"><span>{blocks.filter(b => !b.loose).length} 组</span>{blocks.map(b => <a key={b.gi} title={b.loose ? '没有连线的节点' : '连在一起的一组'} onClick={() => box.current?.querySelector(`[data-g="${b.gi}"]`)?.scrollIntoView({ block: 'start' })}>{b.loose ? '无' : b.gi + 1}<i>{b.n}</i></a>)}</div>}
-    <div className="otree" ref={box} tabIndex={0} onKeyDown={onKey} style={{ zoom: oz }} title={oz !== 1 ? `大纲缩放 ${Math.round(oz * 100)}%（Ctrl+滚轮）` : undefined}
+    <div className="otree" ref={box} tabIndex={0} onKeyDown={onKey}
       onPointerDown={() => { byClick.current = true; setTimeout(() => { byClick.current = false; }, 300); }}
 >
       {flt && !rows.length && <div className="hint" style={{ padding: 6 }}>没有名字含「{q}」的节点（Ctrl+F 可以搜属性和正文）</div>}
