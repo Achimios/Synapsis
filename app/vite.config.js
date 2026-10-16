@@ -11,6 +11,7 @@ import { workspaceRoot, manualText, synItems, synWrite } from '../core/cli.js';
 import { wakeLms, aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, suggestPatternWords, readAiLog, readUsage } from '../core/ai.js';
 import { lmsEstimate, lmsReload } from '../core/lmstudio.js';
 import { loadVoice, saveVoiceCfg, speak } from '../core/voice.js';
+import { genImage } from '../core/imagegen.js';
 import { loadTodo, saveTodo, todoFile, TODO_HEAD } from '../core/todo.js';
 import { runAgent, applyPlan, loadChat, clearChat, setSummaryText, estimateContext, isLoose, loadSummary, compactChat, needCompact } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
@@ -161,7 +162,16 @@ function workspaceApi() {
               return send(200, { estimate: est, model, ctx: m?.ctx || null, maxCtx: m?.maxCtx || null, loaded: !!m?.loaded, thinks: /^deepseek:/.test(model) && !!cfg.onlineEffort && cfg.onlineEffort !== 'off' }); // thinks = 真开了思考（界面「🧠 思考中」只在这时显示）
             }
             // AI 指令框：问模型（只回动作草案）/ 👤 确认后执行
-            if (url.pathname === '/ai/apply' && req.method === 'POST') { const b = await body(req); const r = applyPlan(root, b.actions || [], b.boxes || {}, { home: SYN_HOME }); delete (STASH.get(root) || {}).plan; return send(200, { ...r, ...payload(root) }); }
+            if (url.pathname === '/ai/apply' && req.method === 'POST') {
+              const b = await body(req), all = b.actions || [], imgs = all.filter(a => a && a.ok && a.do === 'image');
+              const r = applyPlan(root, all.filter(a => !(a && a.do === 'image')), b.boxes || {}, { home: SYN_HOME });
+              // 配图（花钱，慢）：大纲改完再一张张生成，存进那张卡的 _pics_；失败的写进 warnings（AI 下一轮会知道）
+              for (const a of imgs.slice(0, 4)) {
+                try { saveAsset(root, a.id, await genImage(cfg, a)); (r.made ??= []).push('配图：' + a.id.split('/').pop()); }
+                catch (e) { r.warnings.push(`配图「${a.id.split('/').pop()}」失败：${e.message}`); }
+              }
+              delete (STASH.get(root) || {}).plan; return send(200, { ...r, ...payload(root) });
+            }
             // 在线 key：只写进 <Synapsis>/.synapsis/keys.json，回的状态里只有「有没有」
             if (url.pathname === '/ai/key' && req.method === 'PUT') { const b = await body(req); saveKey(SYN_HOME, b.provider || 'deepseek', b.key || ''); return send(200, await aiStatus(aiConfig(SYN_HOME))); }
             // 本地模型的上下文长度：先估显存，再「卸载 → 按新长度加载」（core/lmstudio.js，走 LM Studio 的 lms 命令行）

@@ -57,7 +57,7 @@ export const chatModel = (cfg, task = 'agent') => {
   const t = cfg.tasks?.[task] || {};
   return taskSrc(cfg, task) === 'online' ? onlineId(t.model || cfg.onlineModel || 'deepseek-flash') : (t.chat || cfg.chat);
 };
-function onlineKey(cfg, provider) {
+export function onlineKey(cfg, provider) {
   if (process.env[ONLINE[provider].env]) return process.env[ONLINE[provider].env];
   try { return JSON.parse(readFileSync(cfg.keys, 'utf8'))[provider] || null; } catch { return null; }
 }

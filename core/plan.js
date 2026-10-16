@@ -89,6 +89,13 @@ export const VALIDATORS = {
     if (ids.some(id => graph.nodes.get(id).parent !== p)) throw new Error('order 的节点必须是同一个父节点下的兄弟');
     return { ids, desc: '大纲顺序改成：' + ids.map(label).join(' → ') };
   },
+  // 👤 2026-10-16 配图（Grok 生成，花钱）：执行时由服务端调 core/imagegen.js，图存进这张卡的 _pics_
+  image: (a, { one, label }) => {
+    const id = one(a.id), prompt = String(a.prompt || '').trim();
+    if (!prompt) throw new Error('prompt 不能空：写清画面内容和风格');
+    const aspect = ['auto', '1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '2:1', '1:2', '21:9'].includes(a.aspect) ? a.aspect : 'auto';
+    return { id, prompt: prompt.slice(0, 2000), aspect, desc: `配图（Grok 生成，花钱）：「${label(id)}」← ${prompt.slice(0, 40)}${prompt.length > 40 ? '…' : ''}${aspect !== 'auto' ? '（' + aspect + '）' : ''}` };
+  },
   color: (a, { many, label }) => {
     const ids = many(a.ids);
     if (a.color !== 'auto' && !PALETTE[a.color]) throw new Error('color 只能是 ' + Object.keys(PALETTE).join(' ') + ' 或 auto');
