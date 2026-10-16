@@ -150,7 +150,7 @@ const countAll = n => n.descendants ?? n.children.length;
 // >v<🎨画布-属性面板-节点属性/出入边/正文（工作区模式下正文可改，失焦保存）
 // >v<🎨画布-属性可编辑-值失焦保存（清空 = 删掉这个键）；底下一行加新属性；空间相关的给快捷按钮（轴 / 坐标 / 映射）
 const LOCKED = new Set(['to', 'label', 'status', 'order']);
-const OWN_UI = new Set(['color', 'pattern', 'sat', 'tint']); // 👤 2026-10-12 系统属性和手写属性分开：这几个在上面有按钮
+const OWN_UI = new Set(['color', 'pattern', 'sat', 'tint', 'ui', 'w', 'h']); // ui / w / h：UI 框的尺寸在上面「尺寸」一行（👤 2026-10-16 和手写属性分开） // 👤 2026-10-12 系统属性和手写属性分开：这几个在上面有按钮
 // >v<🗂️属性面板-属性表-改名 / 改值失焦就存；清空值 = 值留空（不删属性），删属性点 ✕；新行填了名字，失焦也存（👤 2026-10-08）
 function MetaTable({ id, meta, editable, onMeta, hints = [] }) {
   const [k, setK] = useState(''), [v, setV] = useState('');
@@ -238,6 +238,10 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
           onBlur={e => { const v = e.target.value.trim(); if (v && v !== n.label) onRename(id, v); else e.target.value = n.label; }} /></h3>
         {onSat && <div className="row swatches sat"><span className="rl">饱和</span><SatButtons base={baseColor} cur={satNow} onSat={p => onSat(id, p)} /></div>}
         {onSat && editable && (n.children.length > 0 || /^true$/i.test(String(wsNode?.meta?.ui))) && <div className="row swatches tints" title="框里面（UI 框 / 展开的子图）叠多少节点色。跟随 = ⚙ 外观里亮 / 暗主题各自的默认"><span className="rl">不透</span><TintButtons cur={+wsNode?.meta?.tint || 0} onTint={t => onMeta(id, { tint: t ? String(t) : null })} /></div>}
+        {/^true$/i.test(String(wsNode?.meta?.ui)) && <div className="row uisize" title="UI 框的设计尺寸（导出 / 复制 UI 布局用）；回车或点别处生效"><span className="rl">尺寸</span>
+          {['w', 'h'].map((k, i) => <span key={k}>{i ? <span className="x">×</span> : null}<input type="number" min="20" key={id + k + wsNode.meta[k]} defaultValue={wsNode.meta[k]} disabled={!editable}
+            onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') e.currentTarget.blur(); }}
+            onBlur={e => { const v = Math.round(+e.currentTarget.value); if (v >= 20 && String(v) !== String(wsNode.meta[k])) onMeta(id, { [k]: String(v) }); else e.currentTarget.value = wsNode.meta[k]; }} /></span>)}</div>}
         <div className="row">状态 {STATUS.map(([s, ic]) => <button key={s} className={n.status === s ? 'on' : ''} onClick={() => onStatus(id, s)}>{ic}</button>)}
           <button title="清除状态（不标）" onClick={() => onStatus(id, null)}>—</button></div>
         {onColor && <div className="row swatches"><span className="rl">颜色</span><span className="cur" style={{ background: color }} title={'现在：' + color + (wsNode?.meta?.color ? '（手动）' : '（自动）')} />

@@ -1417,6 +1417,8 @@ export function NodeCard({ node, img, dim, isSel }) {
           onClick={e => { e.stopPropagation(); cardActions.foldPics(node.id); }}>🖼{img.length > 1 ? img.length : ''}</span>}
         {node.body?.trim() && <span className={'textbadge' + (node.textOpen ? ' on' : '')} title={node.textOpen ? '收起正文' : '在卡片里展开正文（md）'} onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.toggleText(node.id); }}>📄</span>}
+        {sized && <span className="sizebadge" title={'手动大小 ' + Math.round(node.sw) + '×' + Math.round(node.sh) + '：点一下回到自动（跟着内容变）'} onPointerDown={stop} onMouseDown={stop}
+          onClick={e => { e.stopPropagation(); cardActions.resizeCard(node.id, null); }}>⇲</span>}
         {node.propN > 0 && <span className={'propbadge' + (node.props?.length ? ' on' : '')} title={node.props?.length ? '收起卡片上的属性' : '展开属性（' + node.propN + ' 条）'} onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.toggleProps(node.id); }}>☰</span>}
         {node.children.length > 0 && <span className="kids" title="展开/收起子级（2）；双击卡片钻进" onPointerDown={stop} onMouseDown={stop}
