@@ -152,6 +152,8 @@ function LocalTab({ api, status, cfg, save, onStatus }) {
 }
 
 const EFFORT_ZH = { off: '不思考（快、省钱，推荐）', low: '低', high: '高', max: '最高（慢、贵）' };
+// Grok 4.5 起推理关不掉：「不思考」实际发 low，所以和「低」合成一档（官方默认是 high）
+const EFFORT_GROK = { off: '低（最快，推荐）', high: '高（官方默认，慢）', max: '最高（xhigh，更慢、更贵）' };
 // 在线服务商（👤 2026-10-16 加 Grok）：每家一个 key（只存本机），模型列表合在一起选；DeepSeek 的模型名不带前缀（老写法），别家带「服务商:」
 const PROVIDERS = [['deepseek', 'DeepSeek', 'sk-…', 'platform.deepseek.com'], ['xai', 'Grok（xAI）', 'xai-…', 'console.x.ai']];
 const modelKey = id => id.startsWith('deepseek:') ? id.slice(9) : id; // 存进设置的写法
@@ -160,6 +162,7 @@ function OnlineTab({ api, status, cfg, save, onStatus }) {
   const list = status?.online || [];
   const putKey = (p, k) => api('/ai/key', { method: 'PUT', body: JSON.stringify({ provider: p, key: k }) }).then(s => { onStatus(s); setKeys(x => ({ ...x, [p]: '' })); setMsg(k ? '✓ 已存' : '已删除'); }).catch(e => setMsg('❌ ' + e.message));
   const curKey = cfg.onlineModel || 'deepseek-flash', cur = list.find(x => modelKey(x.id) === curKey), isDs = !/^\w+:/.test(curKey) || curKey.startsWith('deepseek:');
+  const grokEff = /^xai:grok-4\.[5-9]/.test(curKey); // 和 core/ai.js 的 grokEffort 同一条规则
   const opts = list.length ? list : [{ id: 'deepseek:deepseek-flash', name: 'deepseek-flash' }, { id: 'deepseek:deepseek-v4-pro', name: 'deepseek-v4-pro' }];
   return (
     <div className="aigroup">
@@ -174,8 +177,8 @@ function OnlineTab({ api, status, cfg, save, onStatus }) {
         {!opts.some(x => modelKey(x.id) === curKey) && <option value={curKey}>{curKey}（没连上）</option>}
         {PROVIDERS.map(([p, name]) => { const ms = opts.filter(x => x.id.startsWith(p + ':')); return ms.length ? <optgroup key={p} label={name}>{ms.map(x => <option key={x.id} value={modelKey(x.id)}>{x.name}{/flash/i.test(x.name) ? '（快、便宜，默认）' : ''}</option>)}</optgroup> : null; })}
       </select></label>
-      {isDs && <label>思考强度<select value={cfg.onlineEffort || 'off'} onChange={e => save({ onlineEffort: e.target.value })}>{Object.entries(EFFORT_ZH).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></label>}
-      <div className="hint">{cur?.ctx ? `🧠 上下文 ${kfmt(cur.ctx)} token。` : ''}按量计费，余额在各家平台看。{isDs ? '' : '思考强度只对 DeepSeek 有效。'}{msg}</div>
+      {(isDs || grokEff) && <label>思考强度<select value={cfg.onlineEffort || 'off'} onChange={e => save({ onlineEffort: e.target.value })}>{Object.entries(grokEff ? EFFORT_GROK : EFFORT_ZH).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></label>}
+      <div className="hint">{cur?.ctx ? `🧠 上下文 ${kfmt(cur.ctx)} token。` : ''}按量计费，余额在各家平台看。{isDs || grokEff ? '' : '这个模型调不了思考强度。'}{msg}</div>
     </div>
   );
 }

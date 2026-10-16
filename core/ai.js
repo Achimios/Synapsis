@@ -28,6 +28,10 @@ export const ONLINE = {
   deepseek: { name: 'DeepSeek', url: 'https://api.deepseek.com', env: 'DEEPSEEK_API_KEY', site: 'platform.deepseek.com', thinking: true },
   xai: { name: 'Grok（xAI）', url: 'https://api.x.ai/v1', env: 'XAI_API_KEY', site: 'console.x.ai' },
 };
+// xAI 的 /models 不给上下文长度 → 照 docs.x.ai/docs/models 的价格表抄（2026-10-16），新模型没在表里就显示 ?
+const XAI_CTX = [[/^grok-build/, 256e3], [/^grok-4\.[5-9]/, 500e3], [/^grok-4/, 1e6]];
+// 👤 2026-10-16「4.7 好慢」：grok-4.5 起推理关不掉、默认 high → 思考强度「不思考」对它们发 low（最快的一档）
+export const grokEffort = (model, eff) => /^grok-4\.[5-9]/.test(model) ? { off: 'low', low: 'low', high: 'high', max: 'xhigh' }[eff] || 'low' : null;
 // 设置里存的在线模型名：DeepSeek 的不带前缀（老写法），别家带「服务商:」前缀（如 xai:grok-4）
 export const onlineId = m => /^\w+:/.test(m) ? m : 'deepseek:' + m;
 export const keyFile = home => join(home, '.synapsis', 'keys.json');
@@ -83,7 +87,7 @@ async function onlineModels(cfg) {
         // 聊天下拉只要对话模型（xAI 列表里混着图片 / 视频）
         // 👤 2026-10-16 新的在上面：按发布时间（created）倒序；没有 created 就按名字倒序（数字按大小比）
         onlineCache[p] = { t: Date.now(), list: (await r.json()).data.filter(m => !/imagine|image|video|embed|tts|audio/i.test(m.id))
-          .sort((a, b) => (b.created || 0) - (a.created || 0) || b.id.localeCompare(a.id, 'en', { numeric: true })).map(m => ({ id: p + ':' + m.id, name: m.name || m.id, embed: false, loaded: true, online: true, ctx: m.context_window || null, maxCtx: m.context_window || null })) };
+          .sort((a, b) => (b.created || 0) - (a.created || 0) || b.id.localeCompare(a.id, 'en', { numeric: true })).map(m => { const ctx = m.context_window || (p === 'xai' && XAI_CTX.find(([re]) => re.test(m.id))?.[1]) || null; return { id: p + ':' + m.id, name: m.name || m.id, embed: false, loaded: true, online: true, ctx, maxCtx: ctx }; }) };
       } catch { continue; }
     }
     out.push(...onlineCache[p].list);
@@ -187,7 +191,8 @@ export async function chat(cfg, system, user, maxTokens = 300, opts = {}) {
     if (on) { // 在线：默认不思考（一句话 < 1 秒，省钱）；设了思考强度 → reasoning_effort，思考过程丢掉只要答案
       const key = onlineKey(cfg, on.provider);
       if (!key) throw new Error(`没有 ${on.provider} 的 key：AI 设置「在线」页填，或写进 ${cfg.keys}（{"${on.provider}": "sk-…"}），或设环境变量 ${on.env}`);
-      const eff = !ONLINE[on.provider]?.thinking ? {} : EFFORTS.includes(cfg.onlineEffort) && cfg.onlineEffort !== 'off' ? { reasoning_effort: cfg.onlineEffort, max_tokens: maxTokens + 4000 } : { thinking: { type: 'disabled' } }; // 思考开关只有 DeepSeek 认
+      const ge = on.provider === 'xai' && grokEffort(on.model, cfg.onlineEffort);
+      const eff = ge ? { reasoning_effort: ge, max_tokens: maxTokens + 4000 } : !ONLINE[on.provider]?.thinking ? {} : EFFORTS.includes(cfg.onlineEffort) && cfg.onlineEffort !== 'off' ? { reasoning_effort: cfg.onlineEffort, max_tokens: maxTokens + 4000 } : { thinking: { type: 'disabled' } }; // 思考开关只有 DeepSeek 认
       const res = await fetch(on.url + '/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key }, body: JSON.stringify({ ...body, ...eff }), signal: AbortSignal.timeout(180000) });
       if (!res.ok) throw new Error(`${on.provider} ${res.status}：${(await res.text()).slice(0, 200)}`);
       r = await res.json();
