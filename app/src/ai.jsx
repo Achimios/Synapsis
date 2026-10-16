@@ -509,7 +509,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
             {t.memRead?.length > 0 && <div className="know">🧠 读了记忆：{t.memRead.join('、')}</div>}
             {t.looked?.length > 0 && <div className="know">🔎 查看了：{t.looked.join('、')}</div>}
             {t.todo && <div className="know">📋 {t.todo.added?.length ? '记进待办：' + t.todo.added.join('；') : ''}{t.todo.added?.length && t.todo.checked?.length ? '　' : ''}{t.todo.checked?.length ? '勾掉：' + t.todo.checked.join('；') : ''}</div>}
-            {t.cache && <div className="know" title="DeepSeek 上下文缓存：请求开头和之前完全一样的部分按便宜价算、也更快。开关 📢、换优先角色、压缩 / 清空记忆会让下一轮命中掉一截">⚡ 缓存命中 {t.cache[0]} / {t.cache[1]}（{Math.round(t.cache[0] / t.cache[1] * 100)}%）</div>}
+            {t.cache && <div className="know cachehit" title="DeepSeek 上下文缓存：请求开头和之前完全一样的部分按便宜价算、也更快。开关 📢、换优先角色、压缩 / 清空记忆会让下一轮命中掉一截">⚡ 缓存命中 {t.cache[0]} / {t.cache[1]}（{Math.round(t.cache[0] / t.cache[1] * 100)}%）</div>}
             {t.done?.length > 0 && <ul className="done">{t.done.map((d, j) => <li key={j}>✓ {d}</li>)}</ul>}
             {t.warnings?.length > 0 && <div className="know">⚠ 执行后检查：{t.warnings.join('；')}</div>}
             {mySum?.upto && t.t === mySum.upto && <details className="sumline" ref={sumRef}><summary>🗜 以上已压缩成摘要（模型只看摘要，原文留着给你看）</summary>
