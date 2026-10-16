@@ -100,7 +100,8 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       {node.ui && item('▭ 复制 UI 布局', () => actions.copyUiLayout(node.id))}
       {/* 👤 2026-10-12 饱和 / 不透是手调、要按得快 → 放在状态上面，各一行 */}
       {actions.sat && <div className="mi row swatches sat" onPointerDown={e => e.stopPropagation()}><span>饱和</span><SatButtons base={node.baseColor} cur={node.satNow} onSat={p => actions.sat(node.id, p)} /></div>}
-      {actions.tint && (node.ui || node.children?.length > 0) && <div className="mi row swatches tints" onPointerDown={e => e.stopPropagation()} title="框里面（UI 框 / 展开的子图）叠多少节点色；跟随 = ⚙ 外观的默认"><span>不透</span><TintButtons cur={node.tintNow} onTint={t => actions.tint(node.id, t)} /></div>}
+      {actions.tint && <div className="mi row swatches tints" onPointerDown={e => e.stopPropagation()} title="卡片底色 / 框里面叠多少节点色；跟随 = 默认"><span>不透</span><TintButtons cur={node.tintNow} onTint={t => actions.tint(node.id, t)} /></div>}
+      {actions.sat && <div className="tintsep" />}
       <div className="mi row" onPointerDown={e => e.stopPropagation()}>
         <span>状态</span>
         {STATUS.map(([s, ic]) => <button key={s} className={node.status === s ? 'on' : ''} onClick={() => { actions.status(node.id, s); }}>{ic}</button>)}
@@ -237,7 +238,8 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
           onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') e.target.blur(); else if (e.key === 'Escape') { e.target.value = n.label; e.target.blur(); } }}
           onBlur={e => { const v = e.target.value.trim(); if (v && v !== n.label) onRename(id, v); else e.target.value = n.label; }} /></h3>
         {onSat && <div className="row swatches sat"><span className="rl">饱和</span><SatButtons base={baseColor} cur={satNow} onSat={p => onSat(id, p)} /></div>}
-        {onSat && editable && (n.children.length > 0 || /^true$/i.test(String(wsNode?.meta?.ui))) && <div className="row swatches tints" title="框里面（UI 框 / 展开的子图）叠多少节点色。跟随 = ⚙ 外观里亮 / 暗主题各自的默认"><span className="rl">不透</span><TintButtons cur={+wsNode?.meta?.tint || 0} onTint={t => onMeta(id, { tint: t ? String(t) : null })} /></div>}
+        {onSat && editable && <div className="row swatches tints" title="卡片底色 / 框里面（UI 框 / 展开的子图）叠多少节点色。跟随 = 默认（框的默认在 ⚙ 外观）"><span className="rl">不透</span><TintButtons cur={+wsNode?.meta?.tint || 0} onTint={t => onMeta(id, { tint: t ? String(t) : null })} /></div>}
+        {onSat && <div className="tintsep" />}
         {/^true$/i.test(String(wsNode?.meta?.ui)) && <div className="row uisize" title="UI 框的设计尺寸（导出 / 复制 UI 布局用）；回车或点别处生效"><span className="rl">尺寸</span>
           {['w', 'h'].map((k, i) => <span key={k}>{i ? <span className="x">×</span> : null}<input type="number" min="20" key={id + k + wsNode.meta[k]} defaultValue={wsNode.meta[k]} disabled={!editable}
             onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') e.currentTarget.blur(); }}

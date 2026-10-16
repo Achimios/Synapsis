@@ -1419,7 +1419,7 @@ export function NodeCard({ node, img, dim, isSel }) {
   const sized = node.sw > 0;
   return (
     <div className={'card' + (sized ? ' sized' + (isSel ? ' nowheel' : '') : '') + (node.ref ? ' refcard' : '') + (node.pattern ? ' pat-' + node.pattern : '') + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (showPics ? ' hasimg' : '') + (node.status ? ' s-' + node.status : '') + (node.dropped ? ' dropped' : '')}
-      style={{ ...(node.color ? { '--c': node.color } : {}), ...(sized ? { width: node.sw, height: node.sh, maxWidth: 'none' } : showPics && node.picw ? { width: node.picw, maxWidth: 'none' } : node.textOpen && node.body?.trim() ? { width: 'max-content', maxWidth: 420 } : {}) }}>
+      style={{ ...(node.color ? { '--c': node.color } : {}), ...(node.tint ? { '--card-tint': node.tint + '%' } : {}), ...(sized ? { width: node.sw, height: node.sh, maxWidth: 'none' } : showPics && node.picw ? { width: node.picw, maxWidth: 'none' } : node.textOpen && node.body?.trim() ? { width: 'max-content', maxWidth: 420 } : {}) }}>
       <div className="title">{node.status && <span className="st">{STATUS_ICON[node.status]}</span>}{node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
         {pics && <span className="picbadge" title={node.foldPics ? '显示图片' : '收起图片'} onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.foldPics(node.id); }}>🖼{img.length > 1 ? img.length : ''}</span>}

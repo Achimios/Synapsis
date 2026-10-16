@@ -89,13 +89,13 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .card { background: var(--panel2); border: 1px solid var(--line2); border-left-width: 3px; border-radius: 3px; padding: 6px 11px; min-width: 120px; max-width: 220px; font-size: 14px; transition: opacity .15s; color: var(--text); }
 .card.s-done { border-left-color: var(--ok); } .card.s-partial { border-left-color: #e0b84d; } .card.s-todo { border-left-color: var(--faint); }
 /* 节点颜色 --c（core/colors.js）：边框 + 淡底色；左边那条仍是状态色 */
-.card { --c: var(--line2); border-top-color: color-mix(in srgb, var(--c) 70%, var(--line2)); border-right-color: color-mix(in srgb, var(--c) 70%, var(--line2)); border-bottom-color: color-mix(in srgb, var(--c) 70%, var(--line2)); background: color-mix(in srgb, var(--c) 9%, var(--panel2)); }
+.card { --c: var(--line2); border-top-color: color-mix(in srgb, var(--c) 70%, var(--line2)); border-right-color: color-mix(in srgb, var(--c) 70%, var(--line2)); border-bottom-color: color-mix(in srgb, var(--c) 70%, var(--line2)); background: color-mix(in srgb, var(--c) var(--card-tint, 9%), var(--panel2)); }
 .card .title .lab { color: color-mix(in srgb, var(--c) 35%, var(--text)); }
 /* 👤 2026-10-11 亮色下卡片 / 框太淡：只在亮色里把节点色压深一截当边框、底色多染一点（深色不动） */
 :root[data-theme="light"] .card.uibox { border-color: color-mix(in srgb, var(--c, var(--accent)) 70%, #444); background: color-mix(in srgb, var(--c, var(--accent)) var(--box-tint), var(--hover)); } /* 👤 2026-10-12 亮色框里太白：灰底 + 节点色，浓度 = ⚙ 外观「框底色」（--box-tint） */
 :root[data-theme="light"] .card.sel, :root[data-theme="light"] .frame.sel { border-color: var(--sel); }
 :root[data-theme="light"] .card:not(.uibox):not(.sel) { border-top-color: color-mix(in srgb, var(--c) 70%, #444); border-right-color: color-mix(in srgb, var(--c) 70%, #444); border-bottom-color: color-mix(in srgb, var(--c) 70%, #444); }
-:root[data-theme="light"] .card:not(.uibox) { background: color-mix(in srgb, var(--c) 14%, var(--panel2)); }
+:root[data-theme="light"] .card:not(.uibox) { background: color-mix(in srgb, var(--c) var(--card-tint, 14%), var(--panel2)); } /* 不透（tint）也管普通卡的底色，👤 2026-10-16 */
 :root[data-theme="light"] .frame:not(.sel) { border-color: color-mix(in srgb, var(--c) 70%, #444); }
 .card.sel { border-color: var(--sel); box-shadow: 0 0 0 1px var(--sel), 0 0 10px color-mix(in srgb, var(--c) 60%, transparent); }
 .card.dim { opacity: .25; }
@@ -733,3 +733,4 @@ aside.outline > :not(.bar) { zoom: var(--zl, 1); } aside.side > :not(.bar) { zoo
 .modal > div.sumwin { width: min(720px, 94vw); height: min(70vh, 640px); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line2); border-radius: 6px; }
 .sumwin .bar { display: flex; gap: 8px; align-items: center; padding: 6px 10px; } .sumwin .bar .grow { flex: 1; }
 .sumwin textarea { flex: 1; margin: 0 10px; resize: none; font: 13px/1.6 'Microsoft YaHei', system-ui, sans-serif; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 8px; }
+.side .tintsep, .ctx .tintsep { height: 0; border-top: 1px solid var(--line); margin: 4px 0 2px; } /* 饱和 / 不透是手调的，和下面词表管的颜色 / 图案分开 */
