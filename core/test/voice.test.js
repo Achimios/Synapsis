@@ -2,8 +2,8 @@
 import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { voicePrompt, loadVoice, saveVoiceCfg, speak, VOICE_MAX, loadCatalog, resolveVoice } from '../voice.js';
-import { parseReply } from '../agent.js';
+import { voicePrompt, loadVoice, saveVoiceCfg, speak, VOICE_MAX, loadCatalog, resolveVoice, personaOf } from '../voice.js';
+import { parseReply, lookAt } from '../agent.js';
 import { loadSettings } from '../settings.js';
 
 let pass = 0, fail = 0;
@@ -26,9 +26,27 @@ ok(!speak(none, { text: '你好' }).ok && speak(none, { text: '你好' }).why ==
 const h = resolveVoice({ tts, role: 'hastings', backend: 'edge' }, roles), c = resolveVoice({ tts, role: 'cortana', backend: '' }, roles);
 ok(h.ok && h.moods.length === 0 && h.desc === '英国历史学家的声音' && h.persona.startsWith('嘴毒') && h.backends.join() === 'volc,edge' && h.roles.join() === 'hastings,cortana', '读得到：角色 / 后端下拉、简介、口吻、情绪都来自角色表');
 const ph = voicePrompt(h);
-ok(ph.includes('"voice"') && !ph.includes('mood') && !ph.includes('"role"') && ph.includes('英国历史学家的声音') && ph.includes('- 先损一句') && /可选口吻.*严肃讨论时别用/.test(ph), '提示词：不提 mood（这个角色没有）、不让换角色、简介 + 可选口吻（合适时机才用）');
-const pc = voicePrompt(c);
-ok(pc.includes('"mood": "usual | urgent"') && !pc.includes('口吻'), 'cortana：只列它有的情绪；没有口吻就不提');
+ok(ph.includes('"voice"') && ph.includes('"role"') && ph.includes('不写 = hastings') && ph.includes('不写 = edge') && ph.includes('hastings（默认）：英国历史学家的声音') && ph.includes('cortana：AI；mood：usual / urgent'), '提示词：下拉只是「优先」——角色清单（简介 / 情绪 / 后端）全列，模型可以换角色、后端');
+ok(ph.includes('- 先损一句') && /口吻是可选的：闲聊、玩梗的时候用，严肃讨论时别用/.test(ph) && ph.includes('look {"persona"') && ph.includes('__TTS_角色表.md'), '默认口吻 = 优先角色的；借别人的口吻 look {"persona"} 翻；角色表全文在哪也说了');
+ok(!voicePrompt(c).includes('cortana 的口吻') && voicePrompt(c).includes('默认不带特别的口吻'), '优先角色没写口吻：默认不带');
+
+// 这一句实际用谁：模型点名且在表里 → 用它；情绪 / 后端按实际角色查
+const sw = speak(h, { text: '嗯', role: 'cortana', mood: 'urgent', pref: 'edge' }).job;
+ok(sw.role === 'cortana' && sw.mood === 'urgent' && !('pref' in sw), '换成 cortana：用它的情绪；edge 它没有 → 不发 pref（优先后端 edge 它也没有）');
+const sx = speak(h, { text: '嗯', role: '不存在', mood: 'urgent' }).job;
+ok(sx.role === 'hastings' && !('mood' in sx) && sx.pref === 'edge', '点了不存在的角色 → 退回优先角色；它没有情绪就不发；优先后端照发');
+ok(personaOf(h, 'hastings').includes('先损一句') && /没有写口吻/.test(personaOf(h, 'cortana')) && /没有角色「bt」/.test(personaOf(h, 'bt')), 'look persona：借谁的口吻都能翻，没写 / 没这个人说清楚');
+
+// 内置 AI 读 TTS 文件夹：白名单（根目录 .md + bridge/*.json），config 里的 key 一律不给
+mkdirSync(join(tts, 'config')); writeFileSync(join(tts, 'config', 'cred.json'), '{"key":"sk-秘密"}'); writeFileSync(join(tts, '__TTS_角色表.md'), '# 角色表\n黑斯廷斯：嘴毒');
+mkdirSync(join(tts, 'logs')); writeFileSync(join(tts, 'logs', 'x.md'), '日志');
+const ctx0 = { scope: '', refs: new Map() }, root0 = mkdtempSync(join(tmpdir(), 'syn-root-'));
+const lk = items => lookAt(root0, ctx0, items, { ttsDir: tts, voice: h }).text;
+ok(lk([{ tts: '__TTS_角色表.md' }]).includes('黑斯廷斯：嘴毒') && lk([{ tts: 'bridge/roles.json' }]).includes('英国历史学家的声音'), '能读：根目录 .md、bridge/roles.json');
+ok(!lk([{ tts: 'config/cred.json' }]).includes('sk-秘密') && !lk([{ tts: 'config\\cred.json' }]).includes('sk-秘密') && !lk([{ tts: 'bridge/../config/cred.json' }]).includes('sk-秘密') && !lk([{ tts: 'logs/x.md' }]).includes('日志'), '读不到：config 里的 key（换斜杠、.. 绕也不行）、logs');
+ok(/还没指定 TTS 文件夹/.test(lookAt(root0, ctx0, [{ tts: 'bridge/roles.json' }], {}).text), '没指定 TTS 文件夹：说清楚');
+ok(lk([{ persona: 'hastings' }]).includes('先损一句'), 'look persona 走角色表');
+rmSync(root0, { recursive: true, force: true });
 
 // 只存人的三个选择；TTS 数据不落地
 const home = mkdtempSync(join(tmpdir(), 'syn-voice-'));
@@ -44,6 +62,7 @@ ok(!('mood' in speak(h, { text: '嗯', mood: 'urgent' }).job), '角色没有的�
 
 ok(parseReply('{"say":"嗯","actions":[],"voice":{"text":"严格来说","mood":"curious","lang":"en"}}').voice.mood === 'curious' && parseReply('{"say":"x","actions":[]}').voice === null, 'JSON 里的 voice 字段读得出，没有就是 null');
 ok(VOICE_MAX <= 200, '有长度上限');
+ok(parseReply('{"say":"x","actions":[],"voice":{"text":"嗯","role":"bt","pref":"edge"}}').voice.pref === 'edge', 'JSON 里模型写的 role / pref 读得出');
 for (const d of [home, tts]) rmSync(d, { recursive: true, force: true });
 
 console.log(`voice: ${pass} 过 / ${fail} 挂`);

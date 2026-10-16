@@ -30,7 +30,15 @@ export function resolveVoice(cfg, catalog) {
     : !catalog ? `找不到 TTS 的角色表（${cfg.tts}/bridge/roles.json）：点「寻找 TTS 文件夹位置」重新选`
     : !me ? `TTS 里没有角色「${cfg.role}」了：在下拉里重新选一个` : '';
   const arr = x => Array.isArray(x) ? x.map(String) : [];
-  return { ...cfg, script: cfg.tts ? join(cfg.tts, TTS_SCRIPT) : '', ok: !error, error, roles: catalog ? catalog.map(r => r.name) : [], moods: arr(me?.moods), backends: arr(me?.backends), desc: String(me?.description || ''), persona: String(me?.persona || '').trim() };
+  return { ...cfg, script: cfg.tts ? join(cfg.tts, TTS_SCRIPT) : '', ok: !error, error, catalog: catalog || [], roles: catalog ? catalog.map(r => r.name) : [], moods: arr(me?.moods), backends: arr(me?.backends), desc: String(me?.description || ''), persona: String(me?.persona || '').trim() };
+}
+// 角色表里某个角色（模型点名的）；没有 = null
+const roleOf = (v, name) => (v.catalog || []).find(r => r.name === name) || null;
+const arrOf = x => Array.isArray(x) ? x.map(String) : [];
+// look {"persona": "角色名"}：借别的角色的口吻时，模型按需翻（每次从角色表现读）
+export function personaOf(v, name) {
+  const r = roleOf(v, String(name || '')) ;
+  return r ? (String(r.persona || '').trim() || `（${r.name} 没有写口吻）`) : `（TTS 里没有角色「${name}」；可选：${(v.roles || []).join('、')}）`;
 }
 
 // 人的三个选择存在 Synapsis 的设置里（settings.yaml 的 voice 段，👤 2026-10-16），没有单独的语音文件
@@ -50,16 +58,22 @@ export function loadVoice(home) {
   return resolveVoice(cfg, loadCatalog(cfg.tts));
 }
 
-// 📢 开着、且能说时追加到在线版提示词的几行（短）。角色是人选的，模型不换；情绪只列这个角色在 TTS 里有的
+// 📢 开着、且能说时追加到在线版提示词的几行。👤 2026-10-16：下拉选的都只是「优先」——人在聊天里说换角色 / 后端 / 借谁的口吻，模型照做。
+//   角色清单（名字 + 简介 + 情绪 + 后端）每次从角色表现读全列（10 个左右，一行一个）；口吻默认给优先角色的，别人的 look {"persona": 名} 按需翻
 export const voicePrompt = v => {
-  const moods = v.moods || [];
+  const line = r => `  - ${r.name}${r.name === v.role ? '（默认）' : ''}：${String(r.description || '').trim() || '（没写简介）'}${arrOf(r.moods).length ? `；mood：${arrOf(r.moods).join(' / ')}` : ''}${arrOf(r.backends).length ? `；后端：${arrOf(r.backends).join(' / ')}` : ''}${String(r.persona || '').trim() ? '；有口吻' : ''}`;
   return `
 
-【语音】人开了语音：你可以在 JSON 里加 "voice": {"text": "一句话"${moods.length ? `, "mood": "${moods.join(' | ')}"` : ''}}，会用 TTS 念给人听；整句不是中文时加 "lang"（en / ja / de / fr…，德语法语这类一定要写）。
-- 自己决定要不要说：有梗、有情绪、值得说出口才说，大多数回合不用说；一次最多一句，${VOICE_MAX} 字以内；别念代码、路径、长列表；数字写成中文。${moods.length ? `
-- mood 只能从上面这几个里挑，不写 = ${moods[0]}。` : ''}${v.desc ? `
-- 念的声音：${v.desc}` : ''}${v.persona ? `
-- 可选口吻（不是必须）：闲聊、玩梗的时候可以用这种口吻说话，严肃讨论时别用，别硬套：
+【语音】人开了语音：你可以在 JSON 里加 "voice": {"text": "一句话"}，会用 TTS 念给人听。可选字段：
+- "role"：换个角色念（不写 = ${v.role}）。人在聊天里点名用谁就用谁，只能是下面清单里的名字。
+- "mood"：只能从这一句所用角色的 mood 里挑；那个角色没列 mood 就别写。
+- "pref"：换后端（不写 = ${v.backend || '自动'}），只能是这个角色列出的后端；人没要求就别写。
+- "lang"：整句不是中文时写（en / ja / de / fr…，德语法语这类一定要写）。
+- 自己决定要不要说：有梗、有情绪、值得说出口才说，大多数回合不用说；一次最多一句，${VOICE_MAX} 字以内；别念代码、路径、长列表；数字写成中文。
+角色清单（声音是谁）：
+${(v.catalog || []).map(line).join('\n')}
+口吻（说话方式）和声音分开：${v.persona ? `默认是 ${v.role} 的口吻，见下面` : '默认不带特别的口吻'}；人要借别的角色的口吻（比如「用 bt 的声音、黑斯廷斯的口吻」），先 look {"persona": "角色名"} 翻那个角色的口吻（角色表全文：look {"tts": "__TTS_角色表.md"} 或 {"tts": "bridge/roles.json"}，TTS 文件夹只读、只能看这类文档）。口吻是可选的：闲聊、玩梗的时候用，严肃讨论时别用，别硬套。${v.persona ? `
+${v.role} 的口吻：
 ${v.persona}` : ''}`;
 };
 
@@ -70,11 +84,14 @@ export function speak(v, voice, id) {
   if (!text) return { ok: false, why: '没有内容' };
   if (!existsSync(v.script)) return { ok: false, why: `TTS 文件夹里没有 ${TTS_SCRIPT}：点「寻找 TTS 文件夹位置」重新选` };
   const lang = /^[a-z]{2}$/.test(voice.lang || '') ? voice.lang : ''; // 模型说了是哪种语言就发，不然 TTS 自己猜
-  const job = { id: 'syn-' + (id || Date.now().toString(36)), role: v.role, text, ...(v.moods.includes(voice.mood) ? { mood: voice.mood } : {}), ...(v.backend ? { pref: v.backend } : {}), ...(lang ? { lang } : {}) };
+  // 这一句实际用谁：模型点名、且在角色表里 → 用它；不然用优先角色。情绪、后端都按实际用的那个角色查
+  const who = roleOf(v, voice.role) || roleOf(v, v.role), role = who?.name || v.role, backs = arrOf(who?.backends);
+  const pref = backs.includes(voice.pref) ? voice.pref : backs.includes(v.backend) ? v.backend : ''; // 模型写的后端要这个角色有；不然用优先后端（这个角色没有就让 TTS 自己选）
+  const job = { id: 'syn-' + (id || Date.now().toString(36)), role, text, ...(arrOf(who?.moods).includes(voice.mood) ? { mood: voice.mood } : {}), ...(pref ? { pref } : {}), ...(lang ? { lang } : {}) };
   try {
     const p = spawn(process.env.SYN_PYTHON || 'python', [v.script, '--stdin'], { stdio: ['pipe', 'ignore', 'ignore'], env: { ...process.env, PYTHONUTF8: '1' }, windowsHide: true });
     p.on('error', () => {});
     p.stdin.end(JSON.stringify(job), 'utf8');
   } catch (e) { return { ok: false, why: e.message }; }
-  return { ok: true, role: v.role, text, job };
+  return { ok: true, role, text, job };
 }

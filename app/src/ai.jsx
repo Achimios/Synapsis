@@ -243,13 +243,13 @@ function VoiceTab({ api }) {
   if (!d) return <div className="hint pad">{msg || '读取中…'}</div>;
   return <div className="voicetab">
     <div className="row vpick">
-      <label>角色 <select value={d.role} disabled={!d.roles.length} onChange={e => pick({ role: e.target.value })}>{(d.roles.includes(d.role) ? d.roles : [d.role, ...d.roles]).map(r => <option key={r} value={r}>{r}</option>)}</select></label>
+      <label>优先角色 <select value={d.role} disabled={!d.roles.length} onChange={e => pick({ role: e.target.value })}>{(d.roles.includes(d.role) ? d.roles : [d.role, ...d.roles]).map(r => <option key={r} value={r}>{r}</option>)}</select></label>
       <label>优先后端 <select value={d.backend || ''} disabled={!d.ok} onChange={e => pick({ backend: e.target.value })}><option value="">自动</option>{d.backends.map(b => <option key={b} value={b}>{b}</option>)}</select></label>
       <button onClick={findTts} title={d.tts || '还没指定'}>📁 寻找 TTS 文件夹位置</button>
     </div>
     {d.ok ? <div className="hint vdesc" title={d.tts}>{d.desc}{d.moods.length ? `　情绪：${d.moods.join(' / ')}（AI 自己挑）` : ''}{d.persona ? '　有口吻设定（闲聊时可用）' : ''}</div>
       : <div className="warn">⚠ 语音停用：{d.error}</div>}
-    <div className="hint">右上角 📢 打开后，☁ 在线模型自己决定什么时候说一句。角色、情绪、口吻都在 TTS 那边改。{msg}</div>
+    <div className="hint">右上角 📢 打开后，☁ 在线模型自己决定什么时候说一句。下拉只是「优先」：聊天里说「用 bt 的声音、黑斯廷斯的口吻」它就照做。角色、情绪、口吻都在 TTS 那边改。{msg}</div>
   </div>;
 }
 function WordsTab({ api, onWordsApplied, scope = '', label = '项目' }) { // 👤 2026-10-12 按层起草：画布没选中 = 当前画布那个节点，选中分组 = 它；写进那一层的 _词表.md

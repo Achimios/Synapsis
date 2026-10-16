@@ -12,7 +12,7 @@ import { validateAction, planMoves, VALIDATORS } from './plan.js';
 import { chat, chatModel } from './ai.js';
 import { pickKnowledge, knowledgeText, knowledgeChunks } from './knowledge.js';
 import { memoryIndex, readMemories, writeMemory, indexStatus } from './memory.js';
-import { voicePrompt, VOICE_MAX } from './voice.js';
+import { voicePrompt, VOICE_MAX, loadVoice, personaOf } from './voice.js';
 
 const SKILL_DIR = join(dirname(fileURLToPath(import.meta.url)), 'skills');
 export function loadSkills(dir = SKILL_DIR) {
@@ -122,7 +122,7 @@ export function parseReply(raw, max = 1200) {
   if (a < 0 || b <= a) throw new Error('输出里没有 JSON 对象');
   const j = JSON.parse(s.slice(a, b + 1));
   if (typeof j !== 'object' || Array.isArray(j)) throw new Error('不是 JSON 对象');
-  return { voice: j.voice && typeof j.voice === 'object' && j.voice.text ? { text: String(j.voice.text), role: j.voice.role ? String(j.voice.role) : '', mood: j.voice.mood ? String(j.voice.mood) : '', lang: j.voice.lang ? String(j.voice.lang) : '' } : null, say: typeof j.say === 'string' ? j.say.slice(0, max) : '', actions: Array.isArray(j.actions) ? j.actions.slice(0, 60) : [], read: Array.isArray(j.read) ? j.read.slice(0, 6).map(String) : [], look: Array.isArray(j.look) ? j.look.slice(0, 6).filter(x => x && typeof x === 'object' && !Array.isArray(x)) : [] };
+  return { voice: j.voice && typeof j.voice === 'object' && j.voice.text ? { text: String(j.voice.text), role: j.voice.role ? String(j.voice.role) : '', mood: j.voice.mood ? String(j.voice.mood) : '', lang: j.voice.lang ? String(j.voice.lang) : '', pref: j.voice.pref ? String(j.voice.pref) : '' } : null, say: typeof j.say === 'string' ? j.say.slice(0, max) : '', actions: Array.isArray(j.actions) ? j.actions.slice(0, 60) : [], read: Array.isArray(j.read) ? j.read.slice(0, 6).map(String) : [], look: Array.isArray(j.look) ? j.look.slice(0, 6).filter(x => x && typeof x === 'object' && !Array.isArray(x)) : [] };
 }
 
 // —— 短记忆 ——
@@ -217,7 +217,7 @@ export function estimateContext(root, { scope = ROOT, selected = [], loose = fal
 //   只读：不碰工作区。返回 { text, said: ['n3 正文', '搜「词」'…] }
 export const LOOK_MAX = 3;
 const clip = (s, n) => { s = String(s ?? ''); return s.length > n ? s.slice(0, n) + `…（共 ${s.length} 字，已截断）` : s; };
-export function lookAt(root, ctx, items) {
+export function lookAt(root, ctx, items, opts = {}) { // opts.ttsDir / opts.voice：TTS 文件夹（只读白名单）和角色表（借口吻用）
   const g = loadWorkspace(root).graph, ws = { graph: g }, out = [], said = [];
   const lab = id => g.nodes.get(id)?.label ?? id;
   const props = n => Object.entries(n.meta || {}).filter(([k]) => k !== 'to').map(([k, v]) => `${k}: ${v}`).join('；');
@@ -240,6 +240,19 @@ export function lookAt(root, ctx, items) {
       if (!rel || back.startsWith('..') || isAbsolute(back) || /(^|[\\/])(\.synapsis|\.git|node_modules)([\\/]|$)/.test(back) || !/\.(md|txt|json|js|jsx|ts|css|html|csv|yaml|yml)$/i.test(back)) { out.push(`【文件 ${rel}】不能读（只读项目里的文本文件：md / txt / json / 代码…，不含 .synapsis / .git）`); continue; }
       let t; try { t = readFileSync(abs, 'utf8'); } catch { out.push(`【文件 ${rel}】没有这个文件`); continue; }
       out.push(`【文件 ${rel}】\n${clip(t, 8000)}`);
+    } else if (typeof it.tts === 'string' && it.tts.trim()) {
+      // 👤 2026-10-16 只读 TTS 文件夹（路径跟着设置 voice.tts 走）。白名单：根目录的 .md 文档 + bridge/ 下的 .json；
+      //   其余一律不给（config/ 里有火山 / Qwen 的 key，logs / cache / records 是运行日志和音频）。在线模型读到的东西会发到云端
+      const dir = opts.ttsDir, rel = it.tts.trim().replace(/\\/g, '/').replace(/^\/+/, '');
+      said.push(`读 TTS ${rel}`);
+      const okPath = /^[^/]+\.md$/i.test(rel) || /^bridge\/[^/]+\.json$/i.test(rel);
+      if (!dir) { out.push(`【TTS ${rel}】还没指定 TTS 文件夹（人在指令框「🔊 语音」页选）`); continue; }
+      if (!okPath || rel.includes('..') || /cred/i.test(rel)) { out.push(`【TTS ${rel}】不能读：只能读 TTS 根目录的 .md 文档和 bridge/ 下的 .json（比如 bridge/roles.json、__TTS_角色表.md）`); continue; }
+      let t; try { t = readFileSync(join(dir, rel), 'utf8'); } catch { out.push(`【TTS ${rel}】没有这个文件`); continue; }
+      out.push(`【TTS ${rel}】\n${clip(t, 12000)}`);
+    } else if (typeof it.persona === 'string' && it.persona.trim()) {
+      const name = it.persona.trim(); said.push(`${name} 的口吻`);
+      out.push(`【${name} 的口吻】\n${opts.voice ? personaOf(opts.voice, name) : '（还没指定 TTS 文件夹，读不到角色表）'}`);
     } else if (typeof it.manual === 'string' && it.manual.trim()) {
       const q = it.manual.trim().slice(0, 80); said.push(`翻手册「${q}」`);
       const picks = pickKnowledge(q, { budget: 3500 });
@@ -281,6 +294,7 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   }
   const idx = loose && opts.home ? memoryIndex(opts.home, root) : '';
   const memNote = idx && !recent.some(t => t.memNote) ? `【记忆索引】（想看全文就只回 {"read": ["名字"]}）\n${idx}` : '';
+  const vAll = opts.voice || (opts.home ? loadVoice(opts.home) : null); // TTS 文件夹 / 角色表：look 读 TTS、借口吻用（不管 📢 开没开）
   const vo = loose && opts.voice ? opts.voice : null; // 📢 开着（只给在线宽松版）：提示词后面加几行语音说明（声音简介 / 可选口吻都来自 TTS 的 roles.json）
   const sys = (loose ? loosePrompt(undefined, undefined, { model: chatModel(cfg).replace(/^\w+:/, ''), online: true, ctx: opts.ctx || null, ...memCfg(cfg, true) }) : systemPrompt()) + (vo ? voicePrompt(vo) : '');
   const lastNote = outcomeNote(recent.at(-1));
@@ -302,7 +316,7 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
       add += `\n\n【记忆全文】\n${m.text || '（没有叫这些名字的记忆）'}`;
     }
     if (reply.look.length) {
-      const l = lookAt(root, ctx, reply.look);
+      const l = lookAt(root, ctx, reply.look, { ttsDir: vAll?.tts || '', voice: vAll?.ok ? vAll : null });
       looked.push(...l.said);
       add += `\n\n【查看结果】\n${l.text}`;
     }
