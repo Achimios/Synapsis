@@ -10,7 +10,7 @@ import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText, synItems, synWrite } from '../core/cli.js';
 import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, suggestPatternWords, readAiLog, readUsage } from '../core/ai.js';
 import { lmsEstimate, lmsReload, lmsServerStart } from '../core/lmstudio.js';
-import { loadVoice, saveVoice, speak, setVoiceLine } from '../core/voice.js';
+import { loadVoice, saveVoice, saveVoiceCfg, speak } from '../core/voice.js';
 let lmsTried = false;
 import { runAgent, applyPlan, loadChat, clearChat, estimateContext, isLoose, loadSummary, compactChat, needCompact } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
@@ -168,8 +168,9 @@ function workspaceApi() {
                 const b = await body(req), st = STASH.get(root) || {}; STASH.set(root, st);
                 st.thinking = String(b.text || '').slice(0, 40); // 关掉框再打开时，界面看这个知道「还在想」
                 try {
-                  const vo = b.voice ? loadVoice(SYN_HOME) : null; // 📢 开着才带语音说明
-                  const r = await runAgent(root, b, cfg, { home: SYN_HOME, voice: vo });
+                  const vo = b.voice ? loadVoice(SYN_HOME) : null; // 📢 开着才带语音说明；TTS 找不到（vo.ok = false）就不让模型说，回一句为什么
+                  const r = await runAgent(root, b, cfg, { home: SYN_HOME, voice: vo?.ok ? vo : null });
+                  if (vo && !vo.ok) r.spoke = { ok: false, why: vo.error };
                   if (vo && r.voice) r.spoke = speak(vo, r.voice, Date.now().toString(36)); // 念出来（不等播完）
                   if (r.actions.length) st.plan = r; else delete st.plan;
                   // 短记忆超了 → 后台压缩（不等它：这一轮的回答先回去，下一轮用上新摘要）
@@ -179,7 +180,7 @@ function workspaceApi() {
                 } finally { delete st.thinking; }
               } // 待确认的动作服务端也记一份：AI 还在想时关掉框，回来照样能确认
               if (url.pathname === '/ai/voice') { // 🔊 语音页：读 / 存 <Synapsis>/.synapsis/语音.md
-                if (req.method === 'PUT') { const b = await body(req); let t = b.text; for (const [k, v] of Object.entries(b.set || {})) if (['声线', '后端'].includes(k)) t = setVoiceLine(t, k, String(v)); return send(200, saveVoice(SYN_HOME, t)); } // set = 下拉框改的那一行
+                if (req.method === 'PUT') { const b = await body(req); if (typeof b.text === 'string') saveVoice(SYN_HOME, b.text); return send(200, b.set ? saveVoiceCfg(SYN_HOME, b.set) : loadVoice(SYN_HOME)); } // text = 人格；set = 人的三个选择 {tts, role, backend}
                 if (req.method === 'POST') { const v = loadVoice(SYN_HOME); return send(200, speak(v, { text: (await body(req)).text || '试音：一二三。' }, 'test-' + Date.now().toString(36))); } // 试听
                 return send(200, loadVoice(SYN_HOME));
               }

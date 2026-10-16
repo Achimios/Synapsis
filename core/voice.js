@@ -1,30 +1,22 @@
 // >v<🤖AI指令-语音-👤 2026-10-12：内置 AI（在线宽松版）可以自己决定发语音。人在指令框右上角 📢 开关；关着时提示词里一个字都不提。
-//   不给它命令行：它只在 JSON 里写 "voice": {"text": …}，服务端按这份 md 里的 TTS 路径 / 角色 / 后端去调（一次最多一条、限长）。
-//   设置 + 人格在 Synapsis 目录的 .synapsis/语音.md（本机、不进 git，人在指令框「🔊 语音」页改）：
-//   短人格每次都进提示词；长人格模型想细看时 look {"voice": "人格"} 自己翻
-//   👤 2026-10-16 分工：人只选「角色」和「后端」（下拉，按 TTS 的 bridge/roles.json 生成）；情绪由模型挑，但只能挑这个角色真有的（没有就不提）；
-//   语种模型显式发 lang 或让 TTS 自动猜。roles.json 读不到 → 退回 md 里手写的「可用声线」+ 六种情绪
+//   不给它命令行：它只在 JSON 里写 "voice": {"text": …}，服务端按人选的 TTS 文件夹 / 角色 / 后端去调（一次最多一条、限长）。
+// 👤 2026-10-16 Synapsis 是 TTS 的调用端：TTS 是上游，数据（角色、情绪、简介）每次都从 <TTS 文件夹>/bridge/roles.json 现读，
+//   Synapsis 不存副本、不约束它的格式（字段变了这边适配）；读不到 = 语音停用，提示人去「寻找 TTS 文件夹位置」，不退回任何手写列表。
+//   Synapsis 只存人的三个选择：.synapsis/语音.json {tts: 文件夹, role, backend}。
+//   人格（给模型的，不是 TTS 的数据）在 .synapsis/语音.md：短人格每次进提示词，长人格模型 look {"voice": "人格"} 自己翻
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { spawn } from 'node:child_process';
 
-export const voiceFile = home => join(home, '.synapsis', '语音.md');
+export const voiceFile = home => join(home, '.synapsis', '语音.md');        // 人格
+export const voiceCfgFile = home => join(home, '.synapsis', '语音.json');   // 人的三个选择
 export const VOICE_MAX = 120; // 一条语音最多多少字
-export const BACKENDS = ['volc', 'edge', 'qwenf', 'qwenp']; // TTS 的 pref；「自动」= 不发 pref（TTS 默认火山，失败自动降级）
+export const TTS_SCRIPT = 'tts_v1.py';
+const CFG0 = { tts: '', role: 'hastings', backend: '' }; // backend '' = 自动（不发 pref）
 
-export const DEFAULT_VOICE = `# 🔊 内置 AI 的语音（本机，不进 git）
+export const DEFAULT_PERSONA = `# 🔊 内置 AI 的人格（本机，不进 git）
 
-指令框右上角 📢 打开后，AI 自己决定什么时候发一句语音（不是把回答全念出来）。只给 ☁ 在线模型。
-角色、后端在上面下拉框选（列表来自 TTS 的 bridge/roles.json）；情绪由 AI 从这个角色有的情绪里挑；语言留空 = 自动识别。
-改完点「保存」就生效。下面「设置」里每行「- 键: 值」；语气只对 qwen 后端有效（留着备用）。
-
-## 设置
-- TTS 脚本: C:/Users/Administrator/Desktop/Vault_Automata/1_TTS/tts_v1.py
-- 声线: hastings
-- 后端: 自动
-- 可用声线: hastings, cortana, asuka, eva, elizabeth, victor, bt, emma, klara, robot
-- 语气: 英式、慢条斯理、阴阳怪气
-- 语言:
+给内置 AI 的人设：「短人格」每次都给模型，「长人格」它想细看才翻。角色 / 后端 / TTS 文件夹在上面选，不写在这里。
 
 ## 短人格
 （每次都给模型，一两句）
@@ -39,12 +31,8 @@ export const DEFAULT_VOICE = `# 🔊 内置 AI 的语音（本机，不进 git�
 - 语音：一句话，短，有梗；别念长段说明，别念代码和路径
 `;
 
-// TTS 的六种情绪（roles.json 读不到时的兜底；读得到就按角色自己的 moods）
-export const MOODS = ['usual', 'wistful', 'comfort', 'urgent', 'confident', 'curious'];
-const MOOD_ZH = { usual: '日常', wistful: '伤感', comfort: '安慰平静', urgent: '急促', confident: '自信', curious: '好奇' };
-
-// md → { tts, role, backend, roles, style, lang, short, long }
-export function parseVoice(text) {
+// 人格 md → { short, long }（按 ## 标题切段；单独一行的（…）是说明，不算）
+export function parsePersona(text) {
   const sec = {}; let cur = '';
   for (const line of String(text || '').split(/\r?\n/)) {
     const h = /^##\s+(.+?)\s*$/.exec(line);
@@ -52,74 +40,86 @@ export function parseVoice(text) {
     if (cur) sec[cur].push(line);
   }
   const body = k => (sec[k] || []).filter(l => !/^（.*）$/.test(l.trim())).join('\n').trim();
-  const kv = {};
-  for (const l of sec['设置'] || []) { const m = /^\s*-\s*([^:：]+)[:：]\s*(.*)$/.exec(l); if (m) kv[m[1].trim()] = m[2].trim(); }
-  const role = kv['声线'] || 'robot';
-  const roles = (kv['可用声线'] || role).split(/[,，、\s]+/).filter(Boolean);
-  const backend = BACKENDS.includes(kv['后端']) ? kv['后端'] : '';
-  return { tts: kv['TTS 脚本'] || kv['TTS脚本'] || '', role, backend, roles: roles.includes(role) ? roles : [role, ...roles], style: kv['语气'] || '', lang: kv['语言'] || '', short: body('短人格'), long: body('长人格') };
+  return { short: body('短人格'), long: body('长人格'), legacy: sec['设置'] || [] };
 }
 
-// TTS 自动生成的角色表：<tts_v1.py 所在目录>/bridge/roles.json → [{name, backends, languages, moods, description}]；读不到 = null
-export function loadCatalog(tts) {
-  if (!tts) return null;
+// TTS 的角色表（上游的数据，原样用；只认得出数组和 name）。读不到 = null
+export function loadCatalog(ttsDir) {
+  if (!ttsDir) return null;
   try {
-    const j = JSON.parse(readFileSync(join(dirname(tts), 'bridge', 'roles.json'), 'utf8'));
+    const j = JSON.parse(readFileSync(join(ttsDir, 'bridge', 'roles.json'), 'utf8'));
     const list = Array.isArray(j?.roles) ? j.roles.filter(r => r && typeof r.name === 'string') : null;
-    return list?.length ? list.map(r => ({ name: r.name, backends: Array.isArray(r.backends) ? r.backends : [], languages: Array.isArray(r.languages) ? r.languages : [], moods: Array.isArray(r.moods) ? r.moods : [], description: String(r.description || '') })) : null;
+    return list?.length ? list : null;
   } catch { return null; }
 }
 
-// 设置 + 角色表合起来：moods = 这个角色能用的情绪（[] = 不提），desc = 角色简介
-export function withCatalog(v, catalog = loadCatalog(v.tts)) {
-  const me = catalog?.find(r => r.name === v.role);
-  return { ...v, catalog, roles: catalog ? catalog.map(r => r.name) : v.roles, moods: catalog ? (me?.moods || []) : MOODS, desc: me?.description || '', backends: catalog ? (me?.backends || []) : BACKENDS };
+// 人的选择 + TTS 现读的数据 → 这次能不能说、怎么说
+export function resolveVoice(cfg, catalog) {
+  const me = catalog?.find(r => r.name === cfg.role);
+  const error = !cfg.tts ? '还没指定 TTS 文件夹：点「寻找 TTS 文件夹位置」'
+    : !catalog ? `找不到 TTS 的角色表（${cfg.tts}/bridge/roles.json）：点「寻找 TTS 文件夹位置」重新选`
+    : !me ? `TTS 里没有角色「${cfg.role}」了：在下拉里重新选一个` : '';
+  const arr = x => Array.isArray(x) ? x.map(String) : [];
+  return { ...cfg, script: cfg.tts ? join(cfg.tts, TTS_SCRIPT) : '', catalog, ok: !error, error, roles: catalog ? catalog.map(r => r.name) : [], moods: arr(me?.moods), backends: arr(me?.backends), desc: String(me?.description || '') };
+}
+
+const readJson = f => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return null; } };
+export function loadVoiceCfg(home) {
+  const saved = readJson(voiceCfgFile(home));
+  if (saved) return { ...CFG0, ...saved };
+  // 旧版把选择写在 语音.md 的「## 设置」里：读一次带过来（只拿人的选择：TTS 位置 / 声线 / 后端）
+  try {
+    const legacy = parsePersona(readFileSync(voiceFile(home), 'utf8')).legacy, kv = {};
+    for (const l of legacy) { const m = /^\s*-\s*([^:：]+)[:：]\s*(.*)$/.exec(l); if (m) kv[m[1].trim()] = m[2].trim(); }
+    const s = kv['TTS 脚本'] || kv['TTS脚本'] || '';
+    return { ...CFG0, tts: s ? dirname(s) : '', role: kv['声线'] || CFG0.role, backend: ['volc', 'edge', 'qwenf', 'qwenp'].includes(kv['后端']) ? kv['后端'] : '' };
+  } catch { return { ...CFG0 }; }
+}
+export function saveVoiceCfg(home, patch) {
+  const cur = loadVoiceCfg(home), next = { ...cur };
+  for (const k of ['tts', 'role', 'backend']) if (patch && k in patch) next[k] = String(patch[k] ?? '').trim();
+  if (next.tts) next.tts = next.tts.replace(/[\\/]+$/, '').replace(new RegExp('[\\\\/]' + TTS_SCRIPT.replace('.', '\\.') + '$', 'i'), ''); // 选到了脚本本身也认
+  mkdirSync(dirname(voiceCfgFile(home)), { recursive: true });
+  writeFileSync(voiceCfgFile(home), JSON.stringify(next, null, 1));
+  return loadVoice(home);
 }
 
 export function loadVoice(home) {
   const f = voiceFile(home);
-  let text = DEFAULT_VOICE;
+  let text = DEFAULT_PERSONA;
   try { if (existsSync(f)) text = readFileSync(f, 'utf8'); } catch { /* 读不到 = 默认 */ }
-  return withCatalog({ text, file: f, ...parseVoice(text) });
+  const cfg = loadVoiceCfg(home);
+  const { short, long } = parsePersona(text);
+  return { text, file: f, short, long, ...resolveVoice(cfg, loadCatalog(cfg.tts)) };
 }
-export function saveVoice(home, text) {
+export function saveVoice(home, text) { // 存人格
   const f = voiceFile(home);
   mkdirSync(dirname(f), { recursive: true });
   writeFileSync(f, String(text || ''));
   return loadVoice(home);
 }
 
-// 改「设置」里的一行（下拉框选角色 / 后端用）：有就替换，没有就加在「## 设置」下面；其余原样
-export function setVoiceLine(text, key, value) {
-  const lines = String(text || '').split(/\r?\n/), eol = /\r\n/.test(text) ? '\r\n' : '\n';
-  const re = new RegExp('^\\s*-\\s*' + key + '\\s*[:：]');
-  const i = lines.findIndex(l => re.test(l));
-  if (i >= 0) lines[i] = `- ${key}: ${value}`;
-  else { const h = lines.findIndex(l => /^##\s+设置\s*$/.test(l)); if (h >= 0) lines.splice(h + 1, 0, `- ${key}: ${value}`); else lines.push('', '## 设置', `- ${key}: ${value}`); }
-  return lines.join(eol);
-}
-
-// 📢 开着时追加到在线版提示词的几行（短）。角色是人选的，模型不换；情绪只列这个角色有的
+// 📢 开着、且能说时追加到在线版提示词的几行（短）。角色是人选的，模型不换；情绪只列这个角色在 TTS 里有的
 export const voicePrompt = v => {
   const moods = v.moods || [];
   return `
 
 【语音】人开了语音：你可以在 JSON 里加 "voice": {"text": "一句话"${moods.length ? `, "mood": "${moods.join(' | ')}"` : ''}}，会用 TTS 念给人听；整句不是中文时加 "lang"（en / ja / de / fr…，德语法语这类一定要写）。
 - 自己决定要不要说：有梗、有情绪、值得说出口才说，大多数回合不用说；一次最多一句，${VOICE_MAX} 字以内；别念代码、路径、长列表；数字写成中文。${moods.length ? `
-- mood：${moods.map(m => MOOD_ZH[m] ? `${m} ${MOOD_ZH[m]}` : m).join('、')}；不写 = ${moods.includes('usual') ? 'usual' : moods[0]}。` : ''}
+- mood 只能从上面这几个里挑，不写 = ${moods[0]}。` : ''}
 - 人格：${v.short || '（没写）'}${v.long ? '\n- 想看更细的人格设定就 look {"voice": "人格"}。' : ''}`;
 };
 
-// 念出来：按 md 里的脚本路径起 python，stdin 喂一行 JSON（不经过 shell，中文直接 UTF-8）。不等播完
+// 念出来：起 <TTS 文件夹>/tts_v1.py，stdin 喂一行 JSON（不经过 shell，中文直接 UTF-8）。不等播完
 export function speak(v, voice, id) {
+  if (!v.ok) return { ok: false, why: v.error };
   const text = String(voice?.text || '').trim().slice(0, VOICE_MAX);
   if (!text) return { ok: false, why: '没有内容' };
-  if (!v.tts || !existsSync(v.tts)) return { ok: false, why: '找不到 TTS 脚本：' + (v.tts || '（没写）') };
-  const moods = v.moods || MOODS;
-  const lang = /^[a-z]{2}$/.test(voice.lang || '') ? voice.lang : v.lang; // 模型说了是哪种语言就听它的，不然用 md 里的（空 = TTS 自己猜）
-  const job = { id: 'syn-' + (id || Date.now().toString(36)), role: v.role, text, ...(moods.includes(voice.mood) ? { mood: voice.mood } : {}), ...(v.backend ? { pref: v.backend } : {}), ...(v.style ? { style: v.style } : {}), ...(lang ? { lang } : {}) };
+  if (!existsSync(v.script)) return { ok: false, why: `TTS 文件夹里没有 ${TTS_SCRIPT}：点「寻找 TTS 文件夹位置」重新选` };
+  const lang = /^[a-z]{2}$/.test(voice.lang || '') ? voice.lang : ''; // 模型说了是哪种语言就发，不然 TTS 自己猜
+  const job = { id: 'syn-' + (id || Date.now().toString(36)), role: v.role, text, ...(v.moods.includes(voice.mood) ? { mood: voice.mood } : {}), ...(v.backend ? { pref: v.backend } : {}), ...(lang ? { lang } : {}) };
   try {
-    const p = spawn(process.env.SYN_PYTHON || 'python', [v.tts, '--stdin'], { stdio: ['pipe', 'ignore', 'ignore'], env: { ...process.env, PYTHONUTF8: '1' }, windowsHide: true });
+    const p = spawn(process.env.SYN_PYTHON || 'python', [v.script, '--stdin'], { stdio: ['pipe', 'ignore', 'ignore'], env: { ...process.env, PYTHONUTF8: '1' }, windowsHide: true });
     p.on('error', () => {});
     p.stdin.end(JSON.stringify(job), 'utf8');
   } catch (e) { return { ok: false, why: e.message }; }

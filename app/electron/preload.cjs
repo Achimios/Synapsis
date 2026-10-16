@@ -6,4 +6,5 @@ contextBridge.exposeInMainWorld('synapsisDesktop', {
   open: dir => ipcRenderer.invoke('syn:open', dir),
   forget: dir => ipcRenderer.invoke('syn:forget', dir),
   info: () => ipcRenderer.invoke('syn:info'),
+  pickDir: title => ipcRenderer.invoke('syn:pick-dir', title), // 选一个文件夹，只返回路径（「寻找 TTS 文件夹位置」用）
 });

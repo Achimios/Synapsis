@@ -130,6 +130,7 @@ ipcMain.handle('syn:recent', () => readRecent().map(r => ({ ...r, ok: existsSync
 ipcMain.handle('syn:pick-open', async () => { const d = await pickFolder(); if (d) await openWorkspace(d); return d; });
 ipcMain.handle('syn:open', async (_e, dir) => { await openWorkspace(dir); return true; });
 ipcMain.handle('syn:forget', (_e, dir) => { writeRecent(readRecent().filter(r => r.dir !== dir)); refreshTray(); });
+ipcMain.handle('syn:pick-dir', async (e, title) => { const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), { title: String(title || '选择文件夹'), properties: ['openDirectory'] }); return r.canceled ? null : r.filePaths[0]; });
 ipcMain.handle('syn:info', () => ({ home: HOME, version: app.getVersion?.() }));
 
 // —— 托盘 ——
