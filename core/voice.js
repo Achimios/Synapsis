@@ -91,12 +91,12 @@ export function loadVoice(home) {
 
 // 📢 开着、且能说时追加到在线版提示词的几行。👤 2026-10-16：下拉选的都只是「优先」——人在聊天里说换角色 / 后端 / 借谁的口吻，模型照做。
 //   角色清单每次从角色表现读（半句简介 + 情绪 + 有没有口吻）；口吻全文不进提示词（👤 2026-10-16：进了模型就一直用那个腔调），要用时 look {"persona": 名} 去 TTS 读
-export const voicePrompt = v => {
+export const voicePrompt = (v, native = false) => {
   const brief = d => { const t = String(d || '').trim(); const k = t.search(/[，。；;,]/); return (k > 0 && k <= 24 ? t.slice(0, k) : t.slice(0, 24)) || '—'; }; // 简介只留半句，省 token
   const line = r => `${r.name}${r.name === v.role ? '（默认）' : ''}：${brief(r.description)}${arrOf(r.moods).length ? `（mood：${arrOf(r.moods).join('/')}）` : ''}${String(r.persona || '').trim() ? '（有口吻）' : ''}`;
   return `
 
-【语音】开了喇叭：输出 {"say": …, "actions": […], "voice": {"text": "要念的话"}}，voice 每轮必填（只有它会被念，say 里的人听不到）；没什么可说就一句短话。
+【语音】开了喇叭：${native ? '每轮至少调一次 speak 工具（只有它会被念，回话正文人听不到；可以先念一句再去查、做完再念一句）' : '输出 {"say": …, "actions": […], "voice": {"text": "要念的话"}}，voice 每轮必填（只有它会被念，say 里的人听不到）'}；没什么可说就一句短话。
 - 纯文本，不用 Markdown；${VOICE_MAX} 字以内；不念代码、路径、列表；数字写中文。闲聊说台词，技术问题一两句口头总结。
 - 可选：role 换声音、mood（只用该角色列出的）、lang（整句非中文时写）、pref 换后端、fx 音效。人点名就照做。
 - 声音：${(v.catalog || []).map(line).join('；')}

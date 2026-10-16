@@ -70,7 +70,16 @@ export function pageContext(ws, scope, selected = [], boxes = {}, opts = {}) {
 //   能聊、能接人设、自己推理、自己算坐标；唯一硬底线 = 改页面只能用白名单动作、人确认才执行、不能删节点。
 //   整份软件知识直接放进来（7 千字左右；放在系统提示词 = 不变的前缀，在线服务的缓存能命中，几乎不花钱）
 // me = 这次实际用的模型和短记忆设置（👤 2026-10-11 实测：提示词没说它是谁，它读到快捷键表里「本地模型 qwen3-8b」就认成了自己）。放提示词末尾，前面的大段照样命中缓存
+// 查看能看什么（JSON 版和工具版共用的说明）
+const LOOK_ITEMS = `{"node": 编号} = 正文全文和属性（卡片上只标了「正文 N 字」，要内容就看；"here" = 当前页这个节点自己；p 编号 = 传送门指向的节点）；{"page": 编号} = 那个节点里面有什么（子节点和连线；里面的东西没有编号，只能读，不能动手）；{"search": 词} = 搜节点名字 / 正文 / 项目文件（结果没有编号）；{"file": 项目里的相对路径} = 读一份文本文件（md / txt / 代码…）；{"manual": 关键词} = 翻软件手册；{"web": 关键词} = 上网搜（回前几条标题、网址、摘要；中文生僻专名常搜偏，偏了就换英文或换个说法再搜）；{"url": 网址} = 读一个网页的文字（只读公网）；{"tts": 文件名} = 读 TTS 的文档；{"persona": 角色名} = 读那个角色的口吻。查看只读，不改任何东西`;
+// 👤 2026-10-16 原生工具调用版（在线 / 大的本地模型）：回话就是正文，查看 / 改页面 / 说话 / 待办 / 读记忆都是工具
+const NATIVE_OUT = `回话：直接写给人看的话（可以多行，可以用 - 列点）。要做事就调工具，可以先说一句再调，结果回来接着做，做完了直接回话结束：
+- propose：提议改页面的动作（人看过、确认后才执行；回话里别说成已经做完）。会告诉你每个动作合不合格，不合格的改了再提。
+- look：查看更多信息（【当前页】只列了名字和位置）。能直接答就别查。
+- read_memory：读长期记忆全文（消息里附了【记忆索引】时用；用不上别读）。值得以后记住的，用 remember 动作提议。
+- 节点只能用本页列出的编号（n1、n2…）。「这几个 / 选中的」= 标了 ★选中 的。编号只在动作里用；跟人说话一律说节点的名字，人看不到编号。`;
 export function loosePrompt(skills = loadSkills(), knowledge = knowledgeChunks(), me = null) {
+  const nat = !!me?.native;
   return `你是 Synapsis（思维导图 / 节点图工具）里的 AI 搭档，和人一起在【当前页】上思考和整理。
 你可以聊天、讨论想法、提建议、接受人给你的人设和语气，自己判断怎么做最好；拿不准的就说出你的猜测或者反问。别把自己当成只会查手册的说明书。
 
@@ -78,12 +87,14 @@ export function loosePrompt(skills = loadSkills(), knowledge = knowledgeChunks()
 想到建议尽管提，但同一条别每轮都在结尾重复。
 一条底线：图里写的是人的意图。你做不到节点里写的意图时，把差距说出来，别改节点的名字或正文去迁就能做到的；真要改意图，要明说「这是在改意图」，由人决定。
 
-输出：只输出一个 JSON 对象，不要代码块标记：{"say": "给人看的话（可以多行，可以用 - 列点）", "actions": [ 动作, … ]}
+${nat ? NATIVE_OUT + `
+- 动作（propose 里的每一个）是 {"do": 动作名, …参数}，动作名只能是：${skills.map(s => s.do).join('、')}。
+- look 的 items 里每项写一种：${LOOK_ITEMS}；最多连续查看 ${LOOK_MAX} 次。` : `输出：只输出一个 JSON 对象，不要代码块标记：{"say": "给人看的话（可以多行，可以用 - 列点）", "actions": [ 动作, … ]}
 - 不改页面时 actions 是空数组。改页面时 say 说清楚打算怎么做（人确认后才执行，别说成已经做完）。
 - 动作是 {"do": 动作名, …参数}，动作名只能是：${skills.map(s => s.do).join('、')}。
 - 节点只能用本页列出的编号（n1、n2…）。「这几个 / 选中的」= 标了 ★选中 的。编号只在 JSON 的动作里用；跟人说话（say / voice）一律说节点的名字，人看不到编号。
 - 长期记忆：有时消息里会附【记忆索引】（每份一行：名字 + 一句描述）。觉得哪份和这次有关、想看全文，就只输出 {"read": ["名字", …]}（这一次不要 say 和 actions），全文会发给你，你再正常回答。用不上就别读。值得以后记住的，用 remember 提议。
-- 查看：【当前页】只列了名字和位置。需要更多信息（某张卡的正文、某个节点里面有什么、项目里哪里提到某个词、某份文档、软件怎么用）时，只输出 {"look": [{"node": "n3"}, {"page": "n5"}, {"search": "词"}, {"file": "路径.md"}, {"manual": "关键词"}, {"web": "关键词"}, {"url": "https://…"}]}（可以顺带一句 say / voice，人当场看到听到；actions 留到最后），结果会发给你，你再继续。{"node": 编号} = 正文全文和属性（卡片上只标了「正文 N 字」，要内容就看；"here" = 当前页这个节点自己；p 编号 = 传送门指向的节点）；{"page": 编号} = 那个节点里面有什么（子节点和连线；里面的东西没有编号，只能读，不能动手）；{"search": 词} = 搜节点名字 / 正文 / 项目文件（结果没有编号）；{"file": 项目里的相对路径} = 读一份文本文件（md / txt / 代码…）；{"manual": 关键词} = 翻软件手册；{"web": 关键词} = 上网搜（必应，回前几条标题、网址、摘要；中文生僻专名常搜偏，偏了就换英文或换个说法再搜）；{"url": 网址} = 读一个网页的文字（只读公网）。查看只读，不改任何东西；最多连续查看 3 次，能直接答就别查。
+- 查看：【当前页】只列了名字和位置。需要更多信息（某张卡的正文、某个节点里面有什么、项目里哪里提到某个词、某份文档、软件怎么用）时，只输出 {"look": [{"node": "n3"}, {"page": "n5"}, {"search": "词"}, {"file": "路径.md"}, {"manual": "关键词"}, {"web": "关键词"}, {"url": "https://…"}]}（可以顺带一句 say / voice，人当场看到听到；actions 留到最后），结果会发给你，你再继续。{"node": 编号} = 正文全文和属性（卡片上只标了「正文 N 字」，要内容就看；"here" = 当前页这个节点自己；p 编号 = 传送门指向的节点）；{"page": 编号} = 那个节点里面有什么（子节点和连线；里面的东西没有编号，只能读，不能动手）；{"search": 词} = 搜节点名字 / 正文 / 项目文件（结果没有编号）；{"file": 项目里的相对路径} = 读一份文本文件（md / txt / 代码…）；{"manual": 关键词} = 翻软件手册；{"web": 关键词} = 上网搜（必应，回前几条标题、网址、摘要；中文生僻专名常搜偏，偏了就换英文或换个说法再搜）；{"url": 网址} = 读一个网页的文字（只读公网）。查看只读，不改任何东西；最多连续查看 3 次，能直接答就别查。`}
 - 【上一轮结果】：消息里可能有这一行，告诉你上次提议的动作人执行了没有、执行后检查出了什么问题（比如卡片重叠了）。以它为准，别凭印象说「已经做完了」；有问题就这一轮顺手修好。
 - 坐标：@(x,y) 是卡片左上角，x 向右、y 向下，后面是宽×高。用 place 挪位置时自己算好，别和别的卡重叠（留 20 以上的空隙）；【当前页】里编号 p1、p2… 的是传送门卡片：它们也能 select / align / arrange / tighten / place，排版时要和普通卡一起排（别压到、也别漏掉）；「图片」没有编号，不能动，排版时躲开。
 
@@ -154,7 +165,8 @@ export function setSummaryText(root, loose, text) {
 }
 // 在线 / 本地各一套（👤 2026-10-11「1M context 你给限制 8000？」「本地模型你单独给调」）：本地键名后面加 Local
 export const MEM_DEFAULTS = { memLimit: 64000, memKeep: 4, autoCompact: true, memLimitLocal: 3000, memKeepLocal: 2, autoCompactLocal: true };
-export const memCfg = (cfg, loose) => { const c = { ...MEM_DEFAULTS, ...Object.fromEntries(Object.entries(cfg || {}).filter(([k, v]) => k in MEM_DEFAULTS && v != null)) }, s = loose ? '' : 'Local'; return { memLimit: c['memLimit' + s], memKeep: c['memKeep' + s], autoCompact: c['autoCompact' + s] }; };
+// 上限按「在线 / 本地」分（本地大模型走宽松版，但上下文小，用本地那一行）
+export const memCfg = (cfg, loose) => { const c = { ...MEM_DEFAULTS, ...Object.fromEntries(Object.entries(cfg || {}).filter(([k, v]) => k in MEM_DEFAULTS && v != null)) }, s = loose && !(cfg && isLocalBig(cfg)) ? '' : 'Local'; return { memLimit: c['memLimit' + s], memKeep: c['memKeep' + s], autoCompact: c['autoCompact' + s] }; };
 const turnText = t => t.user + JSON.stringify({ say: t.say, actions: t.actions || [] });
 // 这次要喂的短记忆：摘要 + 摘要之后的原文。给了 cfg = 要真发出去：原文超过上限就从最老的丢（关了自动压缩 = 1 倍上限；开着 = 2 倍，留给后台压缩的余量）
 export function memoryOf(root, loose, cfg = null) {
@@ -214,7 +226,13 @@ export const ANSWER_PROMPT = `你是 Synapsis（思维导图 / 节点图工具�
 // >v<🤖AI指令-上下文-还没问之前估一下这次会占多少 token（系统提示词 + 当前页 + 短记忆 + 知识预算 + 回答上限）。
 //   粗估：中日韩字 ≈ 1 token，其它 ≈ 3.5 字符 1 token（Qwen 分词实测量级）；问过之后界面换成服务端报的真实用量
 export const estTokens = s => { const t = String(s); const cjk = (t.match(/[㐀-鿿＀-￯]/g) || []).length; return Math.round(cjk + (t.length - cjk) / 3.5); };
-export const isLoose = cfg => !!cfg && /^\w+:/.test(chatModel(cfg) || ''); // 在线模型 → 宽松版
+// >v<🤖AI指令-模型分档（👤 2026-10-16「8B 太笨用不到」）：名字里参数量 ≤ 9B 的本地模型（8B / 4B / 2B…，看不出多大的也算）= SLM → JSON 严格版；
+//   在线模型和大的本地模型（如 Qwen 27B）→ 宽松版 + 原生工具调用（runAgent 里的 native）
+export const modelSize = id => { const m = /(?:^|[^\d.])(\d+(?:\.\d+)?)\s*b(?![a-z])/i.exec(String(id || '')); return m ? +m[1] : null; };
+const isOnlineId = id => /^\w+:/.test(id || '');
+export const isSLM = id => !isOnlineId(id) && !(modelSize(id) > 9);
+export const isLoose = cfg => { const m = cfg && chatModel(cfg); return !!m && !isSLM(m); };
+export const isLocalBig = cfg => { const m = chatModel(cfg); return !!m && !isOnlineId(m) && !isSLM(m); };
 export function estimateContext(root, { scope = ROOT, selected = [], loose = false, cfg = null } = {}) {
   const ws = loadWorkspace(root), ctx = pageContext(ws, scope, selected, {}, { rich: loose });
   const m = memoryOf(root, loose, cfg);
@@ -226,6 +244,19 @@ export function estimateContext(root, { scope = ROOT, selected = [], loose = fal
 //   node = 本页某张卡的正文和属性；page = 本页某个节点里面有什么（子节点 + 连线，没有编号 → 只能读）；search = 节点名字 / 正文 / 项目文件
 //   只读：不碰工作区。返回 { text, said: ['n3 正文', '搜「词」'…] }
 export const LOOK_MAX = 3;
+export const STEP_MAX = 8; // 工具版一轮最多来回几跳（说话 / 查看 / 提议 / 记待办都算）
+// 工具版给模型的工具（OpenAI 兼容的 function 定义）。说明尽量短：用法在提示词里，动作的说明书也在提示词里
+const fn = (name, description, properties, required = []) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
+const strArr = d => ({ type: 'array', items: { type: 'string' }, description: d });
+export function agentTools(voiceOn) {
+  return [
+    fn('propose', '提议改当前页的动作（人确认后才执行）。回你每个动作合不合格', { actions: { type: 'array', items: { type: 'object' }, description: '动作列表，每个 {"do": 动作名, …参数}（见提示词里的动作说明书）' } }, ['actions']),
+    fn('look', '查看更多信息（只读）', { items: { type: 'array', items: { type: 'object' }, description: '每项一种：{"node":"n3"} {"page":"n5"} {"search":"词"} {"file":"路径"} {"manual":"词"} {"web":"词"} {"url":"网址"} {"tts":"文件名"} {"persona":"角色名"}' } }, ['items']),
+    fn('read_memory', '读长期记忆全文', { names: strArr('【记忆索引】里的名字') }, ['names']),
+    fn('todo', '记下 / 勾掉待办', { add: strArr('新的待办，一条一句'), done: strArr('做完的那条的原话') }),
+    ...(voiceOn ? [fn('speak', '念一句话（人能听到；回话正文听不到）', { text: { type: 'string', description: '要念的话：纯文本，150 字以内' }, role: { type: 'string' }, mood: { type: 'string' }, lang: { type: 'string' }, pref: { type: 'string', description: '后端' }, fx: { type: 'string', description: '音效' } }, ['text'])] : []),
+  ];
+}
 const clip = (s, n) => { s = String(s ?? ''); return s.length > n ? s.slice(0, n) + `…（共 ${s.length} 字，已截断）` : s; };
 export function lookAt(root, ctx, items, opts = {}) { // opts.ttsDir / opts.voice：TTS 文件夹（只读白名单）和角色表（借口吻用）
   const g = loadWorkspace(root).graph, ws = { graph: g }, out = [], said = [];
@@ -288,10 +319,12 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   // 历史里的回答按规定格式原样放回（以前存成 {say, done}，8B 会照着学、把 actions 丢掉 —— 2026-10-08 实测）；编号是当时那一页的，可能已变
   // 短记忆 = 摘要（有的话，当作最前面的一问一答）+ 摘要之后的原文（见 memoryOf / compactChat）
   const mem = memoryOf(root, loose, cfg), recent = mem.turns;
-  const sumPair = mem.summary ? [{ role: 'user', content: `【之前对话的记忆摘要】（更早的原文已经压缩掉了）\n${mem.summary}` }, { role: 'assistant', content: JSON.stringify({ say: '好的，我记得这些。', actions: [] }) }] : [];
+  // 工具版（宽松版）的历史回答就是那句话本身；JSON 版照规定格式放回
+  const asReply = t => loose ? t.say || '' : JSON.stringify({ say: t.say, actions: t.actions || [], ...(t.voice ? { voice: { text: t.voice } } : {}) });
+  const sumPair = mem.summary ? [{ role: 'user', content: `【之前对话的记忆摘要】（更早的原文已经压缩掉了）\n${mem.summary}` }, { role: 'assistant', content: asReply({ say: '好的，我记得这些。' }) }] : [];
   // 记忆索引附在那一轮的人话后面、跟着历史走：8 轮之内模型都看得见；滚出去了（或新对话 / 清空后）再附一次
   // 上一轮的结果（执行了 / 没执行 / 执行后检查出的问题）写在「下一轮的人话」前面，不写在 assistant 那条里 —— 免得 8B 学着在 JSON 后面加废话
-  const history = [...sumPair, ...recent.flatMap((t, i) => { const pre = outcomeNote(recent[i - 1]); return [{ role: 'user', content: (pre ? pre + '\n\n' : '') + t.user + (t.imgs ? `\n（这一轮附了 ${t.imgs} 张图，图没有保存，现在看不到）` : '') + (t.memNote ? '\n\n' + t.memNote : '') }, { role: 'assistant', content: JSON.stringify({ say: t.say, actions: t.actions || [], ...(t.voice ? { voice: { text: t.voice } } : {}) }) }]; })];
+  const history = [...sumPair, ...recent.flatMap((t, i) => { const pre = outcomeNote(recent[i - 1]); return [{ role: 'user', content: (pre ? pre + '\n\n' : '') + t.user + (t.imgs ? `\n（这一轮附了 ${t.imgs} 张图，图没有保存，现在看不到）` : '') + (t.memNote ? '\n\n' + t.memNote : '') }, { role: 'assistant', content: asReply(t) }]; })];
   // 问用法（怎么 / 如何 / 哪 / 快捷键 / 问号…）→ 走问答：单独的提示词 + 挑出来的软件知识，纯文本回答、不出动作。
   //   和做事混在一个 JSON 提示词里时，8B 会给「将切换到白色主题」+ 乱编动作、或者知识就在眼前还说「手册里没写」（2026-10-08 实测）
   const know = pickKnowledge(text), usage = {}; // usage = LM Studio 报的 token 用量（prompt / completion / total），界面显示「已用 / 容量」
@@ -302,38 +335,31 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
     pushChat(root, { t: new Date().toISOString(), mode: 'strict', scope: ctx.scope, user: q, say, actions: [], done: [] });
     return { say, actions: [], raw, knowledge: know.map(c => c.src), mode: 'answer', usage };
   }
+  // 👤 2026-10-16 宽松版（在线 / 大的本地模型）走原生工具调用；模型不认工具（接口报错）就退回 JSON 版。严格版（SLM）一直是 JSON
+  let native = loose;
   const idx = loose && opts.home ? memoryIndex(opts.home, root) : '';
-  const memNote = idx && !recent.some(t => t.memNote) ? `【记忆索引】（想看全文就只回 {"read": ["名字"]}）\n${idx}` : '';
+  const memNote = idx && !recent.some(t => t.memNote) ? `【记忆索引】（想看全文就${native ? '调 read_memory' : '只回 {"read": ["名字"]}'}）\n${idx}` : '';
   const vAll = opts.voice || (opts.home ? loadVoice(opts.home) : null); // TTS 文件夹 / 角色表：look 读 TTS、借口吻用（不管 📢 开没开）
-  const vo = loose && opts.voice ? opts.voice : null; // 📢 开着（只给在线宽松版）：提示词后面加几行语音说明（声音简介 / 可选口吻都来自 TTS 的 roles.json）
-  const sys = (loose ? loosePrompt(undefined, undefined, { model: chatModel(cfg).replace(/^\w+:/, ''), online: true, ctx: opts.ctx || null, ...memCfg(cfg, true) }) : systemPrompt()) + (vo ? voicePrompt(vo) : loose && vAll?.ok ? voiceOffPrompt : '') + (loose ? todoPrompt(loadTodo(root)) : ''); // 待办：在线版每轮看到没做完的几条（core/todo.js）
+  const vo = loose && opts.voice ? opts.voice : null; // 📢 开着（只给宽松版）：提示词后面加几行语音说明（声音简介 / 可选口吻都来自 TTS 的 roles.json）
+  const mkSys = nat => (loose ? loosePrompt(undefined, undefined, { model: chatModel(cfg).replace(/^\w+:/, ''), online: isOnlineId(chatModel(cfg)), native: nat, ctx: opts.ctx || null, ...memCfg(cfg, true) }) : systemPrompt()) + (vo ? voicePrompt(vo, nat) : loose && vAll?.ok ? voiceOffPrompt : '') + (loose ? todoPrompt(loadTodo(root), nat) : ''); // 待办：宽松版每轮看到没做完的几条（core/todo.js）
   const lastNote = outcomeNote(recent.at(-1));
   let user = `${ctx.text}\n\n${lastNote ? lastNote + '\n\n' : ''}人说：${String(text).trim()}${memNote ? '\n\n' + memNote : ''}`;
   const out = loose ? 3000 : 1200, temp = loose ? 0.6 : 0.1; // 宽松版：话可以长、温度高些（有个性）
-  let raw = await chat(cfg, sys, user, out, { kind: 'AI 指令', history, usage, temperature: temp, images }), reply;
-  try { reply = parseReply(raw, out); } catch (e) {
-    raw = await chat(cfg, sys, user + `\n\n（你上一次的输出不合格：${e.message}。只输出一个 JSON 对象。）`, out, { kind: 'AI 指令（重试）', history, usage, temperature: 0.1, images });
-    try { reply = parseReply(raw, out); } catch (e2) { reply = { say: '（模型的回答不是规定格式，没法执行：' + e2.message + '）', actions: [], read: [], look: [] }; }
-  }
-  // 它要看记忆全文 / 查看别的信息 → 附上再问一轮，最多 LOOK_MAX 跳（只给在线宽松版；每跳在日志里一条）
-  let memRead = [], looked = [], hops = 0;
-  const steps = []; // 👤 2026-10-16「像 Claude app 一样一段一段来」：查看前顺带说的话 / 语音，当场推给界面（opts.onStep），不等整轮结束
-  while (loose && hops < LOOK_MAX && ((opts.home && reply.read.length) || reply.look.length)) {
-    hops++;
-    const sv = vo && reply.voice ? clipVoice(plainVoice(reply.voice.text)) : '';
-    if (reply.say.trim() || sv) { const s = { say: reply.say.trim(), ...(sv ? { voice: { ...reply.voice, text: sv } } : {}) }; steps.push(s); opts.onStep?.(s); }
+  let memRead = [], looked = [], raw = '', reply = null, spoke = false, todoAcc = null;
+  const steps = []; // 👤 2026-10-16「像 Claude app 一样一段一段来」：中间说的话 / 语音，当场推给界面（opts.onStep），不等整轮结束
+  const pushStep = s => { steps.push(s); opts.onStep?.(s); };
+  // 读记忆 / 查看（两种版本共用）→ 附给模型的文字
+  const gather = async (read, look) => {
     let add = '';
-    if (opts.home && reply.read.length) {
-      const m = readMemories(opts.home, root, reply.read);
+    if (opts.home && read.length) {
+      const m = readMemories(opts.home, root, read);
       memRead.push(...m.names);
       add += `\n\n【记忆全文】\n${m.text || '（没有叫这些名字的记忆）'}`;
     }
     // 联网（👤 2026-10-16）：{"web": 关键词} 必应搜，{"url": 网址} 读网页（只读、只许公网，core/web.js）
-    const net = reply.look.filter(it => it && (typeof it.web === 'string' || typeof it.url === 'string')).slice(0, 3);
-    const kindOf = it => (typeof it.web === 'string' ? 'web' : 'url');
-    reply.look = reply.look.filter(it => !(it && (typeof it.web === 'string' || typeof it.url === 'string')));
-    for (const it of net) {
-      if (kindOf(it) === 'web') {
+    const isNet = it => it && (typeof it.web === 'string' || typeof it.url === 'string');
+    for (const it of look.filter(isNet).slice(0, 3)) {
+      if (typeof it.web === 'string') {
         const q = it.web.trim().slice(0, 120); looked.push(`上网搜「${q}」`); opts.onProgress?.(looked.at(-1));
         try {
           // 👤 2026-10-16 AI 设置里「上网搜」选了 Grok：xAI 的 web_search（准、要钱）；默认必应（免费）
@@ -347,28 +373,97 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
         catch (e) { add += `\n\n【网页 ${u}】读不了：${e.message}`; }
       }
     }
-    if (reply.look.length) {
-      const l = lookAt(root, ctx, reply.look, { ttsDir: vAll?.tts || '', voice: vAll?.ok ? vAll : null });
-      looked.push(...l.said);
+    const rest = look.filter(it => !isNet(it));
+    if (rest.length) {
+      const l = lookAt(root, ctx, rest, { ttsDir: vAll?.tts || '', voice: vAll?.ok ? vAll : null });
+      looked.push(...l.said); opts.onProgress?.(l.said.join('、'));
       add += `\n\n【查看结果】\n${l.text}`;
     }
-    opts.onProgress?.('查完了，接着想…');
-    user += add + (hops >= LOOK_MAX ? '\n\n（不能再查看了，现在必须回答：输出 {"say": …, "actions": […]}）' : `\n\n（已附上。还缺信息可以再 look / read，最多还能 ${LOOK_MAX - hops} 次；够了就正常回答：输出 {"say": …, "actions": […]}）`);
-    raw = await chat(cfg, sys, user, out, { kind: reply.look.length ? `AI 指令（查看：${looked.slice(-3).join('、')}）` : 'AI 指令（读记忆后）', history, usage, temperature: temp, images });
-    try { reply = parseReply(raw, out); } catch (e) { reply = { say: '（查看之后的回答不是规定格式：' + e.message + '）', actions: [], read: [], look: [] }; }
-  }
-  if (loose && (reply.look.length || (opts.home && reply.read.length)) && !reply.say) reply.say = '（查看次数用完了，模型还在要信息，没有给出回答）';
+    return add;
+  };
+  // 当前页的图：校验动作用（状态以工作区为准）
   const g = parseOutline(workspaceOutline(ws));
-  for (const [id, n] of ws.graph.nodes) if (g.nodes.has(id)) g.nodes.get(id).status = n.status; // 状态以工作区为准
+  for (const [id, n] of ws.graph.nodes) if (g.nodes.has(id)) g.nodes.get(id).status = n.status;
   g.edges = ws.graph.edges;
-  const actions = reply.actions.map(a => validateAction(a, { refs: ctx.refs, graph: g, scope: ctx.scope }));
+  const check = a => validateAction(a, { refs: ctx.refs, graph: g, scope: ctx.scope });
+
+  if (native) { // —— 原生工具调用：回话 = 正文；propose / look / read_memory / todo / speak 是工具，来回最多 STEP_MAX 跳 ——
+    const sys = mkSys(true), tools = agentTools(!!vo), convo = [], proposed = [];
+    let rejected = [], lookN = 0, say = '';
+    const strs = x => Array.isArray(x) ? x.map(String).filter(Boolean) : typeof x === 'string' && x ? [x] : [];
+    const tool = async (name, argStr) => {
+      let a; try { a = JSON.parse(argStr || '{}') || {}; } catch { return '参数不是合法的 JSON：' + String(argStr).slice(0, 200); }
+      if (name === 'propose') {
+        const list = (Array.isArray(a.actions) ? a.actions : []).filter(x => x && typeof x === 'object').slice(0, 60), v = list.map(check);
+        proposed.push(...list.filter((x, i) => v[i].ok)); rejected = list.filter((x, i) => !v[i].ok);
+        return v.length ? v.map(x => x.ok ? '✓ ' + x.desc : `✗ ${x.do || '?'}：${x.why}`).join('\n') + (v.some(x => !x.ok) ? '\n（✗ 的不会执行；要的话改好再 propose 一次）' : '\n（都合格，人确认后执行）') : '没有动作';
+      }
+      if (name === 'look') {
+        if (++lookN > LOOK_MAX) return `查看次数用完了（每轮最多 ${LOOK_MAX} 次），用手上的信息回答`;
+        const items = (Array.isArray(a.items) ? a.items : [a]).filter(x => x && typeof x === 'object' && !Array.isArray(x)).slice(0, 6);
+        return (await gather([], items)).trim() || '（没有可查看的内容：items 里每项写一种，比如 {"node": "n3"}）';
+      }
+      if (name === 'read_memory') return opts.home ? (await gather(strs(a.names), [])).trim() : '没有长期记忆';
+      if (name === 'todo') {
+        const t = applyTodo(root, { add: strs(a.add), done: strs(a.done) });
+        todoAcc = { added: [...(todoAcc?.added || []), ...t.added], checked: [...(todoAcc?.checked || []), ...t.checked] };
+        return t.added.length || t.checked.length ? `记下：${t.added.join('；') || '—'}　勾掉：${t.checked.join('；') || '—'}` : '没变（已经有同样的 / 没找到要勾的那条）';
+      }
+      if (name === 'speak') {
+        if (!vo) return '人没开语音（📢），念不了';
+        const t = clipVoice(plainVoice(a.text)); if (!t) return '没有要念的内容';
+        const s = x => a[x] ? String(a[x]) : '';
+        spoke = true; pushStep({ say: '', voice: { text: t, role: s('role'), mood: s('mood'), lang: s('lang'), pref: s('pref'), fx: s('fx') } });
+        return '已念';
+      }
+      return '没有这个工具：' + name;
+    };
+    try {
+      for (let i = 0; i < STEP_MAX; i++) {
+        const r = await chat(cfg, sys, user, out, { kind: i ? `AI 指令（第 ${i + 1} 步）` : 'AI 指令', history, usage, temperature: temp, images, tools, extra: convo });
+        raw = r.text;
+        if (!r.calls.length || i === STEP_MAX - 1) { say = r.text || (r.calls.length ? '（步数用完了，模型还在调工具，没有给出回答）' : ''); break; }
+        if (r.text) pushStep({ say: r.text });
+        convo.push(r.msg);
+        for (const c of r.calls) convo.push({ role: 'tool', tool_call_id: c.id, content: String(await tool(c.function.name, c.function.arguments)).slice(0, 30000) });
+        opts.onProgress?.('接着想…');
+      }
+      reply = { say: say || (proposed.length ? '（见下面的动作）' : ''), actions: proposed.length ? proposed : rejected, voice: null, todo: null };
+    } catch (e) {
+      if (!(/\b(400|404|422)\b/.test(e.message) && /tool|function/i.test(e.message)) || steps.length || proposed.length) throw e;
+      native = false; // 这个模型 / 接口不认工具 → 这一轮改用 JSON 版
+    }
+  }
+  if (!native) { // —— JSON 版：严格版（SLM）一直用；宽松版不认工具时退回 ——
+    const sys = mkSys(false);
+    raw = await chat(cfg, sys, user, out, { kind: 'AI 指令', history, usage, temperature: temp, images });
+    try { reply = parseReply(raw, out); } catch (e) {
+      raw = await chat(cfg, sys, user + `\n\n（你上一次的输出不合格：${e.message}。只输出一个 JSON 对象。）`, out, { kind: 'AI 指令（重试）', history, usage, temperature: 0.1, images });
+      try { reply = parseReply(raw, out); } catch (e2) { reply = { say: '（模型的回答不是规定格式，没法执行：' + e2.message + '）', actions: [], read: [], look: [] }; }
+    }
+    // 它要看记忆全文 / 查看别的信息 → 附上再问一轮，最多 LOOK_MAX 跳（只给宽松版；每跳在日志里一条）
+    let hops = 0;
+    while (loose && hops < LOOK_MAX && ((opts.home && reply.read.length) || reply.look.length)) {
+      hops++;
+      const sv = vo && reply.voice ? clipVoice(plainVoice(reply.voice.text)) : '';
+      if (reply.say.trim() || sv) pushStep({ say: reply.say.trim(), ...(sv ? { voice: { ...reply.voice, text: sv } } : {}) });
+      const add = await gather(opts.home ? reply.read : [], reply.look);
+      opts.onProgress?.('查完了，接着想…');
+      user += add + (hops >= LOOK_MAX ? '\n\n（不能再查看了，现在必须回答：输出 {"say": …, "actions": […]}）' : `\n\n（已附上。还缺信息可以再 look / read，最多还能 ${LOOK_MAX - hops} 次；够了就正常回答：输出 {"say": …, "actions": […]}）`);
+      raw = await chat(cfg, sys, user, out, { kind: reply.look.length ? `AI 指令（查看：${looked.slice(-3).join('、')}）` : 'AI 指令（读记忆后）', history, usage, temperature: temp, images });
+      try { reply = parseReply(raw, out); } catch (e) { reply = { say: '（查看之后的回答不是规定格式：' + e.message + '）', actions: [], read: [], look: [] }; }
+    }
+    if (loose && (reply.look.length || (opts.home && reply.read.length)) && !reply.say) reply.say = '（查看次数用完了，模型还在要信息，没有给出回答）';
+  }
+  const actions = reply.actions.map(check);
   // 嘴上说做了、手上没给动作（8B 实测会这样）→ 明说，别让人以为做了
   if (!actions.some(a => a.ok) && (loose ? /^已(经)?(将|把|为|创建|新建|标记|改|连|设|排|对齐|选|挪|收紧)/ : /^(已|将|会|我会|我将)|已(经)?(将|把|为|创建|新建|标记|删除|改|连|设|完成|排|对齐|选)/).test(reply.say)) reply.say += /删/.test(text) ? '（⚠ 删除节点不归 AI 做：请右键节点 → 删除）' : '（⚠ 模型没有给出能执行的动作，实际什么都没做）';
-  const vRaw = vo ? reply.voice || rescueVoice(reply.say) || autoVoice(reply.say) : null, voice = vRaw ? { ...vRaw, text: clipVoice(plainVoice(vRaw.text)), ...(reply.voice ? {} : { rescued: true }) } : null; // 📢 开着每轮必有声音：没写 voice → 先捞「」里的台词，再不行念回答开头
-  const todo = loose && reply.todo ? applyTodo(root, reply.todo) : null; // 记进 / 勾掉待办（人在「📋 待办」页看得到）
+  // 📢 开着每轮必有声音：没念过（工具版没调 speak / JSON 版没写 voice）→ 先捞「」里的台词，再不行念回答开头
+  const vRaw = vo && !spoke ? reply.voice || rescueVoice(reply.say) || autoVoice(reply.say) : null, voice = vRaw ? { ...vRaw, text: clipVoice(plainVoice(vRaw.text)), ...(reply.voice ? {} : { rescued: true }) } : null;
+  const todo = todoAcc || (loose && reply.todo ? applyTodo(root, reply.todo) : null); // 记进 / 勾掉待办（人在「📋 待办」页看得到）
   // cache = 在线模型报的缓存命中 [命中, 提示总数]（最后一次调用）
-  pushChat(root, { t: new Date().toISOString(), mode: loose ? 'loose' : 'strict', scope: ctx.scope, user: String(text).trim(), ...(usage.prompt_cache_hit_tokens != null && usage.prompt_tokens ? { cache: [usage.prompt_cache_hit_tokens, usage.prompt_tokens] } : {}), ...(voice ? { voice: voice.text } : {}), ...(todo && (todo.added.length || todo.checked.length) ? { todo: { added: todo.added, checked: todo.checked } } : {}), ...(images.length ? { imgs: images.length } : {}), say: reply.say, actions: reply.actions, done: actions.filter(a => a.ok).map(a => a.desc), ...(memNote ? { memNote } : {}), ...(memRead.length ? { memRead } : {}), ...(looked.length ? { looked } : {}), ...(steps.length ? { steps: steps.map(s => ({ say: s.say, ...(s.voice ? { voice: s.voice.text } : {}) })) } : {}) });
-  return { steps, say: reply.say, actions, raw, knowledge: loose ? [] : know.map(c => c.src), usage, mode: loose ? 'loose' : 'strict', memRead, looked, memIndex: !!memNote, voice, todo: todo && (todo.added.length || todo.checked.length) ? { added: todo.added, checked: todo.checked } : null };
+  pushChat(root, { t: new Date().toISOString(), mode: loose ? 'loose' : 'strict', scope: ctx.scope, user: String(text).trim(), ...(native ? { native: true } : {}), ...(usage.prompt_cache_hit_tokens != null && usage.prompt_tokens ? { cache: [usage.prompt_cache_hit_tokens, usage.prompt_tokens] } : {}), ...(voice ? { voice: voice.text } : {}), ...(todo && (todo.added.length || todo.checked.length) ? { todo: { added: todo.added, checked: todo.checked } } : {}), ...(images.length ? { imgs: images.length } : {}), say: reply.say, actions: reply.actions, done: actions.filter(a => a.ok).map(a => a.desc), ...(memNote ? { memNote } : {}), ...(memRead.length ? { memRead } : {}), ...(looked.length ? { looked } : {}), ...(steps.length ? { steps: steps.map(s => ({ say: s.say, ...(s.voice ? { voice: s.voice.text } : {}) })) } : {}) });
+  return { steps, say: reply.say, actions, raw, knowledge: loose ? [] : know.map(c => c.src), usage, mode: loose ? 'loose' : 'strict', native, memRead, looked, memIndex: !!memNote, voice, todo: todo && (todo.added.length || todo.checked.length) ? { added: todo.added, checked: todo.checked } : null };
 }
 
 // >v<🤖AI指令-执行-👤 确认后：大纲类（新建 / 改名 / 状态 / 连线 / 删线 / 大纲排序）一次存盘 = 一步撤销；

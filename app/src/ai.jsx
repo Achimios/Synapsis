@@ -428,7 +428,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   useEffect(() => { api('/ai/chat').then(takeChat).catch(() => {}); }, []);
   // 后台在压缩：等它压完，把摘要接回来（界面上「以上已压缩」那条线跟着挪）
   useEffect(() => { if (!compacting) return; const t = setInterval(() => api('/ai/chat').then(d => { if (!d.compacting) { takeChat(d); loadCtx(); setUsage(null); } }).catch(() => {}), 1500); return () => clearInterval(t); }, [compacting]);
-  const loose = /^\w+:/.test(ctx?.model || ''), mySum = summary[loose ? 'loose' : 'strict'];
+  const loose = ctx?.loose ?? /^\w+:/.test(ctx?.model || ''), mySum = summary[loose ? 'loose' : 'strict'];
   const [note, setNote] = useState(''); // 一次性提示（不挡发送；busy 非空时发不出去）
   const [sumEdit, setSumEdit] = useState(null); // 正在改的摘要文字（null = 没在改）
   const [sumModal, setSumModal] = useState(false); // 「📝 摘要」弹窗（👤 2026-10-16：直接开窗口改，不用滚回很久以前那条线）
@@ -511,7 +511,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
         <a className={tab === 'words' ? 'on' : ''} onClick={() => setTab('words')} title="词表">🎨<span className="tl"> 词表</span></a>
         <a className={tab === 'todo' ? 'on' : ''} onClick={() => setTab('todo')} title="待办">📋<span className="tl"> 待办</span></a>
         <a className={tab === 'voice' ? 'on' : ''} onClick={() => setTab('voice')} title="语音">🔊<span className="tl"> 语音</span></a></span>
-        <button className={'voicebtn' + (voiceOn ? ' on' : '')} title={voiceOn ? '📢 开着：AI 可以自己决定发一句语音（只有 ☁ 在线模型）。点一下关' : '📢 关着：AI 不发语音。点一下打开（只有 ☁ 在线模型；角色、后端在「🔊 语音」页）'} onClick={flipVoice}>{voiceOn ? '📢' : '🔇'}</button>
+        <button className={'voicebtn' + (voiceOn ? ' on' : '')} title={voiceOn ? '📢 开着：AI 可以自己决定发一句语音（在线模型和大的本地模型；8B 这类小模型不会）。点一下关' : '📢 关着：AI 不发语音。点一下打开（在线模型和大的本地模型；角色、后端在「🔊 语音」页）'} onClick={flipVoice}>{voiceOn ? '📢' : '🔇'}</button>
         <CtxMeter ctx={ctx} usage={usage} compact /> {/* 👤 2026-10-16 上下文占用不抢注意力：一直只留 🧠（颜色表示多满），数字在悬停提示里 */}
         {tab === 'chat' && (() => { const bs = [...(mySum?.upto ? [<button key="s" title="看 / 改压缩摘要（模型现在记得的旧对话）" onClick={() => { setSumEdit(mySum.text); setSumModal(true); }}>{iconBtns && !narrow ? '📝' : '📝 摘要'}</button>] : []), <button key="c" title={'压缩短记忆：除了最近几轮，旧的对话让模型写成一段摘要（原文不删，只是不再发给模型）。自动压缩的参数在 ⋯ → 🤖 AI 设置'} disabled={compacting} onClick={() => { if (confirm('压缩短记忆？\n\n除了最近几轮，旧的对话让模型写成一段摘要（原文不删，界面照样显示，只是不再发给模型）。')) compact(); }}>{iconBtns && !narrow ? (compacting ? '🗜…' : '🗜') : compacting ? '🗜 压缩中…' : '🗜 压缩'}</button>, <button key="x" title="清空短记忆（换个话题；摘要一起清）" onClick={() => confirm('清空短记忆？\n\n对话记录和摘要都清掉，模型从头开始（节点、待办、语音设置不动）。清了就找不回来。') && api('/ai/chat', { method: 'DELETE' }).then(d => { takeChat(d); setPlan(null); setUsage(null); setNote(''); })}>{iconBtns && !narrow ? '🧹' : '🧹 清空记忆'}</button>]; // 👤 2026-10-16 框窄时收进 ⋯（以前会被挤没）
           return narrow ? <span className="amore" key="m"><button className="morebtn" title="压缩 / 清空记忆" onClick={e => { if (moreOpen) return setMoreOpen(null); const r = e.currentTarget.getBoundingClientRect(), down = innerHeight - r.bottom > 110; setMoreOpen({ right: innerWidth - r.right, ...(down ? { top: r.bottom + 4 } : { bottom: innerHeight - r.top + 4 }) }); }}>⋯</button>

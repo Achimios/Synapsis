@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { runAgent, applyPlan, loadChat, outcomeNote, recordOutcome, overlapWarnings, parseReply, pageContext, lookAt, LOOK_MAX } from '../agent.js';
+import { runAgent, applyPlan, loadChat, outcomeNote, recordOutcome, overlapWarnings, parseReply, pageContext, lookAt, LOOK_MAX, STEP_MAX } from '../agent.js';
 import { saveOutline, setNodeBody, loadWorkspace } from '../workspace.js';
 import { readUsage } from '../ai.js';
 
@@ -23,12 +23,28 @@ try {
   ok(outcomeNote({ done: [] }) === '' && outcomeNote({ done: ['a'], executed: ['a'] }).includes('执行了：a') && outcomeNote({ done: ['a'] }).includes('没有执行'), 'outcomeNote 三种情况');
 
   // —— 假在线服务：按剧本一条条回，记下每次收到的最后一条消息 ——
-  const seen = []; let script = [];
+  const seen = []; let script = [], pending = null, gotTools = 0;
+  // 工具版（请求里带 tools，👤 2026-10-16）：把剧本里的 JSON 回答翻成工具调用 —— look / read / voice / todo / actions 各一个调用，say 当正文。
+  //   没有 look / read 的（只是提议 / 念 / 记待办）：先回工具调用，工具结果回来后再回 say（pending，不吃剧本）
+  const asTools = (j, o) => {
+    if (!j.tools) return { content: JSON.stringify(o) };
+    gotTools++;
+    const calls = [], call = (name, args) => calls.push({ id: 'c' + calls.length, type: 'function', function: { name, arguments: JSON.stringify(args) } });
+    if (o.look?.length) call('look', { items: o.look });
+    if (o.read?.length) call('read_memory', { names: o.read });
+    if (o.voice) call('speak', o.voice);
+    if (o.todo) call('todo', o.todo);
+    if (o.actions?.length) call('propose', { actions: o.actions });
+    if (calls.length && !o.look?.length && !o.read?.length && o.say) { pending = o.say; return { content: '', tool_calls: calls }; } // say 空 = 还没完（等工具结果回来再接着演下一条剧本）
+    return { content: o.say || '', ...(calls.length ? { tool_calls: calls } : {}) };
+  };
   srv = createServer((req, res) => {
     let b = ''; req.on('data', d => b += d); req.on('end', () => {
       const j = JSON.parse(b); seen.push(j.messages[j.messages.length - 1].content);
-      const content = JSON.stringify(script.length > 1 ? script.shift() : script[0] || { say: '嗯', actions: [] });
-      res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10, prompt_cache_hit_tokens: 4 } }));
+      let message;
+      if (pending != null && j.messages.at(-1).role === 'tool') { message = { content: pending }; pending = null; }
+      else message = asTools(j, script.length > 1 ? script.shift() : script[0] || { say: '嗯', actions: [] });
+      res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message }], usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10, prompt_cache_hit_tokens: 4 } }));
     });
   }).listen(0);
   await new Promise(r => srv.once('listening', r));
@@ -78,7 +94,9 @@ try {
   script = [{ look: [{ search: '观测' }] }];
   const b2 = seen.length;
   const rcap = await run('一直查');
-  ok(seen.length - b2 === 1 + LOOK_MAX && last().includes('不能再查看了') && /查看次数用完/.test(rcap.say), `到 ${LOOK_MAX} 跳封顶：催它回答，仍不回答就明说`);
+  // 工具版：look 超过 LOOK_MAX 次 → 工具回「查看次数用完了」；它还一直调 → 到 STEP_MAX 跳封顶，明说没给出回答
+  ok(seen.length - b2 === STEP_MAX && seen.slice(b2).some(s => String(s).includes('查看次数用完了')) && /步数用完/.test(rcap.say) && rcap.native, `查看到 ${LOOK_MAX} 次封顶、一直调工具到 ${STEP_MAX} 跳封顶，明说 ` + (seen.length - b2));
+  ok(gotTools > 0, '在线模型走原生工具调用（请求里带 tools）');
 
   // —— 本地严格版不循环 ——
   script = [{ look: [{ node: n1 }], say: '', actions: [] }];
@@ -105,6 +123,35 @@ try {
   ok(lo.n === 1 && lo.p === 7, '本地那一次记在本地');
   ok(on.kinds['AI 指令']?.n >= 3 && !Object.keys(on.kinds).some(k => k.includes('（')), '用途名去掉括号里的细节：查看 / 读记忆都算进「AI 指令」 ' + Object.keys(on.kinds).join('|'));
   ok(us.week.online.n === on.n, '近 7 天合计包含今天');
+
+  // —— 工具版细节（放在用量统计后面：这些请求不算进上面的用量）——
+  // propose 回执：不合格的告诉它，改好再提 → 只留合格的
+  script = [{ say: '', actions: [{ do: 'place', id: 'n99', x: 0, y: 0 }] }, { say: '改好了', actions: [{ do: 'place', id: n1, x: 0, y: 200 }] }];
+  pending = null; const b4 = seen.length;
+  srv.removeAllListeners('request'); srv.on('request', (req, res) => { let b = ''; req.on('data', d => b += d); req.on('end', () => { const j = JSON.parse(b); seen.push(j.messages.at(-1).content);
+    let message;
+    if (pending != null && j.messages.at(-1).role === 'tool') { message = { content: pending }; pending = null; }
+    else message = asTools(j, script.length ? script.shift() : { say: '好', actions: [] });
+    res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message }], usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 } })); }); });
+  const rp = await run('挪一下');
+  ok(String(seen[b4 + 1]).includes('✗') && rp.actions.length === 1 && rp.actions[0].ok && rp.say === '改好了', 'propose 回执里有 ✗ 和原因；改好再提的那个留下，不合格的不进方案 ' + JSON.stringify(rp.actions.map(a => a.ok)));
+  // 模型不认工具（接口 400）→ 这一轮退回 JSON 版
+  srv.removeAllListeners('request'); srv.on('request', (req, res) => { let b = ''; req.on('data', d => b += d); req.on('end', () => { const j = JSON.parse(b); seen.push(j.messages.at(-1).content);
+    if (j.tools) { res.statusCode = 400; return res.end('{"error":"this model does not support tools"}'); }
+    res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ say: 'JSON 版回答', actions: [] }) } }], usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 } })); }); });
+  const rf = await run('你好');
+  ok(rf.say === 'JSON 版回答' && rf.native === false, '不认工具 → 退回 JSON 版，照常回答');
+  // 本地大模型（名字里 > 9B）也走工具版；8B 走 JSON 严格版
+  let sawTools = null;
+  srv.removeAllListeners('request'); srv.on('request', (req, res) => { let b = ''; req.on('data', d => b += d); req.on('end', () => { const j = JSON.parse(b); seen.push(j.messages.at(-1).content); sawTools = !!j.tools;
+    res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content: j.tools ? '大模型好' : JSON.stringify({ say: '小模型好', actions: [] }) } }], usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 } })); }); });
+  const local = chat => ({ ...cfg, agentSrc: 'local', chat, url: `http://127.0.0.1:${srv.address().port}/v1` });
+  const rb = await run('早', local('qwen3.6-27b'));
+  ok(sawTools === true && rb.say === '大模型好' && rb.mode === 'loose', '本地 27B → 宽松版 + 工具');
+  const rsm = await run('早', local('qwen3-8b'));
+  ok(sawTools === false && rsm.say === '小模型好' && rsm.mode === 'strict', '本地 8B → JSON 严格版');
+  srv.removeAllListeners('request'); srv.on('request', (req, res) => { let b = ''; req.on('data', d => b += d); req.on('end', () => { const j = JSON.parse(b); seen.push(j.messages.at(-1).content); res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: asTools(j, script.length > 1 ? script.shift() : script[0] || { say: '嗯', actions: [] }) }], usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10, prompt_cache_hit_tokens: 4 } })); }); });
+  script = [];
 
   // —— lookAt 单测：页 / 搜索不动工作区 ——
   const ctx = pageContext(loadWorkspace(root), '', []);

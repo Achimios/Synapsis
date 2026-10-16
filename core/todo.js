@@ -34,10 +34,10 @@ export function applyTodo(root, { add = [], done = [] } = {}) {
 }
 
 // 给在线模型的一小段（只列没做完的；一条都没有也告诉它怎么记）
-export function todoPrompt(text) {
+export function todoPrompt(text, native = false) {
   const open = todoItems(text).filter(t => !t.done).slice(0, 30);
   return `
 
 【待办】${open.length ? '没做完的：\n' + open.map(t => '- ' + t.text).join('\n') : '（现在没有）'}
-人让你记下以后要做的事、或你们说定以后要做的，就在 JSON 里加 "todo": {"add": ["一句话"]}；做完了 {"done": ["那条的原话"]}。人在指令框「📋 待办」页看得到、能改。`;
+人让你记下以后要做的事、或你们说定以后要做的，就${native ? '调 todo 工具 {"add": ["一句话"]}' : '在 JSON 里加 "todo": {"add": ["一句话"]}'}；做完了 {"done": ["那条的原话"]}。人在指令框「📋 待办」页看得到、能改。`;
 }

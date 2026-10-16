@@ -183,12 +183,13 @@ export async function chat(cfg, system, user, maxTokens = 300, opts = {}) {
   // opts.images = 这一句附的图（dataURL）：OpenAI 兼容的多段 content（文字 + image_url）。本地也照发（能看图的本地模型如 Qwen VL 认这个格式；不能看的由 LM Studio 报错）；
   //   日志里换成「[图片 N 张]」，不存 base64
   const imgs = opts.images || [], txt = on ? user : user + '\n/no_think';
-  const messages = [{ role: 'system', content: system }, ...(opts.history || []), { role: 'user', content: imgs.length ? [{ type: 'text', text: txt }, ...imgs.map(url => ({ type: 'image_url', image_url: { url } }))] : txt }];
+  // opts.tools = 原生工具调用（👤 2026-10-16：在线 / 大的本地模型）；opts.extra = 这一轮已经来回的消息（assistant 的 tool_calls + tool 结果），接在人话后面
+  const messages = [{ role: 'system', content: system }, ...(opts.history || []), { role: 'user', content: imgs.length ? [{ type: 'text', text: txt }, ...imgs.map(url => ({ type: 'image_url', image_url: { url } }))] : txt }, ...(opts.extra || [])];
   const logMsgs = imgs.length ? messages.map((m, i) => i === messages.length - 1 ? { role: 'user', content: user + `\n[图片 ${imgs.length} 张]` } : m) : messages;
   const t0 = Date.now(), u = opts.usage || {}; // u = 这次的 token 用量（调用方没传就自己攒一份，用来记总用量）
-  let raw = '', err = null;
+  let raw = '', err = null, msg = null;
   try {
-    const body = { model: on ? on.model : model, temperature: opts.temperature ?? 0.3, max_tokens: maxTokens, messages };
+    const body = { model: on ? on.model : model, temperature: opts.temperature ?? 0.3, max_tokens: maxTokens, messages, ...(opts.tools?.length ? { tools: opts.tools, tool_choice: 'auto' } : {}) };
     let r;
     if (on) { // 在线：默认不思考（一句话 < 1 秒，省钱）；设了思考强度 → reasoning_effort，思考过程丢掉只要答案
       const key = onlineKey(cfg, on.provider);
@@ -199,13 +200,17 @@ export async function chat(cfg, system, user, maxTokens = 300, opts = {}) {
       if (!res.ok) throw new Error(`${on.provider} ${res.status}：${(await res.text()).slice(0, 200)}`);
       r = await res.json();
     } else r = await post(cfg, '/chat/completions', body);
-    raw = r.choices?.[0]?.message?.content || '';
+    msg = r.choices?.[0]?.message || {}; raw = msg.content || '';
     if (r.usage) { Object.assign(u, r.usage); if (u.prompt_cache_hit_tokens == null && u.prompt_tokens_details?.cached_tokens != null) u.prompt_cache_hit_tokens = u.prompt_tokens_details.cached_tokens; } // 缓存命中：DeepSeek 用 prompt_cache_hit_tokens，xAI / OpenAI 式用 prompt_tokens_details.cached_tokens
   } catch (e) { err = e; }
-  aiLog(cfg, { kind: opts.kind || 'chat', model, effort: on ? cfg.onlineEffort : undefined, ms: Date.now() - t0, messages: logMsgs, raw, error: err?.message, usage: Object.keys(u).length ? u : undefined });
+  const calls = (msg?.tool_calls || []).filter(c => c?.function?.name);
+  aiLog(cfg, { kind: opts.kind || 'chat', model, effort: on ? cfg.onlineEffort : undefined, ms: Date.now() - t0, messages: logMsgs, raw: raw + (calls.length ? '\n' + calls.map(c => `🔧 ${c.function.name} ${c.function.arguments}`).join('\n') : ''), error: err?.message, usage: Object.keys(u).length ? u : undefined });
   addUsage(cfg, { online: !!on, kind: opts.kind || 'chat', usage: u });
   if (err) throw err;
-  return raw.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  const text = raw.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  // 带工具时回 {text, calls, msg}：msg = 原样的 assistant 消息（下一跳要接回去，含 tool_calls）
+  //   reasoning_content 也带回去：DeepSeek 开着思考时，同一轮里的工具来回要把它的思考原样接上
+  return opts.tools?.length ? { text, calls, msg: { role: 'assistant', content: raw || '', ...(msg?.reasoning_content ? { reasoning_content: msg.reasoning_content } : {}), ...(calls.length ? { tool_calls: calls } : {}) } } : text;
 }
 
 // >v<🤖AI辅助-日志-每次调对话模型：用途 / 模型 / 耗时 / 发出去的全部消息 / 原始回答 / 出错，追加到工作区 .synapsis/ai_log.jsonl（超过 2MB 砍掉前一半）

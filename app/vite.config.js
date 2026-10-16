@@ -162,7 +162,7 @@ function workspaceApi() {
             if (url.pathname === '/ai/context') {
               const est = existsSync(join(root, DIR)) ? estimateContext(root, { scope: url.searchParams.get('scope') || '', selected: (url.searchParams.get('selected') || '').split('\n').filter(Boolean), loose: isLoose(cfg), cfg }) : null;
               const st = await aiStatus(cfg), model = chatModel(cfg), m = chatInfo(st, model);
-              return send(200, { estimate: est, model, ctx: m?.ctx || null, maxCtx: m?.maxCtx || null, loaded: !!m?.loaded, thinks: /^deepseek:/.test(model) && !!cfg.onlineEffort && cfg.onlineEffort !== 'off' }); // thinks = 真开了思考（界面「🧠 思考中」只在这时显示）
+              return send(200, { estimate: est, model, loose: isLoose(cfg), ctx: m?.ctx || null, maxCtx: m?.maxCtx || null, loaded: !!m?.loaded, thinks: /^deepseek:/.test(model) && !!cfg.onlineEffort && cfg.onlineEffort !== 'off' }); // thinks = 真开了思考（界面「🧠 思考中」只在这时显示）
             }
             // AI 指令框：问模型（只回动作草案）/ 👤 确认后执行
             if (url.pathname === '/ai/apply' && req.method === 'POST') {
