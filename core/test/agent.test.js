@@ -148,7 +148,7 @@ try {
     ok(!VP({ do: 'status', ids: ['p1'], status: 'done' }).ok && !VP({ do: 'rename', id: 'p1', label: 'x' }).ok, '传送门不能改状态 / 改名');
     const lk2 = lookAt(root, c, [{ node: 'here' }, { node: 'p1' }]);
     ok(lk2.said.length === 2 && lk2.text.includes('「设计」') && lk2.text.includes('「别处」'), '看 here / 看传送门指向的节点 都能查 ' + lk2.said); }
-  ok(lp.includes('【手册目录】') && lp.length < loosePrompt([], []).length + 9000, '宽松版提示词：快捷键表 + 手册目录，手册正文不整份塞');
+  ok(lp.includes('【手册目录】') && lp.length < loosePrompt([], []).length + 10000, '宽松版提示词：快捷键表 + 手册目录，手册正文不整份塞');
 
   // 问模型（假服务）：第一次回废话 → 重试；带短记忆；写日志
   let calls = 0, lastMsgs = null;

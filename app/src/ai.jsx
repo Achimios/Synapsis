@@ -233,14 +233,20 @@ export function RelatedDock({ api, id, label, onJump, onOpenFile, onLink }) {
 function VoiceTab({ api }) {
   const [d, setD] = useState(null), [txt, setTxt] = useState(''), [msg, setMsg] = useState('');
   useEffect(() => { api('/ai/voice').then(r => { setD(r); setTxt(r.text); }).catch(e => setMsg('❌ ' + e.message)); }, []);
-  const save = () => api('/ai/voice', { method: 'PUT', body: JSON.stringify({ text: txt }) }).then(r => { setD(r); setMsg('已保存：声线 ' + r.role + (r.short ? '' : '；⚠ 短人格是空的')); }).catch(e => setMsg('❌ ' + e.message));
+  const save = (set = null) => api('/ai/voice', { method: 'PUT', body: JSON.stringify({ text: txt, set }) }).then(r => { setD(r); setTxt(r.text); setMsg('已保存：' + r.role + (r.backend ? ' · ' + r.backend : '') + (r.short ? '' : '；⚠ 短人格是空的')); }).catch(e => setMsg('❌ ' + e.message));
   const test = () => api('/ai/voice', { method: 'POST', body: JSON.stringify({ text: '试音。严格来说，这句话没有任何意义。' }) }).then(r => setMsg(r.ok ? '🔊 已送去念（' + r.role + '）' : '❌ ' + r.why)).catch(e => setMsg('❌ ' + e.message));
   if (!d) return <div className="hint pad">{msg || '读取中…'}</div>;
   const long = txt.length > 1500;
   return <div className="voicetab">
     <div className="hint">右上角 📢 打开后，☁ 在线模型可以自己决定发一句语音（不是全念）。「短人格」每次都给它，「长人格」它想细看才翻。文件：{d.file}</div>
+    {/* 👤 2026-10-16 人只选角色和后端（列表来自 TTS 的 bridge/roles.json）；情绪交给模型，只从这个角色有的里挑 */}
+    <div className="row vpick">
+      <label>角色 <select value={d.role} onChange={e => save({ 声线: e.target.value })}>{(d.roles.includes(d.role) ? d.roles : [d.role, ...d.roles]).map(r => <option key={r} value={r}>{r}</option>)}</select></label>
+      <label>后端 <select value={d.backend || ''} onChange={e => save({ 后端: e.target.value || '自动' })}><option value="">自动</option>{d.backends.map(b => <option key={b} value={b}>{b}</option>)}</select></label>
+      <span className="hint" title={d.desc}>{d.catalog ? (d.desc || '') + (d.moods.length ? `　情绪：${d.moods.join(' / ')}（AI 自己挑）` : '　没有分情绪的音色') : '⚠ 没找到 TTS 的 bridge/roles.json，用下面手写的「可用声线」'}</span>
+    </div>
     <textarea value={txt} onChange={e => setTxt(e.target.value)} spellCheck={false} onKeyDown={e => { e.stopPropagation(); if (e.ctrlKey && e.key === 's') { e.preventDefault(); save(); } }} />
-    <div className="row"><button onClick={save} disabled={txt === d.text}>保存（Ctrl+S）</button><button onClick={test} title="用现在保存的声线念一句">🔊 试听</button>
+    <div className="row"><button onClick={() => save()} disabled={txt === d.text}>保存（Ctrl+S）</button><button onClick={test} title="用现在保存的声线念一句">🔊 试听</button>
       {txt !== d.text && <button onClick={() => setTxt(d.text)}>撤回没保存的</button>}<span className="hint">{long ? '⚠ 有点长了：短人格每次都发给模型，长的放「长人格」　' : ''}{msg}</span></div>
   </div>;
 }

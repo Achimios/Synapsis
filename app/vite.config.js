@@ -10,7 +10,7 @@ import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText, synItems, synWrite } from '../core/cli.js';
 import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, suggestPatternWords, readAiLog, readUsage } from '../core/ai.js';
 import { lmsEstimate, lmsReload, lmsServerStart } from '../core/lmstudio.js';
-import { loadVoice, saveVoice, speak } from '../core/voice.js';
+import { loadVoice, saveVoice, speak, setVoiceLine } from '../core/voice.js';
 let lmsTried = false;
 import { runAgent, applyPlan, loadChat, clearChat, estimateContext, isLoose, loadSummary, compactChat, needCompact } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
@@ -179,7 +179,7 @@ function workspaceApi() {
                 } finally { delete st.thinking; }
               } // 待确认的动作服务端也记一份：AI 还在想时关掉框，回来照样能确认
               if (url.pathname === '/ai/voice') { // 🔊 语音页：读 / 存 <Synapsis>/.synapsis/语音.md
-                if (req.method === 'PUT') { const b = await body(req); return send(200, saveVoice(SYN_HOME, b.text)); }
+                if (req.method === 'PUT') { const b = await body(req); let t = b.text; for (const [k, v] of Object.entries(b.set || {})) if (['声线', '后端'].includes(k)) t = setVoiceLine(t, k, String(v)); return send(200, saveVoice(SYN_HOME, t)); } // set = 下拉框改的那一行
                 if (req.method === 'POST') { const v = loadVoice(SYN_HOME); return send(200, speak(v, { text: (await body(req)).text || '试音：一二三。' }, 'test-' + Date.now().toString(36))); } // 试听
                 return send(200, loadVoice(SYN_HOME));
               }
