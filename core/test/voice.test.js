@@ -26,9 +26,9 @@ ok(!speak(none, { text: '你好' }).ok && speak(none, { text: '你好' }).why ==
 const h = resolveVoice({ tts, role: 'hastings', backend: 'edge' }, roles), c = resolveVoice({ tts, role: 'cortana', backend: '' }, roles);
 ok(h.ok && h.moods.length === 0 && h.desc === '英国历史学家的声音' && h.persona.startsWith('嘴毒') && h.backends.join() === 'volc,edge' && h.roles.join() === 'hastings,cortana', '读得到：角色 / 后端下拉、简介、口吻、情绪都来自角色表');
 const ph = voicePrompt(h);
-ok(ph.includes('"voice"') && /voice 每轮必填/.test(ph) && ph.includes('role 换声音') && ph.includes('hastings（默认）：英国历史学家的声音') && ph.includes('cortana：AI（mood：usual/urgent）') && ph.length < 900, '提示词（短）：voice 必填、可以换角色 / 后端、角色清单（半句简介 + 有的才列情绪）');
-ok(ph.includes('- 先损一句') && /只在闲聊玩梗时用/.test(ph) && ph.includes('look {"persona"') && ph.includes('__TTS_调用方法(简洁).md'), '默认口吻 = 优先角色的；借别人的口吻 look {"persona"}；细节去 TTS 文档');
-ok(!voicePrompt(c).includes('cortana 的口吻') && voicePrompt(c).includes('默认无特别口吻'), '优先角色没写口吻：默认不带');
+ok(ph.includes('"voice"') && /voice 每轮必填/.test(ph) && ph.includes('role 换声音') && ph.includes('hastings（默认）：英国历史学家的声音（有口吻）') && ph.includes('cortana：AI（mood：usual/urgent）') && ph.length < 900, '提示词（短）：voice 必填、可以换角色 / 后端、角色清单（半句简介 + 有的才列情绪）');
+ok(!ph.includes('先损一句') && ph.includes('hastings（默认）：英国历史学家的声音（有口吻）') && ph.includes('look {"persona"') && /别自己套口吻/.test(ph) && ph.includes('__TTS_调用方法(简洁).md'), '口吻全文不进提示词（只标「有口吻」），要用时 look {"persona"} 去 TTS 读；细节去 TTS 文档');
+ok(!voicePrompt(c).includes('cortana：AI（mood：usual/urgent）（有口吻）'), '没写口吻的角色不标');
 
 // 这一句实际用谁：模型点名且在表里 → 用它；情绪 / 后端按实际角色查
 const sw = speak(h, { text: '嗯', role: 'cortana', mood: 'urgent', pref: 'edge' }).job;
