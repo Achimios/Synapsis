@@ -366,7 +366,10 @@ button.aibtn.off { opacity: .7; }
 .agentbox > .edge { position: absolute; z-index: 5; } .agentbox > .e-n, .agentbox > .e-s { left: 8px; right: 8px; height: 6px; cursor: ns-resize; } .agentbox > .e-n { top: -2px; } .agentbox > .e-s { bottom: -2px; }
 .agentbox > .e-e, .agentbox > .e-w { top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; } .agentbox > .e-e { right: -2px; } .agentbox > .e-w { left: -2px; }
 .agentbox > .e-ne, .agentbox > .e-nw, .agentbox > .e-se, .agentbox > .e-sw { width: 12px; height: 12px; } .agentbox > .e-ne { top: -2px; right: -2px; cursor: nesw-resize; } .agentbox > .e-sw { bottom: -2px; left: -2px; cursor: nesw-resize; } .agentbox > .e-nw { top: -2px; left: -2px; cursor: nwse-resize; } .agentbox > .e-se { bottom: -2px; right: -2px; cursor: nwse-resize; }
-.agentbox .bar { flex-wrap: nowrap; } .agentbox .bar > * { flex-shrink: 0; } .agentbox .bar .amore { position: relative; } .agentbox .bar .amore .moremenu { position: absolute; right: 0; top: 100%; z-index: 20; display: flex; flex-direction: column; gap: 4px; padding: 6px; background: var(--panel); border: 1px solid var(--line2); border-radius: 5px; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+.agentbox .bar { flex-wrap: nowrap; } .agentbox .bar > * { flex-shrink: 0; } /* 右边那组（📢 🧠 ⋯ ✕）永远不挤；挤的是左边页签 */
+.agentbox .bar > .atabs { flex: 1 1 auto; min-width: 0; overflow: hidden; display: flex; gap: 10px; align-items: center; white-space: nowrap; }
+.agentbox.tiny .bar .tl { display: none; } /* 很窄：页签只留图标（悬停看名字） */
+.amoremenu { position: fixed; z-index: 2000; display: flex; flex-direction: column; gap: 4px; padding: 6px; background: var(--panel); border: 1px solid var(--line2); border-radius: 5px; box-shadow: 0 6px 18px rgba(0,0,0,.35); } /* ⋯ 菜单挂在 body 上，不被 AI 框裁掉 */
 .agentbox .bar a, .agentbox .bar button { cursor: pointer; }
 .agentbox .bar a { cursor: pointer; color: var(--dim); } .agentbox .bar a.on { color: var(--text); border-bottom: 2px solid var(--accent); }
 .agentbox .turns, .agentbox .logs { overflow: auto; padding: 6px 10px; flex: 1; min-height: 60px; }

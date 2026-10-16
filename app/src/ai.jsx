@@ -1,5 +1,6 @@
 // >v<🤖AI辅助-界面-顶栏「🤖 AI」面板（连接状态 / 选模型 / 语义配色开关 / 生成词表）+ 画布右边缘「潜在关联」小窗（core/ai.js）
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { MdLite } from './mdlite.jsx';
 import { useStash } from './stash.js';
 
@@ -368,9 +369,10 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
     return () => { stop = true; };
   }, []);
   const geo = useBoxGeometry();
-  const [narrow, setNarrow] = useState(false), [moreOpen, setMoreOpen] = useState(false); // 框窄 → 压缩 / 清空记忆收进 ⋯
-  useEffect(() => { const el = geo.ref.current; if (!el || typeof ResizeObserver === 'undefined') return; const ro = new ResizeObserver(() => setNarrow(el.offsetWidth < 640)); ro.observe(el); return () => ro.disconnect(); }, []);
-  useEffect(() => { if (!moreOpen) return; const c = e => { if (!e.target.closest?.('.amore')) setMoreOpen(false); }; window.addEventListener('pointerdown', c, true); return () => window.removeEventListener('pointerdown', c, true); }, [moreOpen]);
+  const [boxW, setBoxW] = useState(999), [moreOpen, setMoreOpen] = useState(null); // 框宽：< 640 压缩 / 清空记忆收进 ⋯，< 520 页签只留图标；moreOpen = ⋯ 菜单的屏幕位置
+  const narrow = boxW < 640, tiny = boxW < 520;
+  useEffect(() => { const el = geo.ref.current; if (!el || typeof ResizeObserver === 'undefined') return; const ro = new ResizeObserver(() => setBoxW(el.offsetWidth)); ro.observe(el); return () => ro.disconnect(); }, []);
+  useEffect(() => { if (!moreOpen) return; const c = e => { if (!e.target.closest?.('.amore, .amoremenu')) setMoreOpen(null); }; window.addEventListener('pointerdown', c, true); return () => window.removeEventListener('pointerdown', c, true); }, [moreOpen]);
   const [log, setLog] = useState(null);
   const [openLog, setOpenLog] = useState(null);
   const inp = useRef(null), list = useRef(null);
@@ -385,7 +387,18 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   const [note, setNote] = useState(''); // 一次性提示（不挡发送；busy 非空时发不出去）
   const compact = () => { if (busy) return; setBusy('🗜 压缩中…'); setNote(''); api('/ai/chat/compact', { method: 'POST', body: '{}' }).then(d => { takeChat(d); setBusy(''); setNote(d.ok ? `🗜 压进摘要 ${d.n} 轮（原文还在，只是不再发给模型）` : '🗜 ' + d.why); }).catch(e => setBusy('❌ ' + e.message)); };
   useEffect(() => { if (tab === 'log') api('/ai/log').then(d => setLog(d.entries)).catch(e => setLog([{ kind: '❌', raw: e.message }])); }, [tab, turns.length]);
-  useEffect(() => { list.current && (list.current.scrollTop = list.current.scrollHeight); }, [turns, plan, busy]);
+  useEffect(() => { list.current && (list.current.scrollTop = list.current.scrollHeight); }, [turns, plan, busy, tab]); // 👤 2026-10-16 切走再切回「对话」也回到最底下
+  // 贴底：人在最底下时，内容 / 框大小再变（md、图晚一点渲染完，框被拉回屏幕）也保持在最底；人往上翻着看时不跟
+  useEffect(() => {
+    const el = list.current; if (!el || typeof ResizeObserver === 'undefined') return;
+    let stick = true;
+    const onScroll = () => { stick = el.scrollHeight - el.clientHeight - el.scrollTop < 40; };
+    const pin = () => { if (stick) el.scrollTop = el.scrollHeight; };
+    const ro = new ResizeObserver(pin), watch = () => { ro.observe(el); for (const c of el.children) ro.observe(c); };
+    const mo = new MutationObserver(() => { watch(); pin(); });
+    watch(); mo.observe(el, { childList: true }); el.addEventListener('scroll', onScroll);
+    return () => { ro.disconnect(); mo.disconnect(); el.removeEventListener('scroll', onScroll); };
+  }, [tab]); // 👤 2026-10-16 切走再切回「对话」也回到最底下
   useEffect(() => { if (!busy) inp.current?.focus(); }, [busy, plan, tab]);
   const send = () => {
     const t = text.trim(), im = imgs; if ((!t && !im.length) || (busy && !busy.startsWith('❌'))) return;
@@ -414,22 +427,22 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   };
   const fmt = t => new Date(t).toLocaleTimeString();
   return (
-    <div className={'agentbox' + (geo.style ? ' placed' : '')} onKeyDown={key} ref={geo.ref} style={geo.style}
+    <div className={'agentbox' + (geo.style ? ' placed' : '') + (tiny ? ' tiny' : '')} onKeyDown={key} ref={geo.ref} style={geo.style}
       onPaste={e => { if (tab !== 'chat') return; const fs = imgFiles(e.clipboardData); if (!fs.length) return; e.preventDefault(); e.stopPropagation(); addImgs(fs); }}
       onDragOver={e => { if (tab === 'chat' && [...(e.dataTransfer?.items || [])].some(i => i.kind === 'file')) { e.preventDefault(); e.stopPropagation(); } }}
       onDrop={e => { if (tab !== 'chat') return; const fs = imgFiles(e.dataTransfer); if (!fs.length) return; e.preventDefault(); e.stopPropagation(); addImgs(fs); }}>
       {EDGES.map(d => <div key={d} className={'edge e-' + d} onPointerDown={geo.edge(d)} />)}
       <div className="bar" onPointerDown={geo.drag} onDoubleClick={e => !e.target.closest('a, button, input, select, textarea, .ctxmeter') && geo.reset()} title="拖这条移动框；拖四边四角改大小；双击空白处回到默认位置">
-        {!narrow && <b>🤖 AI 指令</b>}
-        <a className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')}>💬 对话</a>
-        <a className={tab === 'log' ? 'on' : ''} onClick={() => setTab('log')}>📜 日志</a>
-        <a className={tab === 'words' ? 'on' : ''} onClick={() => setTab('words')}>🎨 词表</a>
-        <a className={tab === 'voice' ? 'on' : ''} onClick={() => setTab('voice')}>🔊 语音</a>
-        <span style={{ flex: 1 }} />
+        <span className="atabs">{!narrow && <b>🤖 AI 指令</b>}
+        <a className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')} title="对话">💬<span className="tl"> 对话</span></a>
+        <a className={tab === 'log' ? 'on' : ''} onClick={() => setTab('log')} title="日志">📜<span className="tl"> 日志</span></a>
+        <a className={tab === 'words' ? 'on' : ''} onClick={() => setTab('words')} title="词表">🎨<span className="tl"> 词表</span></a>
+        <a className={tab === 'voice' ? 'on' : ''} onClick={() => setTab('voice')} title="语音">🔊<span className="tl"> 语音</span></a></span>
         <button className={'voicebtn' + (voiceOn ? ' on' : '')} title={voiceOn ? '📢 开着：AI 可以自己决定发一句语音（只有 ☁ 在线模型）。点一下关' : '📢 关着：AI 不发语音。点一下打开（只有 ☁ 在线模型；角色、后端在「🔊 语音」页）'} onClick={flipVoice}>{voiceOn ? '📢' : '🔇'}</button>
         <CtxMeter ctx={ctx} usage={usage} />
         {tab === 'chat' && (() => { const bs = [<button key="c" title={'压缩短记忆：除了最近几轮，旧的对话让模型写成一段摘要（原文不删，只是不再发给模型）。自动压缩的参数在 ⋯ → 🤖 AI 设置' + (mySum ? '\n\n现在的摘要：\n' + mySum.text : '')} disabled={compacting} onClick={compact}>{compacting ? '🗜 压缩中…' : '🗜 压缩'}</button>, <button key="x" title="清空短记忆（换个话题；摘要一起清）" onClick={() => api('/ai/chat', { method: 'DELETE' }).then(d => { takeChat(d); setPlan(null); setUsage(null); setNote(''); })}>🧹 清空记忆</button>]; // 👤 2026-10-16 框窄时收进 ⋯（以前会被挤没）
-          return narrow ? <span className="amore" key="m"><button className="morebtn" title="压缩 / 清空记忆" onClick={() => setMoreOpen(o => !o)}>⋯</button>{moreOpen && <div className="moremenu" onClick={() => setMoreOpen(false)}>{bs}</div>}</span> : bs; })()}
+          return narrow ? <span className="amore" key="m"><button className="morebtn" title="压缩 / 清空记忆" onClick={e => { if (moreOpen) return setMoreOpen(null); const r = e.currentTarget.getBoundingClientRect(), down = innerHeight - r.bottom > 110; setMoreOpen({ right: innerWidth - r.right, ...(down ? { top: r.bottom + 4 } : { bottom: innerHeight - r.top + 4 }) }); }}>⋯</button>
+            {moreOpen && createPortal(<div className="amoremenu" style={moreOpen} onClick={() => setMoreOpen(null)}>{bs}</div>, document.body)}</span> : bs; })()}
         <button title="关闭（Esc / Shift+F）" onClick={onClose} style={{ marginLeft: 'auto' }}>✕</button>
       </div>
       {tab === 'chat' ? <>
