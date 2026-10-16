@@ -881,7 +881,7 @@ for (const kind of ['reactflow']) {
   await page.click('.aipanel .bar button'); await sleep(500);
   // 生成词表在指令框的「🎨 配色词表」页（👤「这种操作不该丢配置页面」）
   await page.mouse.click(700, 760); await page.keyboard.press('Shift+F'); await sleep(500);
-  await page.click('.agentbox .bar a:has-text("配色词表")'); await sleep(300);
+  await page.click('.agentbox .bar a:has-text("词表")'); await sleep(300);
   await page.click('.agentbox .wordstab button:has-text("生成词表")'); await sleep(1500);
   ok((await page.$eval('.agentbox .wordstab textarea', e => e.value)).includes('- 粉: 情绪, 惊慌'), '生成词表 → 草稿出现在文本框');
   await page.click('.agentbox .wordstab textarea'); await page.keyboard.press('End'); await page.keyboard.press('Enter'); await sleep(200);
@@ -932,7 +932,8 @@ for (const kind of ['reactflow']) {
   ok(!(await page.$('.agentbox .plan')) && !(await page.evaluate(() => fetch('/api/ui/stash' + location.search).then(r => r.json()))).plan, 'Esc 不要 → 待确认的也从暂存里清掉');
   // 拖标题栏移动框，位置记住；双击标题栏空白回默认
   const bb0 = await (await page.$('.agentbox')).boundingBox();
-  await page.mouse.move(bb0.x + bb0.width * 0.55, bb0.y + 14); await page.mouse.down(); await page.mouse.move(bb0.x + bb0.width * 0.55 - 200, bb0.y - 200, { steps: 5 }); await page.mouse.up(); await sleep(300);
+  const tb0 = await (await page.$('.agentbox .bar b')).boundingBox(); // 按在标题字上拖（按钮上按下不算拖）
+  await page.mouse.move(tb0.x + 10, bb0.y + 14); await page.mouse.down(); await page.mouse.move(tb0.x + 10 - 200, bb0.y - 200, { steps: 5 }); await page.mouse.up(); await sleep(300);
   const bb1 = await (await page.$('.agentbox')).boundingBox();
   ok(Math.abs(bb1.x - (bb0.x - 200)) < 3 && Math.abs(bb1.y - (bb0.y - 214)) < 3, '拖标题栏 → 框跟着走 ' + JSON.stringify([bb0, bb1].map(b => [Math.round(b.x), Math.round(b.y)])));
   await page.click('.agentbox .bar button[title^="关闭"]'); await sleep(300);

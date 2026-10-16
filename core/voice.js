@@ -64,18 +64,21 @@ export const voicePrompt = v => {
   const line = r => `  - ${r.name}${r.name === v.role ? '（默认）' : ''}：${String(r.description || '').trim() || '（没写简介）'}${arrOf(r.moods).length ? `；mood：${arrOf(r.moods).join(' / ')}` : ''}${arrOf(r.backends).length ? `；后端：${arrOf(r.backends).join(' / ')}` : ''}${String(r.persona || '').trim() ? '；有口吻' : ''}`;
   return `
 
-【语音】人开了语音：你可以在 JSON 里加 "voice": {"text": "一句话"}，会用 TTS 念给人听。可选字段：
-- "role"：换个角色念（不写 = ${v.role}）。人在聊天里点名用谁就用谁，只能是下面清单里的名字。
-- "mood"：只能从这一句所用角色的 mood 里挑；那个角色没列 mood 就别写。
-- "pref"：换后端（不写 = ${v.backend || '自动'}），只能是这个角色列出的后端；人没要求就别写。
-- "lang"：整句不是中文时写（en / ja / de / fr…，德语法语这类一定要写）。
-- 自己决定要不要说：有梗、有情绪、值得说出口才说，大多数回合不用说；一次最多一句，${VOICE_MAX} 字以内；别念代码、路径、长列表；数字写成中文。
-角色清单（声音是谁）：
+【语音】人开了语音：想说话就在 JSON 里加 "voice": {"text": "一句话"}，TTS 会念出来。
+- 自己决定要不要说：有梗、有情绪、值得说出口才说，大多数回合不说；一次一句，${VOICE_MAX} 字以内；别念代码、路径、列表；数字写成中文。
+- 可选字段：role 换声音（不写 = ${v.role}；人点名用谁就用谁）、mood 情绪（只能用这一句所用角色列出的，没列就别写）、pref 后端（不写 = ${v.backend || '自动'}，人没要求别写）、lang（整句不是中文时写，德语法语必写）、fx 音效（如 对讲机 / 空房间，人要求或很合适才用）。
+- 情绪靠 mood，标点只管节奏：急促多用逗号、顿号连着说；伤感 / 安慰用短句、句号断开，关键处放一个 ~。
+- 角色清单（声音是谁）：
 ${(v.catalog || []).map(line).join('\n')}
-口吻（说话方式）和声音分开：${v.persona ? `默认是 ${v.role} 的口吻，见下面` : '默认不带特别的口吻'}；人要借别的角色的口吻（比如「用 bt 的声音、黑斯廷斯的口吻」），先 look {"persona": "角色名"} 翻那个角色的口吻（角色表全文：look {"tts": "__TTS_角色表.md"} 或 {"tts": "bridge/roles.json"}，TTS 文件夹只读、只能看这类文档）。口吻是可选的：闲聊、玩梗的时候用，严肃讨论时别用，别硬套。${v.persona ? `
+- 口吻和声音分开：${v.persona ? `默认用 ${v.role} 的口吻（见下）` : '默认不带特别的口吻'}；借别的角色的口吻先 look {"persona": "角色名"}。口吻可选：闲聊、玩梗时用，严肃讨论别用，别硬套。
+- 更多细节按需翻 TTS 的文档（只读）：look {"tts": "__TTS_调用方法(简洁).md"}（字段 / 音效）、{"tts": "__TTS_写台词技巧.md"}（标点节奏）、{"tts": "__TTS_角色表.md"}（角色和口吻全文）。${v.persona ? `
 ${v.role} 的口吻：
 ${v.persona}` : ''}`;
 };
+// 选了 TTS 但人没开 📢：一句话，免得模型嘴上说「我发语音了」
+export const voiceOffPrompt = `
+
+【语音】人没开语音（指令框右上角 🔇 / 📢）。人要你说话时，提醒他点开 📢；别说你已经发了语音。`;
 
 // 念出来：起 <TTS 文件夹>/tts_v1.py，stdin 喂一行 JSON（不经过 shell，中文直接 UTF-8）。不等播完
 export function speak(v, voice, id) {
@@ -87,7 +90,8 @@ export function speak(v, voice, id) {
   // 这一句实际用谁：模型点名、且在角色表里 → 用它；不然用优先角色。情绪、后端都按实际用的那个角色查
   const who = roleOf(v, voice.role) || roleOf(v, v.role), role = who?.name || v.role, backs = arrOf(who?.backends);
   const pref = backs.includes(voice.pref) ? voice.pref : backs.includes(v.backend) ? v.backend : ''; // 模型写的后端要这个角色有；不然用优先后端（这个角色没有就让 TTS 自己选）
-  const job = { id: 'syn-' + (id || Date.now().toString(36)), role, text, ...(arrOf(who?.moods).includes(voice.mood) ? { mood: voice.mood } : {}), ...(pref ? { pref } : {}), ...(lang ? { lang } : {}) };
+  const fx = typeof voice.fx === 'string' && voice.fx.trim().length <= 40 ? voice.fx.trim() : ''; // 音效预设名（对讲机 / 空房间…，+ 串联），TTS 认不出会自己忽略
+  const job = { id: 'syn-' + (id || Date.now().toString(36)), role, text, ...(fx ? { fx } : {}), ...(arrOf(who?.moods).includes(voice.mood) ? { mood: voice.mood } : {}), ...(pref ? { pref } : {}), ...(lang ? { lang } : {}) };
   try {
     const p = spawn(process.env.SYN_PYTHON || 'python', [v.script, '--stdin'], { stdio: ['pipe', 'ignore', 'ignore'], env: { ...process.env, PYTHONUTF8: '1' }, windowsHide: true });
     p.on('error', () => {});

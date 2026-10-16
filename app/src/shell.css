@@ -362,7 +362,11 @@ button.aibtn.off { opacity: .7; }
 /* AI 指令框（Shift+F） */
 .agentbox { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(680px, 94vw); max-height: 62vh; z-index: 900; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; box-shadow: 0 8px 28px rgba(0,0,0,.5); overflow: hidden; }
 .agentbox .bar { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); cursor: move; user-select: none; }
-.agentbox { resize: both; min-width: 360px; min-height: 160px; } /* 右下角拖大小（位置和大小记在本机，ai.jsx useBoxGeometry） */
+.agentbox { min-width: 360px; min-height: 160px; } /* 四边四角拖大小（.edge，位置和大小记在本机，ai.jsx useBoxGeometry） */
+.agentbox > .edge { position: absolute; z-index: 5; } .agentbox > .e-n, .agentbox > .e-s { left: 8px; right: 8px; height: 6px; cursor: ns-resize; } .agentbox > .e-n { top: -2px; } .agentbox > .e-s { bottom: -2px; }
+.agentbox > .e-e, .agentbox > .e-w { top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; } .agentbox > .e-e { right: -2px; } .agentbox > .e-w { left: -2px; }
+.agentbox > .e-ne, .agentbox > .e-nw, .agentbox > .e-se, .agentbox > .e-sw { width: 12px; height: 12px; } .agentbox > .e-ne { top: -2px; right: -2px; cursor: nesw-resize; } .agentbox > .e-sw { bottom: -2px; left: -2px; cursor: nesw-resize; } .agentbox > .e-nw { top: -2px; left: -2px; cursor: nwse-resize; } .agentbox > .e-se { bottom: -2px; right: -2px; cursor: nwse-resize; }
+.agentbox .bar { flex-wrap: nowrap; } .agentbox .bar > * { flex-shrink: 0; } .agentbox .bar .amore { position: relative; } .agentbox .bar .amore .moremenu { position: absolute; right: 0; top: 100%; z-index: 20; display: flex; flex-direction: column; gap: 4px; padding: 6px; background: var(--panel); border: 1px solid var(--line2); border-radius: 5px; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
 .agentbox .bar a, .agentbox .bar button { cursor: pointer; }
 .agentbox .bar a { cursor: pointer; color: var(--dim); } .agentbox .bar a.on { color: var(--text); border-bottom: 2px solid var(--accent); }
 .agentbox .turns, .agentbox .logs { overflow: auto; padding: 6px 10px; flex: 1; min-height: 60px; }
@@ -713,3 +717,5 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 .side .uisize input { width: 56px; } .side .uisize .x { color: var(--faint); margin: 0 3px; }
 .voicetab .vpick { flex-wrap: wrap; } .voicetab .vpick select { margin-left: 3px; } .voicetab .vdesc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card.uibox .props.uiprops { margin: 0 6px 2px; position: relative; z-index: 2; }
+.voicetab .vdesc { white-space: normal; overflow: visible; color: color-mix(in srgb, var(--accent) 70%, var(--text)); font-size: 12.5px; }
+.voicetab .vpersona { white-space: pre-wrap; font-size: 12.5px; line-height: 1.55; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; overflow: auto; min-height: 0; flex: 1; }

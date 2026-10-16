@@ -12,7 +12,7 @@ import { validateAction, planMoves, VALIDATORS } from './plan.js';
 import { chat, chatModel } from './ai.js';
 import { pickKnowledge, knowledgeText, knowledgeChunks } from './knowledge.js';
 import { memoryIndex, readMemories, writeMemory, indexStatus } from './memory.js';
-import { voicePrompt, VOICE_MAX, loadVoice, personaOf } from './voice.js';
+import { voicePrompt, voiceOffPrompt, VOICE_MAX, loadVoice, personaOf } from './voice.js';
 
 const SKILL_DIR = join(dirname(fileURLToPath(import.meta.url)), 'skills');
 export function loadSkills(dir = SKILL_DIR) {
@@ -122,7 +122,7 @@ export function parseReply(raw, max = 1200) {
   if (a < 0 || b <= a) throw new Error('输出里没有 JSON 对象');
   const j = JSON.parse(s.slice(a, b + 1));
   if (typeof j !== 'object' || Array.isArray(j)) throw new Error('不是 JSON 对象');
-  return { voice: j.voice && typeof j.voice === 'object' && j.voice.text ? { text: String(j.voice.text), role: j.voice.role ? String(j.voice.role) : '', mood: j.voice.mood ? String(j.voice.mood) : '', lang: j.voice.lang ? String(j.voice.lang) : '', pref: j.voice.pref ? String(j.voice.pref) : '' } : null, say: typeof j.say === 'string' ? j.say.slice(0, max) : '', actions: Array.isArray(j.actions) ? j.actions.slice(0, 60) : [], read: Array.isArray(j.read) ? j.read.slice(0, 6).map(String) : [], look: Array.isArray(j.look) ? j.look.slice(0, 6).filter(x => x && typeof x === 'object' && !Array.isArray(x)) : [] };
+  return { voice: j.voice && typeof j.voice === 'object' && j.voice.text ? { text: String(j.voice.text), role: j.voice.role ? String(j.voice.role) : '', mood: j.voice.mood ? String(j.voice.mood) : '', lang: j.voice.lang ? String(j.voice.lang) : '', pref: j.voice.pref ? String(j.voice.pref) : '', fx: j.voice.fx ? String(j.voice.fx) : '' } : null, say: typeof j.say === 'string' ? j.say.slice(0, max) : '', actions: Array.isArray(j.actions) ? j.actions.slice(0, 60) : [], read: Array.isArray(j.read) ? j.read.slice(0, 6).map(String) : [], look: Array.isArray(j.look) ? j.look.slice(0, 6).filter(x => x && typeof x === 'object' && !Array.isArray(x)) : [] };
 }
 
 // —— 短记忆 ——
@@ -296,7 +296,7 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   const memNote = idx && !recent.some(t => t.memNote) ? `【记忆索引】（想看全文就只回 {"read": ["名字"]}）\n${idx}` : '';
   const vAll = opts.voice || (opts.home ? loadVoice(opts.home) : null); // TTS 文件夹 / 角色表：look 读 TTS、借口吻用（不管 📢 开没开）
   const vo = loose && opts.voice ? opts.voice : null; // 📢 开着（只给在线宽松版）：提示词后面加几行语音说明（声音简介 / 可选口吻都来自 TTS 的 roles.json）
-  const sys = (loose ? loosePrompt(undefined, undefined, { model: chatModel(cfg).replace(/^\w+:/, ''), online: true, ctx: opts.ctx || null, ...memCfg(cfg, true) }) : systemPrompt()) + (vo ? voicePrompt(vo) : '');
+  const sys = (loose ? loosePrompt(undefined, undefined, { model: chatModel(cfg).replace(/^\w+:/, ''), online: true, ctx: opts.ctx || null, ...memCfg(cfg, true) }) : systemPrompt()) + (vo ? voicePrompt(vo) : loose && vAll?.ok ? voiceOffPrompt : '');
   const lastNote = outcomeNote(recent.at(-1));
   let user = `${ctx.text}\n\n${lastNote ? lastNote + '\n\n' : ''}人说：${String(text).trim()}${memNote ? '\n\n' + memNote : ''}`;
   const out = loose ? 3000 : 1200, temp = loose ? 0.6 : 0.1; // 宽松版：话可以长、温度高些（有个性）

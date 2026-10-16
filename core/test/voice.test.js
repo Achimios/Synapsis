@@ -2,7 +2,7 @@
 import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { voicePrompt, loadVoice, saveVoiceCfg, speak, VOICE_MAX, loadCatalog, resolveVoice, personaOf } from '../voice.js';
+import { voicePrompt, voiceOffPrompt, loadVoice, saveVoiceCfg, speak, VOICE_MAX, loadCatalog, resolveVoice, personaOf } from '../voice.js';
 import { parseReply, lookAt } from '../agent.js';
 import { loadSettings } from '../settings.js';
 
@@ -26,8 +26,8 @@ ok(!speak(none, { text: '你好' }).ok && speak(none, { text: '你好' }).why ==
 const h = resolveVoice({ tts, role: 'hastings', backend: 'edge' }, roles), c = resolveVoice({ tts, role: 'cortana', backend: '' }, roles);
 ok(h.ok && h.moods.length === 0 && h.desc === '英国历史学家的声音' && h.persona.startsWith('嘴毒') && h.backends.join() === 'volc,edge' && h.roles.join() === 'hastings,cortana', '读得到：角色 / 后端下拉、简介、口吻、情绪都来自角色表');
 const ph = voicePrompt(h);
-ok(ph.includes('"voice"') && ph.includes('"role"') && ph.includes('不写 = hastings') && ph.includes('不写 = edge') && ph.includes('hastings（默认）：英国历史学家的声音') && ph.includes('cortana：AI；mood：usual / urgent'), '提示词：下拉只是「优先」——角色清单（简介 / 情绪 / 后端）全列，模型可以换角色、后端');
-ok(ph.includes('- 先损一句') && /口吻是可选的：闲聊、玩梗的时候用，严肃讨论时别用/.test(ph) && ph.includes('look {"persona"') && ph.includes('__TTS_角色表.md'), '默认口吻 = 优先角色的；借别人的口吻 look {"persona"} 翻；角色表全文在哪也说了');
+ok(ph.includes('"voice"') && ph.includes('role 换声音') && ph.includes('不写 = hastings') && ph.includes('不写 = edge') && ph.includes('hastings（默认）：英国历史学家的声音') && ph.includes('cortana：AI；mood：usual / urgent'), '提示词：下拉只是「优先」——角色清单（简介 / 情绪 / 后端）全列，模型可以换角色、后端');
+ok(ph.includes('- 先损一句') && /口吻可选：闲聊、玩梗时用，严肃讨论别用/.test(ph) && ph.includes('__TTS_写台词技巧.md') && ph.includes('fx 音效') && ph.includes('look {"persona"') && ph.includes('__TTS_角色表.md'), '默认口吻 = 优先角色的；借别人的口吻 look {"persona"} 翻；角色表全文在哪也说了');
 ok(!voicePrompt(c).includes('cortana 的口吻') && voicePrompt(c).includes('默认不带特别的口吻'), '优先角色没写口吻：默认不带');
 
 // 这一句实际用谁：模型点名且在表里 → 用它；情绪 / 后端按实际角色查
@@ -62,6 +62,8 @@ ok(!('mood' in speak(h, { text: '嗯', mood: 'urgent' }).job), '角色没有的�
 
 ok(parseReply('{"say":"嗯","actions":[],"voice":{"text":"严格来说","mood":"curious","lang":"en"}}').voice.mood === 'curious' && parseReply('{"say":"x","actions":[]}').voice === null, 'JSON 里的 voice 字段读得出，没有就是 null');
 ok(VOICE_MAX <= 200, '有长度上限');
+ok(speak(h, { text: '嗯', fx: '对讲机' }).job.fx === '对讲机' && !('fx' in speak(h, { text: '嗯', fx: 'x'.repeat(80) }).job), 'fx 音效原样带上（太长的不要）');
+ok(/没开语音/.test(voiceOffPrompt) && voiceOffPrompt.length < 120, '选了 TTS 但没开 📢：一句话提醒，别说已经发了');
 ok(parseReply('{"say":"x","actions":[],"voice":{"text":"嗯","role":"bt","pref":"edge"}}').voice.pref === 'edge', 'JSON 里模型写的 role / pref 读得出');
 for (const d of [home, tts]) rmSync(d, { recursive: true, force: true });
 

@@ -247,9 +247,11 @@ function VoiceTab({ api }) {
       <label>优先后端 <select value={d.backend || ''} disabled={!d.ok} onChange={e => pick({ backend: e.target.value })}><option value="">自动</option>{d.backends.map(b => <option key={b} value={b}>{b}</option>)}</select></label>
       <button onClick={findTts} title={d.tts || '还没指定'}>📁 寻找 TTS 文件夹位置</button>
     </div>
-    {d.ok ? <div className="hint vdesc" title={d.tts}>{d.desc}{d.moods.length ? `　情绪：${d.moods.join(' / ')}（AI 自己挑）` : ''}{d.persona ? '　有口吻设定（闲聊时可用）' : ''}</div>
-      : <div className="warn">⚠ 语音停用：{d.error}</div>}
-    <div className="hint">右上角 📢 打开后，☁ 在线模型自己决定什么时候说一句。下拉只是「优先」：聊天里说「用 bt 的声音、黑斯廷斯的口吻」它就照做。角色、情绪、口吻都在 TTS 那边改。{msg}</div>
+    <div className="hint">右上角 📢 打开后，☁ 在线模型自己决定什么时候说一句（🔇 = 关着）。下拉只是「优先」：聊天里说「用 bt 的声音、黑斯廷斯的口吻」它就照做。角色、情绪、口吻都在 TTS 那边改。{msg}</div>
+    {d.ok ? <>
+      <div className="vdesc" title={d.tts}>🎙 {d.desc || '（这个角色没写简介）'}{d.moods.length ? `　情绪：${d.moods.join(' / ')}（AI 自己挑）` : ''}</div>
+      {d.persona ? <div className="vpersona"><div className="hint">口吻（来自 TTS 的角色表，只读；闲聊玩梗时才用）</div>{d.persona}</div> : <div className="hint">这个角色没有写口吻</div>}
+    </> : <div className="warn">⚠ 语音停用：{d.error}</div>}
   </div>;
 }
 function WordsTab({ api, onWordsApplied, scope = '', label = '项目' }) { // 👤 2026-10-12 按层起草：画布没选中 = 当前画布那个节点，选中分组 = 它；写进那一层的 _词表.md
@@ -277,6 +279,7 @@ function WordsTab({ api, onWordsApplied, scope = '', label = '项目' }) { // �
 // >v<🤖AI指令-框的位置和大小-👤 2026-10-08「AI 界面位置最好能拖动位置和大小」：拖标题栏移动、拖右下角改大小，记在本机（localStorage，换工作区也一样）。
 //   没拖过 = 默认底部居中；双击标题栏空白处回默认。拖出窗口的会被拉回来
 const GEO_KEY = 'syn.agentbox';
+export const EDGES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
 export function useBoxGeometry(storeKey = GEO_KEY) { // 钉子窗口也用（pindock.jsx），各自记各自的位置
   const ref = useRef(null), styleSize = useRef(null), [, bump] = useState(0);
   // 窗口缩小 → 重画一遍：记下来的位置 / 大小不改，只是显示时拉回屏幕里（窗口再放大，框回到原来记的位置）
@@ -293,6 +296,20 @@ export function useBoxGeometry(storeKey = GEO_KEY) { // 钉子窗口也用（pin
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
     e.preventDefault();
   };
+  // 👤 2026-10-16 四边四角都能拖着改大小（d = n / s / e / w / ne / nw / se / sw）
+  const edge = d => e => {
+    if (e.button !== 0) return; e.preventDefault(); e.stopPropagation();
+    const r = ref.current.getBoundingClientRect(), x0 = e.clientX, y0 = e.clientY, MW = 360, MH = 160;
+    const at = m => { const dx = m.clientX - x0, dy = m.clientY - y0; let { left, top, width, height } = r;
+      if (d.includes('e')) width = Math.max(MW, r.width + dx);
+      if (d.includes('s')) height = Math.max(MH, r.height + dy);
+      if (d.includes('w')) { width = Math.max(MW, r.width - dx); left = r.right - width; }
+      if (d.includes('n')) { height = Math.max(MH, r.height - dy); top = r.bottom - height; }
+      return { left, top, width, height }; };
+    const move = m => setG(at(m));
+    const up = m => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); keep(clamp(at(m))); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
   // 拖右下角（CSS resize）改了大小 → 记下来
   useEffect(() => {
     const el = ref.current; if (!el || typeof ResizeObserver === 'undefined') return;
@@ -307,7 +324,7 @@ export function useBoxGeometry(storeKey = GEO_KEY) { // 钉子窗口也用（pin
   }, [storeKey]);
   const c = clamp(g);
   styleSize.current = c ? { w: c.width, h: c.height } : null;
-  return { ref, drag, reset: () => keep(null), style: c ? { left: c.left, top: c.top, width: c.width, height: c.height, bottom: 'auto', transform: 'none', maxHeight: 'none' } : undefined };
+  return { ref, drag, edge, reset: () => keep(null), style: c ? { left: c.left, top: c.top, width: c.width, height: c.height, bottom: 'auto', transform: 'none', maxHeight: 'none' } : undefined };
 }
 
 // >v<🤖AI指令-发图-👤 2026-10-11：指令框里 Ctrl+V / 拖进图片 → 输入框上面一排缩略图（单击放大，✕ 去掉），发送时随这一句给在线模型。
@@ -351,6 +368,9 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
     return () => { stop = true; };
   }, []);
   const geo = useBoxGeometry();
+  const [narrow, setNarrow] = useState(false), [moreOpen, setMoreOpen] = useState(false); // 框窄 → 压缩 / 清空记忆收进 ⋯
+  useEffect(() => { const el = geo.ref.current; if (!el || typeof ResizeObserver === 'undefined') return; const ro = new ResizeObserver(() => setNarrow(el.offsetWidth < 640)); ro.observe(el); return () => ro.disconnect(); }, []);
+  useEffect(() => { if (!moreOpen) return; const c = e => { if (!e.target.closest?.('.amore')) setMoreOpen(false); }; window.addEventListener('pointerdown', c, true); return () => window.removeEventListener('pointerdown', c, true); }, [moreOpen]);
   const [log, setLog] = useState(null);
   const [openLog, setOpenLog] = useState(null);
   const inp = useRef(null), list = useRef(null);
@@ -398,17 +418,18 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
       onPaste={e => { if (tab !== 'chat') return; const fs = imgFiles(e.clipboardData); if (!fs.length) return; e.preventDefault(); e.stopPropagation(); addImgs(fs); }}
       onDragOver={e => { if (tab === 'chat' && [...(e.dataTransfer?.items || [])].some(i => i.kind === 'file')) { e.preventDefault(); e.stopPropagation(); } }}
       onDrop={e => { if (tab !== 'chat') return; const fs = imgFiles(e.dataTransfer); if (!fs.length) return; e.preventDefault(); e.stopPropagation(); addImgs(fs); }}>
-      <div className="bar" onPointerDown={geo.drag} onDoubleClick={e => !e.target.closest('a, button, input, select, textarea, .ctxmeter') && geo.reset()} title="拖这条移动框；拖右下角改大小；双击空白处回到默认位置">
-        <b>🤖 AI 指令</b>
+      {EDGES.map(d => <div key={d} className={'edge e-' + d} onPointerDown={geo.edge(d)} />)}
+      <div className="bar" onPointerDown={geo.drag} onDoubleClick={e => !e.target.closest('a, button, input, select, textarea, .ctxmeter') && geo.reset()} title="拖这条移动框；拖四边四角改大小；双击空白处回到默认位置">
+        {!narrow && <b>🤖 AI 指令</b>}
         <a className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')}>💬 对话</a>
         <a className={tab === 'log' ? 'on' : ''} onClick={() => setTab('log')}>📜 日志</a>
         <a className={tab === 'words' ? 'on' : ''} onClick={() => setTab('words')}>🎨 词表</a>
         <a className={tab === 'voice' ? 'on' : ''} onClick={() => setTab('voice')}>🔊 语音</a>
         <span style={{ flex: 1 }} />
-        <button className={'voicebtn' + (voiceOn ? ' on' : '')} title={voiceOn ? '📢 开着：AI 可以自己决定发一句语音（只有 ☁ 在线模型）。点一下关' : '📢 关着：AI 不发语音。点一下打开（只有 ☁ 在线模型；角色、后端在「🔊 语音」页）'} onClick={flipVoice}>📢</button>
+        <button className={'voicebtn' + (voiceOn ? ' on' : '')} title={voiceOn ? '📢 开着：AI 可以自己决定发一句语音（只有 ☁ 在线模型）。点一下关' : '📢 关着：AI 不发语音。点一下打开（只有 ☁ 在线模型；角色、后端在「🔊 语音」页）'} onClick={flipVoice}>{voiceOn ? '📢' : '🔇'}</button>
         <CtxMeter ctx={ctx} usage={usage} />
-        {tab === 'chat' && <button title={'压缩短记忆：除了最近几轮，旧的对话让模型写成一段摘要（原文不删，只是不再发给模型）。自动压缩的参数在 ⋯ → 🤖 AI 设置' + (mySum ? '\n\n现在的摘要：\n' + mySum.text : '')} disabled={compacting} onClick={compact}>{compacting ? '🗜 压缩中…' : '🗜 压缩'}</button>}
-        {tab === 'chat' && <button title="清空短记忆（换个话题；摘要一起清）" onClick={() => api('/ai/chat', { method: 'DELETE' }).then(d => { takeChat(d); setPlan(null); setUsage(null); setNote(''); })}>🧹 清空记忆</button>}
+        {tab === 'chat' && (() => { const bs = [<button key="c" title={'压缩短记忆：除了最近几轮，旧的对话让模型写成一段摘要（原文不删，只是不再发给模型）。自动压缩的参数在 ⋯ → 🤖 AI 设置' + (mySum ? '\n\n现在的摘要：\n' + mySum.text : '')} disabled={compacting} onClick={compact}>{compacting ? '🗜 压缩中…' : '🗜 压缩'}</button>, <button key="x" title="清空短记忆（换个话题；摘要一起清）" onClick={() => api('/ai/chat', { method: 'DELETE' }).then(d => { takeChat(d); setPlan(null); setUsage(null); setNote(''); })}>🧹 清空记忆</button>]; // 👤 2026-10-16 框窄时收进 ⋯（以前会被挤没）
+          return narrow ? <span className="amore" key="m"><button className="morebtn" title="压缩 / 清空记忆" onClick={() => setMoreOpen(o => !o)}>⋯</button>{moreOpen && <div className="moremenu" onClick={() => setMoreOpen(false)}>{bs}</div>}</span> : bs; })()}
         <button title="关闭（Esc / Shift+F）" onClick={onClose} style={{ marginLeft: 'auto' }}>✕</button>
       </div>
       {tab === 'chat' ? <>
