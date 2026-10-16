@@ -23,6 +23,8 @@ const r = speak(loadVoice(home), { text: '你好' });
 ok(!r.ok && /找不到 TTS 脚本/.test(r.why), '脚本不存在 → 说清楚，不崩');
 ok(!speak(v, { text: '  ' }).ok, '空话不念');
 ok(VOICE_MAX <= 200, '有长度上限');
+ok(p.includes('"mood"') && p.includes('urgent'), '提示词里有 mood 六选一');
+ok(parseReply('{"say":"x","actions":[],"voice":{"text":"嗯","mood":"curious","lang":"en"}}').voice.mood === 'curious', 'voice 里的 mood / lang 读得出');
 rmSync(home, { recursive: true, force: true });
 
 console.log(`voice: ${pass} 过 / ${fail} 挂`);

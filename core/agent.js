@@ -122,7 +122,7 @@ export function parseReply(raw, max = 1200) {
   if (a < 0 || b <= a) throw new Error('输出里没有 JSON 对象');
   const j = JSON.parse(s.slice(a, b + 1));
   if (typeof j !== 'object' || Array.isArray(j)) throw new Error('不是 JSON 对象');
-  return { voice: j.voice && typeof j.voice === 'object' && j.voice.text ? { text: String(j.voice.text), role: j.voice.role ? String(j.voice.role) : '' } : null, say: typeof j.say === 'string' ? j.say.slice(0, max) : '', actions: Array.isArray(j.actions) ? j.actions.slice(0, 60) : [], read: Array.isArray(j.read) ? j.read.slice(0, 6).map(String) : [], look: Array.isArray(j.look) ? j.look.slice(0, 6).filter(x => x && typeof x === 'object' && !Array.isArray(x)) : [] };
+  return { voice: j.voice && typeof j.voice === 'object' && j.voice.text ? { text: String(j.voice.text), role: j.voice.role ? String(j.voice.role) : '', mood: j.voice.mood ? String(j.voice.mood) : '', lang: j.voice.lang ? String(j.voice.lang) : '' } : null, say: typeof j.say === 'string' ? j.say.slice(0, max) : '', actions: Array.isArray(j.actions) ? j.actions.slice(0, 60) : [], read: Array.isArray(j.read) ? j.read.slice(0, 6).map(String) : [], look: Array.isArray(j.look) ? j.look.slice(0, 6).filter(x => x && typeof x === 'object' && !Array.isArray(x)) : [] };
 }
 
 // —— 短记忆 ——
@@ -320,7 +320,7 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   // 嘴上说做了、手上没给动作（8B 实测会这样）→ 明说，别让人以为做了
   if (!actions.some(a => a.ok) && (loose ? /^已(经)?(将|把|为|创建|新建|标记|改|连|设|排|对齐|选|挪|收紧)/ : /^(已|将|会|我会|我将)|已(经)?(将|把|为|创建|新建|标记|删除|改|连|设|完成|排|对齐|选)/).test(reply.say)) reply.say += /删/.test(text) ? '（⚠ 删除节点不归 AI 做：请右键节点 → 删除）' : '（⚠ 模型没有给出能执行的动作，实际什么都没做）';
   pushChat(root, { t: new Date().toISOString(), mode: loose ? 'loose' : 'strict', scope: ctx.scope, user: String(text).trim(), ...(vo && reply.voice ? { voice: reply.voice.text.slice(0, VOICE_MAX) } : {}), ...(images.length ? { imgs: images.length } : {}), say: reply.say, actions: reply.actions, done: actions.filter(a => a.ok).map(a => a.desc), ...(memNote ? { memNote } : {}), ...(memRead.length ? { memRead } : {}), ...(looked.length ? { looked } : {}) });
-  const voice = vo && reply.voice ? { text: reply.voice.text.slice(0, VOICE_MAX), role: reply.voice.role } : null; // 念不念由服务端（vite）调 speak，这里只交回去
+  const voice = vo && reply.voice ? { ...reply.voice, text: reply.voice.text.slice(0, VOICE_MAX) } : null; // 念不念由服务端（vite）调 speak，这里只交回去
   return { say: reply.say, actions, raw, knowledge: loose ? [] : know.map(c => c.src), usage, mode: loose ? 'loose' : 'strict', memRead, looked, memIndex: !!memNote, voice };
 }
 

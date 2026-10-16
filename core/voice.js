@@ -12,12 +12,12 @@ export const VOICE_MAX = 120; // 一条语音最多多少字
 export const DEFAULT_VOICE = `# 🔊 内置 AI 的语音（本机，不进 git）
 
 指令框右上角 📢 打开后，AI 自己决定什么时候发一句语音（不是把回答全念出来）。只给 ☁ 在线模型。
-改完点「保存」就生效。下面「设置」里每行「- 键: 值」；语言留空 = 自动识别（中英混着说也行），语气只对 qwen 声线有效。
+改完点「保存」就生效。下面「设置」里每行「- 键: 值」；语言留空 = 自动识别（中英混着说也行），语气只对 qwen 声线有效（默认走火山，留着备用）；情绪（mood）由 AI 每句自己挑。
 
 ## 设置
 - TTS 脚本: C:/Users/Administrator/Desktop/Vault_Automata/1_TTS/tts_v1.py
 - 声线: hastings
-- 可用声线: hastings, victor, asuka, eva, cortana, emma, klara, robot
+- 可用声线: hastings, cortana, asuka, eva, elizabeth, victor, bt, emma, klara, robot
 - 语气: 英式、慢条斯理、阴阳怪气
 - 语言: 
 
@@ -63,11 +63,14 @@ export function saveVoice(home, text) {
   return loadVoice(home);
 }
 
+// TTS 的六种情绪（Vault_Automata/1_TTS「调用方法（简洁）」；TTS 认同义词，这里只给模型看这六个）
+export const MOODS = ['usual', 'wistful', 'comfort', 'urgent', 'confident', 'curious'];
 // 📢 开着时追加到在线版提示词的几行（短）
 export const voicePrompt = v => `
 
-【语音】人开了语音：你可以在 JSON 里加 "voice": {"text": "一句话"${v.roles.length > 1 ? `, "role": "${v.roles.join(' | ')}"（不写 = ${v.role}）` : ''}}，会用 TTS 念给人听。
-- 自己决定要不要说：有梗、有情绪、值得说出口才说，大多数回合不用说；一次最多一句，${VOICE_MAX} 字以内；别念代码、路径、长列表。
+【语音】人开了语音：你可以在 JSON 里加 "voice": {"text": "一句话", "mood": "${MOODS.join(' | ')}"${v.roles.length > 1 ? `, "role": "${v.roles.join(' | ')}"（不写 = ${v.role}）` : ''}}，会用 TTS 念给人听；整句英文时加 "lang": "en"。
+- 自己决定要不要说：有梗、有情绪、值得说出口才说，大多数回合不用说；一次最多一句，${VOICE_MAX} 字以内；别念代码、路径、长列表；数字写成中文。
+- mood：usual 日常、wistful 伤感、comfort 安慰平静、urgent 急促、confident 自信、curious 好奇；不写 = usual。
 - 人格：${v.short || '（没写）'}${v.long ? '\n- 想看更细的人格设定就 look {"voice": "人格"}。' : ''}`;
 
 // 念出来：按 md 里的脚本路径起 python，stdin 喂一行 JSON（不经过 shell，中文直接 UTF-8）。不等播完
@@ -76,7 +79,8 @@ export function speak(v, voice, id) {
   if (!text) return { ok: false, why: '没有内容' };
   if (!v.tts || !existsSync(v.tts)) return { ok: false, why: '找不到 TTS 脚本：' + (v.tts || '（没写）') };
   const role = v.roles.includes(voice.role) ? voice.role : v.role;
-  const job = { id: 'syn-' + (id || Date.now().toString(36)), role, text, ...(v.style ? { style: v.style } : {}), ...(v.lang ? { lang: v.lang } : {}) };
+  const lang = /^[a-z]{2}$/.test(voice.lang || '') ? voice.lang : v.lang; // 模型说了这句是英文就听它的，不然用 md 里的（空 = TTS 自己猜）
+  const job = { id: 'syn-' + (id || Date.now().toString(36)), role, text, ...(MOODS.includes(voice.mood) ? { mood: voice.mood } : {}), ...(v.style ? { style: v.style } : {}), ...(lang ? { lang } : {}) };
   try {
     const p = spawn(process.env.SYN_PYTHON || 'python', [v.tts, '--stdin'], { stdio: ['pipe', 'ignore', 'ignore'], env: { ...process.env, PYTHONUTF8: '1' }, windowsHide: true });
     p.on('error', () => {});
