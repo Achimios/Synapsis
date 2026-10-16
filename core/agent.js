@@ -12,7 +12,7 @@ import { validateAction, planMoves, VALIDATORS } from './plan.js';
 import { chat, chatModel } from './ai.js';
 import { pickKnowledge, knowledgeText, knowledgeChunks } from './knowledge.js';
 import { memoryIndex, readMemories, writeMemory, indexStatus } from './memory.js';
-import { voicePrompt, voiceOffPrompt, VOICE_MAX, loadVoice, personaOf, clipVoice, rescueVoice } from './voice.js';
+import { voicePrompt, voiceOffPrompt, VOICE_MAX, loadVoice, personaOf, clipVoice, rescueVoice, autoVoice, plainVoice } from './voice.js';
 
 const SKILL_DIR = join(dirname(fileURLToPath(import.meta.url)), 'skills');
 export function loadSkills(dir = SKILL_DIR) {
@@ -331,9 +331,9 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   const actions = reply.actions.map(a => validateAction(a, { refs: ctx.refs, graph: g, scope: ctx.scope }));
   // 嘴上说做了、手上没给动作（8B 实测会这样）→ 明说，别让人以为做了
   if (!actions.some(a => a.ok) && (loose ? /^已(经)?(将|把|为|创建|新建|标记|改|连|设|排|对齐|选|挪|收紧)/ : /^(已|将|会|我会|我将)|已(经)?(将|把|为|创建|新建|标记|删除|改|连|设|完成|排|对齐|选)/).test(reply.say)) reply.say += /删/.test(text) ? '（⚠ 删除节点不归 AI 做：请右键节点 → 删除）' : '（⚠ 模型没有给出能执行的动作，实际什么都没做）';
+  const vRaw = vo ? reply.voice || rescueVoice(reply.say) || autoVoice(reply.say) : null, voice = vRaw ? { ...vRaw, text: clipVoice(plainVoice(vRaw.text)), ...(reply.voice ? {} : { rescued: true }) } : null; // 📢 开着每轮必有声音：没写 voice → 先捞「」里的台词，再不行念回答开头
   // cache = 在线模型报的缓存命中 [命中, 提示总数]（最后一次调用）
-  pushChat(root, { t: new Date().toISOString(), mode: loose ? 'loose' : 'strict', scope: ctx.scope, user: String(text).trim(), ...(usage.prompt_cache_hit_tokens != null && usage.prompt_tokens ? { cache: [usage.prompt_cache_hit_tokens, usage.prompt_tokens] } : {}), ...(vo && (reply.voice || rescueVoice(reply.say)) ? { voice: clipVoice((reply.voice || rescueVoice(reply.say)).text) } : {}), ...(images.length ? { imgs: images.length } : {}), say: reply.say, actions: reply.actions, done: actions.filter(a => a.ok).map(a => a.desc), ...(memNote ? { memNote } : {}), ...(memRead.length ? { memRead } : {}), ...(looked.length ? { looked } : {}) });
-  const vRaw = vo ? reply.voice || rescueVoice(reply.say) : null, voice = vRaw ? { ...vRaw, text: clipVoice(vRaw.text), ...(reply.voice ? {} : { rescued: true }) } : null; // 没写 voice 但台词在「」里 → 兜底拿出来念 // 念不念由服务端（vite）调 speak，这里只交回去
+  pushChat(root, { t: new Date().toISOString(), mode: loose ? 'loose' : 'strict', scope: ctx.scope, user: String(text).trim(), ...(usage.prompt_cache_hit_tokens != null && usage.prompt_tokens ? { cache: [usage.prompt_cache_hit_tokens, usage.prompt_tokens] } : {}), ...(voice ? { voice: voice.text } : {}), ...(images.length ? { imgs: images.length } : {}), say: reply.say, actions: reply.actions, done: actions.filter(a => a.ok).map(a => a.desc), ...(memNote ? { memNote } : {}), ...(memRead.length ? { memRead } : {}), ...(looked.length ? { looked } : {}) });
   return { say: reply.say, actions, raw, knowledge: loose ? [] : know.map(c => c.src), usage, mode: loose ? 'loose' : 'strict', memRead, looked, memIndex: !!memNote, voice };
 }
 

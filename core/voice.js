@@ -26,6 +26,12 @@ export function clipVoice(t, max = VOICE_MAX) {
   const cut = t.slice(0, max), k = Math.max(...['。', '！', '？', '!', '?', '~', '…', '. '].map(p => cut.lastIndexOf(p)));
   return k >= max * 0.4 ? cut.slice(0, k + 1).trim() : cut;
 }
+// 📢 开着、模型没写 voice、「」里也捞不到台词 → 念回答开头一两句（👤 2026-10-16「强制都发语音没有坏处」；不再多调一次模型，不花钱不变慢）
+export function autoVoice(say) {
+  const t = plainVoice(say); if (!t) return null;
+  const m = t.match(/^.*?[。！？!?](.*?[。！？!?])?/);
+  return { text: clipVoice(m ? m[0] : t) };
+}
 // 📢 开着、模型却没写 voice 字段，但嘴上说了「语音来了 / 念给你」并把台词写在「」里 → 把那段拿出来念（👤 2026-10-16 实测 8 轮里 5 轮这样）
 export function rescueVoice(say) {
   const s = String(say || '');
@@ -84,19 +90,15 @@ export function loadVoice(home) {
 // 📢 开着、且能说时追加到在线版提示词的几行。👤 2026-10-16：下拉选的都只是「优先」——人在聊天里说换角色 / 后端 / 借谁的口吻，模型照做。
 //   角色清单（名字 + 简介 + 情绪 + 后端）每次从角色表现读全列（10 个左右，一行一个）；口吻默认给优先角色的，别人的 look {"persona": 名} 按需翻
 export const voicePrompt = v => {
-  const line = r => `  - ${r.name}${r.name === v.role ? '（默认）' : ''}：${String(r.description || '').trim() || '（没写简介）'}${arrOf(r.moods).length ? `；mood：${arrOf(r.moods).join(' / ')}` : ''}${arrOf(r.backends).length ? `；后端：${arrOf(r.backends).join(' / ')}` : ''}${String(r.persona || '').trim() ? '；有口吻' : ''}`;
+  const brief = d => { const t = String(d || '').trim(); const k = t.search(/[，。；;,]/); return (k > 0 && k <= 24 ? t.slice(0, k) : t.slice(0, 24)) || '—'; }; // 简介只留半句，省 token
+  const line = r => `${r.name}${r.name === v.role ? '（默认）' : ''}：${brief(r.description)}${arrOf(r.moods).length ? `（mood：${arrOf(r.moods).join('/')}）` : ''}`;
   return `
 
-【语音】人开了语音：想说话就在 JSON 里加 "voice" 字段，TTS 会念出来。例：{"say": "……", "actions": [], "voice": {"text": "严格来说，你又忘了保存。"}}
-- voice.text 写纯文本，别用 Markdown（** # - 这些会被照念出来）。
-- ⚠️ 只有 voice 字段会被念；写在 say 里的台词人只能看、听不到。说了「语音来了 / 念给你听」就必须带 voice；台词放进 voice.text，say 里别再重复整段。人要你发语音时一定发。
-- 人开喇叭 = 想听你说话（👤 2026-10-16）：默认每轮都带一句 voice。闲聊、玩梗、有情绪时说台词；回答技术问题、长列表时，用一两句口头总结要点（别念全文）；只有纯粹确认动作（「好，执行了」这种）可以不说。一次一段，${VOICE_MAX} 字以内；别念代码、路径、列表；数字写成中文。
-- 可选字段：role 换声音（不写 = ${v.role}；人点名用谁就用谁）、mood 情绪（只能用这一句所用角色列出的，没列就别写）、pref 后端（不写 = ${v.backend || '自动'}，人没要求别写）、lang（整句不是中文时写，德语法语必写）、fx 音效（如 对讲机 / 空房间，人要求或很合适才用）。
-- 情绪靠 mood，标点只管节奏：急促多用逗号、顿号连着说；伤感 / 安慰用短句、句号断开，关键处放一个 ~。
-- 角色清单（声音是谁）：
-${(v.catalog || []).map(line).join('\n')}
-- 口吻和声音分开：${v.persona ? `默认用 ${v.role} 的口吻（见下）` : '默认不带特别的口吻'}；借别的角色的口吻先 look {"persona": "角色名"}。口吻可选：闲聊、玩梗时用，严肃讨论别用，别硬套。
-- 更多细节按需翻 TTS 的文档（只读）：look {"tts": "__TTS_调用方法(简洁).md"}（字段 / 音效）、{"tts": "__TTS_写台词技巧.md"}（标点节奏）、{"tts": "__TTS_角色表.md"}（角色和口吻全文）。${v.persona ? `
+【语音】开了喇叭：输出 {"say": …, "actions": […], "voice": {"text": "要念的话"}}，voice 每轮必填（只有它会被念，say 里的人听不到）；没什么可说就一句短话。
+- 纯文本，不用 Markdown；${VOICE_MAX} 字以内；不念代码、路径、列表；数字写中文。闲聊说台词，技术问题一两句口头总结。
+- 可选：role 换声音、mood（只用该角色列出的）、lang（整句非中文时写）、pref 换后端、fx 音效。人点名就照做。
+- 声音：${(v.catalog || []).map(line).join('；')}
+- 口吻和声音分开：${v.persona ? `默认 ${v.role} 的口吻（见下）` : '默认无特别口吻'}，借别人的 look {"persona": "名字"}；只在闲聊玩梗时用。细节（后端、音效、标点节奏）look {"tts": "__TTS_调用方法(简洁).md"}。${v.persona ? `
 ${v.role} 的口吻：
 ${v.persona}` : ''}`;
 };
