@@ -81,3 +81,22 @@ export async function webRead(raw, { fetchFn = fetch, lookupFn = lookup, max = 1
   }
   throw new Error('跳转太多次');
 }
+
+// >v<🤖AI指令-联网-Grok 搜（👤 2026-10-16「bing 和 grok」）：AI 设置「搜索」选 Grok 时用。xAI Responses API + web_search 工具，
+//   grok-4.3 + 最多搜 2 次（实测约 15 秒、$0.03 一次；grok-4.7 推理版自己搜 9 次、$0.14，太贵）。回前几条 标题 | 网址 | 一句话
+export async function grokSearch(q, { key, model = 'grok-4.3', fetchFn = fetch, log = null } = {}) {
+  if (!key) throw new Error('没有 Grok（xAI）的 key：⋯ → 🤖 AI 设置「在线」页填');
+  const t0 = Date.now(), prompt = `网上搜「${q}」。列出最相关的 6 条结果，每条一行：标题 | 网址 | 一句话摘要。不要别的话。`;
+  let err = null, text = '', usage = null;
+  try {
+    const r = await fetchFn('https://api.x.ai/v1/responses', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key }, body: JSON.stringify({ model, max_tool_calls: 2, input: [{ role: 'user', content: prompt }], tools: [{ type: 'web_search' }] }), signal: AbortSignal.timeout(90000) });
+    if (!r.ok) throw new Error(`Grok 搜索 ${r.status}：${(await r.text()).slice(0, 200)}`);
+    const j = await r.json(); usage = j.usage || null;
+    const msg = (j.output || []).find(o => o.type === 'message');
+    text = (msg?.content || []).map(c => c.text || '').join('\n').replace(/\[\[\d+\]\]\([^)]*\)/g, '').trim();
+    if (!text) throw new Error('Grok 没回结果');
+  } catch (e) { err = e; }
+  log?.({ kind: 'AI 上网搜（Grok）', model: 'xai:' + model, ms: Date.now() - t0, messages: [{ role: 'user', content: q }], raw: text.slice(0, 2000), error: err?.message, usage: usage ? { prompt_tokens: usage.input_tokens, completion_tokens: usage.output_tokens, total_tokens: usage.total_tokens, prompt_cache_hit_tokens: usage.input_tokens_details?.cached_tokens, cost_usd: (usage.cost_in_usd_ticks || 0) / 1e10 } : undefined });
+  if (err) throw err;
+  return text;
+}

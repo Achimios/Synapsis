@@ -97,6 +97,8 @@ function TaskRows({ status, cfg, save }) {
       <span className="seg">{[['local', '本地'], ['online', '☁ 在线']].map(([v, t]) => <a key={v} className={(cfg.agentSrc || 'local') === v ? 'on' : ''} onClick={() => save({ agentSrc: v })}>{t}</a>)}</span></div>
     <div className="srcrow"><span>默认：高频后台（精排 / 语义配色 / 语义图案）<span className="hint"> （默认本地，免得悄悄花钱）</span></span>
       <span className="seg">{[['local', '本地'], ['online', '☁ 在线']].map(([v, t]) => <a key={v} className={(cfg.bulkSrc || 'local') === v ? 'on' : ''} onClick={() => save({ bulkSrc: v })}>{t}</a>)}</span></div>
+    <div className="srcrow"><span>内置 AI 上网搜<span className="hint"> 必应免费，生僻中文会搜偏；Grok 准，约 $0.03 一次、十几秒（要 xAI key）</span></span>
+      <span className="seg">{[['bing', '必应'], ['grok', 'Grok']].map(([v, t]) => <a key={v} className={(cfg.searchEngine || 'bing') === v ? 'on' : ''} onClick={() => save({ searchEngine: v })}>{t}</a>)}</span></div>
     <div className="srcrow embedrow"><span>潜在关联召回<span className="hint"> 嵌入模型，只能本地（DeepSeek 没有嵌入接口）</span></span>
       <select value={cfg.embed || ''} onChange={e => save({ embed: e.target.value })}>{[...(cfg.embed && !(status?.embed || []).some(m => m.id === cfg.embed) ? [{ id: cfg.embed }] : []), ...(status?.embed || [])].map(m => <option key={m.id} value={m.id}>{m.id}</option>)}</select></div>
     {TASK_ROWS.map(([id, name, hint, bulk]) => {

@@ -9,10 +9,10 @@ import { loadWorkspace, workspaceOutline, saveOutline, setNodeMeta, setNodeBody,
 import { overlaps } from './arrange.js';
 import { parseOutline, withStatus, withEdge, withoutEdge, withNode, withLabel, withMoved, toOutline, ROOT } from './outline.js';
 import { validateAction, planMoves, VALIDATORS } from './plan.js';
-import { chat, chatModel } from './ai.js';
+import { chat, chatModel, onlineKey, aiLog } from './ai.js';
 import { pickKnowledge, knowledgeText, knowledgeChunks } from './knowledge.js';
 import { memoryIndex, readMemories, writeMemory, indexStatus } from './memory.js';
-import { webSearch, webRead } from './web.js';
+import { webSearch, webRead, grokSearch } from './web.js';
 import { loadTodo, applyTodo, todoPrompt } from './todo.js';
 import { voicePrompt, voiceOffPrompt, VOICE_MAX, loadVoice, personaOf, clipVoice, rescueVoice, autoVoice, plainVoice } from './voice.js';
 
@@ -332,7 +332,11 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
     for (const it of net) {
       if (kindOf(it) === 'web') {
         const q = it.web.trim().slice(0, 120); looked.push(`上网搜「${q}」`);
-        try { const rs = await (opts.webSearch || webSearch)(q); add += `\n\n【网上搜「${q}」】\n${rs.length ? rs.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join('\n') : '（没搜到）'}`; }
+        try {
+          // 👤 2026-10-16 AI 设置里「上网搜」选了 Grok：xAI 的 web_search（准、要钱）；默认必应（免费）
+          if (cfg.searchEngine === 'grok' && !opts.webSearch) { const t = await grokSearch(q, { key: onlineKey(cfg, 'xai'), model: cfg.searchModel || 'grok-4.3', log: e => aiLog(cfg, e) }); add += `\n\n【网上搜「${q}」（Grok）】\n${t}`; }
+          else { const rs = await (opts.webSearch || webSearch)(q); add += `\n\n【网上搜「${q}」】\n${rs.length ? rs.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join('\n') : '（没搜到）'}`; }
+        }
         catch (e) { add += `\n\n【网上搜「${q}」】搜不了：${e.message}`; }
       } else {
         const u = it.url.trim(); looked.push(`读网页 ${u.slice(0, 60)}`);

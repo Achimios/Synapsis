@@ -14,7 +14,7 @@ import { lmsServerStart } from './lmstudio.js';
 
 // agentSrc = AI 指令框 / 问答 / 生成词表 / 「?」关系说明 用本地还是在线；bulkSrc = 高频后台（潜在关联重排、语义配色归类），默认本地（👤「高频调用的默认不用在线」）
 export const AI_DEFAULTS = { url: 'http://127.0.0.1:1234/v1', embed: 'text-embedding-qwen3-embedding-0.6b', chat: 'qwen3-8b', semColors: true,
-  agentSrc: 'local', bulkSrc: 'local', onlineModel: 'deepseek-flash', onlineEffort: 'off',
+  agentSrc: 'local', bulkSrc: 'local', onlineModel: 'deepseek-flash', onlineEffort: 'off', searchEngine: 'bing', // searchEngine：内置 AI 上网搜用 bing（免费）还是 grok（xAI，约 $0.03 一次）
   memLimit: 64000, memKeep: 4, autoCompact: true, memLimitLocal: 3000, memKeepLocal: 2, autoCompactLocal: true }; // 短记忆：原文超过 memLimit token 自动压成摘要，保留最近 memKeep 轮原文；本地一套带 Local（core/agent.js compactChat）
 export const EFFORTS = ['off', 'low', 'high', 'max']; // off = 不思考（默认：快、省钱）；其余 = DeepSeek 的 reasoning_effort
 const cfgFile = home => join(home, '.synapsis', 'ai.json');
