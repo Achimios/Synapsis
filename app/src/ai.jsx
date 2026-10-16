@@ -156,7 +156,9 @@ const EFFORT_ZH = { off: '不思考（快、省钱，推荐）', low: '低', hig
 const EFFORT_GROK = { off: '低（最快，推荐）', high: '高（官方默认，慢）', max: '最高（xhigh，更慢、更贵）' };
 // 在线服务商（👤 2026-10-16 加 Grok）：每家一个 key（只存本机），模型列表合在一起选；DeepSeek 的模型名不带前缀（老写法），别家带「服务商:」
 const PROVIDERS = [['deepseek', 'DeepSeek', 'sk-…', 'platform.deepseek.com'], ['xai', 'Grok（xAI）', 'xai-…', 'console.x.ai']];
-const modelKey = id => id.startsWith('deepseek:') ? id.slice(9) : id; // 存进设置的写法
+// 生图模型：默认 + 已知的几个（xAI 列表里有新的会自动补上；和 core/imagegen.js 的 IMAGE_MODEL 对齐）
+const IMAGE_MODEL0 = 'grok-imagine-image-2.0', IMAGE_MODELS = ['grok-imagine-image-2.0', 'grok-imagine-image-quality', 'grok-imagine-image'];
+const modelKey = id =>id.startsWith('deepseek:') ? id.slice(9) : id; // 存进设置的写法
 function OnlineTab({ api, status, cfg, save, onStatus }) {
   const [keys, setKeys] = useState({}), [msg, setMsg] = useState('');
   const list = status?.online || [];
@@ -179,6 +181,15 @@ function OnlineTab({ api, status, cfg, save, onStatus }) {
       </select></label>
       {(isDs || grokEff) && <label>思考强度<select value={cfg.onlineEffort || 'off'} onChange={e => save({ onlineEffort: e.target.value })}>{Object.entries(grokEff ? EFFORT_GROK : EFFORT_ZH).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></label>}
       <div className="hint">{cur?.ctx ? `🧠 上下文 ${kfmt(cur.ctx)} token。` : ''}按量计费，余额在各家平台看。{isDs || grokEff ? '' : '这个模型调不了思考强度。'}{msg}</div>
+      {/* 👤 2026-10-17 生图（AI 配图）的默认：模型从 xAI 列表里筛带 image 的（新模型自动出现）；质量 / 分辨率。AI 不写参数就用这里的，确认卡上还能单张改 */}
+      <div className="imgdefaults"><b>🎨 生图默认</b><span className="hint"> 用 Grok（xAI key），和聊天用哪个模型无关</span>
+        <label>模型<select value={cfg.imageModel || ''} onChange={e => save({ imageModel: e.target.value || null })}>
+          <option value="">{IMAGE_MODEL0}（默认）</option>
+          {[...new Set([...(status?.images || []), ...IMAGE_MODELS, ...(cfg.imageModel ? [cfg.imageModel] : [])])].filter(m => m !== IMAGE_MODEL0).map(m => <option key={m} value={m}>{m}</option>)}
+        </select></label>
+        <label>质量<span className="seg">{[['low', 'low（便宜）'], ['medium', 'medium']].map(([v, t]) => <a key={v} className={(cfg.imageQuality || 'low') === v ? 'on' : ''} onClick={() => save({ imageQuality: v })}>{t}</a>)}</span><span className="hint">只有 2.0 认</span></label>
+        <label>分辨率<span className="seg">{['1k', '2k'].map(v => <a key={v} className={(cfg.imageRes || '1k') === v ? 'on' : ''} onClick={() => save({ imageRes: v })}>{v}</a>)}</span></label>
+      </div>
     </div>
   );
 }
@@ -386,6 +397,22 @@ function groupLog(log) {
 }
 // 一轮里查看前顺带说的话（👤 2026-10-16「一段一段来」）：比最后的回答淡一点
 const Steps = ({ steps }) => steps?.length ? steps.map((s, j) => <div key={j} className="step">{s.voice && <div className="know">🔊 {s.voice}</div>}{s.say && <div className="a">🤖 {s.say}</div>}</div>) : null;
+// 👤 2026-10-17 配图确认卡：生图花钱、AI 写的 prompt 不一定对 → 执行前 prompt 全文能改，比例 / 质量 / 分辨率 / 模型点选（「默认」= AI 设置里的生图默认）
+const ASPECTS = ['auto', '1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '21:9'];
+function ImageEdit({ a, onChange }) {
+  const seg = (k, opts) => <span className="seg">{opts.map(([v, t]) => <a key={t} className={(a[k] ?? null) === v ? 'on' : ''} onClick={() => onChange({ [k]: v })}>{t}</a>)}</span>;
+  return <div className="imgedit">
+    <div className="ih">✓ 🎨 配图（Grok 生成，花钱）→ {a.id ? '「' + a.id.split('/').pop() + '」' : '这一页的散图'}</div>
+    <textarea value={a.prompt} rows={3} spellCheck={false} title="画什么：执行前可以改（中英文都行）" onKeyDown={e => { if (e.key !== 'Escape') e.stopPropagation(); }}
+      onChange={e => onChange({ prompt: e.target.value, desc: a.desc.replace(/←[\s\S]*$/, '←' + e.target.value.slice(0, 40) + (e.target.value.length > 40 ? '…' : '')) })} />
+    <div className="iparams">
+      <label>比例<select value={a.aspect || 'auto'} onChange={e => onChange({ aspect: e.target.value })}>{ASPECTS.map(v => <option key={v} value={v}>{v === 'auto' ? '自动' : v}</option>)}</select></label>
+      <label>质量{seg('quality', [[null, '默认'], ['low', 'low'], ['medium', 'medium']])}</label>
+      <label>分辨率{seg('resolution', [[null, '默认'], ['1k', '1k'], ['2k', '2k']])}</label>
+      <label>模型<select value={a.model || ''} onChange={e => onChange({ model: e.target.value || undefined })}><option value="">默认</option>{IMAGE_MODELS.map(m => <option key={m} value={m}>{m.replace('grok-imagine-image', 'imagine')}</option>)}</select></label>
+    </div>
+  </div>;
+}
 export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, onClose, onWordsApplied, onZoom, preset = null, wordsScope = '', wordsLabel = '项目' }) {
   const [imgs, setImgs] = useState([]); // 这一句要附的图（dataURL）
   const addImgs = files => Promise.all(files.map(f => readImg(f).then(shrink))).then(us => setImgs(a => [...a, ...us].slice(0, 6)));
@@ -461,7 +488,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
     watch(); mo.observe(el, { childList: true, subtree: true }); el.addEventListener('scroll', onScroll); el.addEventListener('wheel', onWheel, { passive: true });
     return () => { ro.disconnect(); mo.disconnect(); el.removeEventListener('scroll', onScroll); el.removeEventListener('wheel', onWheel); };
   }, [tab]); // 👤 2026-10-16 切走再切回「对话」也回到最底下
-  useEffect(() => { if (!busy) inp.current?.focus(); }, [busy, plan, tab]);
+  useEffect(() => { if (!busy) inp.current?.focus(); }, [busy, !!plan, tab]); // !!plan：确认卡里改配图参数时别把焦点抢回输入框
   const send = () => {
     const t = text.trim(), im = imgs; if ((!t && !im.length) || (busy && !busy.startsWith('❌'))) return;
     CHAT_SCROLL.bottom = true; saveScroll(); // 自己发一句 = 回到底
@@ -540,7 +567,9 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
           </div>)}
           {live && <div className="turn"><div className="u">🙂 {live.user}</div><Steps steps={live.steps} />{live.progress && <div className="know">🔎 {live.progress}…</div>}</div>}
           {plan && plan.actions.length > 0 && <div className="plan">
-            <ul>{plan.actions.map((a, i) => <li key={i} className={a.ok ? 'ok' : 'no'}>{a.ok ? '✓ ' + a.desc : `✗ ${a.do || '?'}：${a.why}`}</li>)}</ul>
+            <ul>{plan.actions.map((a, i) => <li key={i} className={a.ok ? 'ok' : 'no'}>{a.ok && a.do === 'image'
+              ? <ImageEdit a={a} onChange={patch => setPlan(p => ({ ...p, actions: p.actions.map((x, j) => j === i ? { ...x, ...patch } : x) }))} />
+              : a.ok ? '✓ ' + a.desc : `✗ ${a.do || '?'}：${a.why}`}</li>)}</ul>
             {plan.actions.some(a => a.ok)
               ? <div className="row"><button className="go" onClick={run}>✓ 执行（Enter）</button><button onClick={() => setPlan(null)}>✗ 不要（Esc）</button><span className="hint">✗ 的不会执行</span></div>
               : <div className="hint">没有能执行的动作</div>}

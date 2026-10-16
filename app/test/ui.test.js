@@ -857,6 +857,7 @@ for (const kind of ['reactflow']) {
       const ask = user.replace(/【上一轮结果】[^\n]*\n?/, ''); // 判断「人这次说了什么」不能看【上一轮结果】那行（它会带着上次的动作名，比如「对齐」）
       if (/使用说明助手/.test(sys)) out = '- 按 L 搜索目标连线\n- 或者拖卡片边缘';
       else if (/思维导图 \/ 节点图工具/.test(sys)) out = /对齐/.test(ask) ? JSON.stringify({ say: '将左对齐', actions: [{ do: 'align', ids: [ref('惊慌失措'), ref('传感器')], edge: 'left' }, { do: 'delete', ids: ['n1'] }] })
+        : /配图/.test(ask) ? JSON.stringify({ say: '配一张', actions: [{ do: 'image', id: ref('咕噜人'), prompt: 'a small goblin, painterly' }] })
         : /完成/.test(ask) ? JSON.stringify({ say: '将标记完成', actions: [{ do: 'status', ids: [ref('咕噜人')], status: 'done' }] }) : '{"say":"删除请你自己来","actions":[]}';
       else if (/归类配色/.test(sys)) out = lines.map(m => `${m[1]}: ${/吓/.test(m[2]) ? 1 : 0}`).join('\n');
       else if (/值得连起来的关系/.test(sys)) out = lines.map(m => `${m[1]}. x | ${/情绪/.test(m[2]) ? 3 : 0} | ${/情绪/.test(m[2]) ? '都讲情绪' : '无关'}`).join('\n');
@@ -942,6 +943,15 @@ for (const kind of ['reactflow']) {
   ok(/status:\s*done/.test(readFileSync(join(ws, '__synapsis', '咕噜人.md'), 'utf8')), '点「执行」→ 咕噜人 ✅');
   await page.mouse.click(700, 760); await sleep(200); await page.keyboard.press('Control+z'); await sleep(1800);
   ok(!/status:\s*done/.test(readFileSync(join(ws, '__synapsis', '咕噜人.md'), 'utf8')), 'Ctrl+Z 撤销 AI 的改动');
+  // 👤 2026-10-17 配图确认卡：prompt 全文能改、参数能点；改的时候焦点不被抢回输入框；没有 xAI key → 执行只报一句，不调接口
+  await page.click('.agentbox textarea.ask'); await page.keyboard.type('给咕噜人配图'); await page.keyboard.press('Enter'); await sleep(1500);
+  ok((await page.$eval('.agentbox .imgedit textarea', e => e.value).catch(() => '')) === 'a small goblin, painterly', '配图动作 → 确认卡显示 prompt 全文（能改）');
+  await page.click('.agentbox .imgedit textarea'); await page.keyboard.press('End'); await page.keyboard.type(', night'); await sleep(100);
+  ok(await page.evaluate(() => document.activeElement?.matches('.imgedit textarea')) && (await page.$eval('.agentbox .imgedit textarea', e => e.value)) === 'a small goblin, painterly, night', '在确认卡里打字：焦点留在卡里，Enter 之前不会执行');
+  await page.selectOption('.agentbox .imgedit select >> nth=0', '16:9'); await page.click('.agentbox .imgedit .seg a:has-text("medium")'); await sleep(100);
+  ok((await page.$eval('.agentbox .imgedit .seg a.on', e => e.textContent)) === 'medium' && (await page.$eval('.agentbox .imgedit select', e => e.value)) === '16:9', '比例选 16:9、质量点 medium');
+  await page.click('.agentbox button.go'); await sleep(1500);
+  ok(/没有 Grok/.test(await page.$eval('.status, .savestate, footer', e => e.textContent).catch(() => '')) || /没有 Grok/.test(await page.evaluate(() => document.body.innerText)), '没填 xAI key → 执行后提示「没有 Grok key」，不花钱');
   // 问用法 → 问答模式：多行回答，标出参考了快捷键表，没有执行预览
   await page.click('.agentbox textarea.ask'); await page.keyboard.type('怎么连线？'); await page.keyboard.press('Enter'); await sleep(3000); // 全量跑时机器忙，1.5 秒偶尔不够
   const lastA = await page.$$eval('.agentbox .turn', ts => { const t = ts.at(-1); return [t.querySelector('.a')?.textContent || '', t.querySelector('.know')?.textContent || '', !!t.querySelector('.a .mdlite')]; });
@@ -1007,7 +1017,8 @@ for (const kind of ['reactflow']) {
   ok(!/射程/.test(gmd()) && /血量: 120/.test(gmd()), 'Ctrl+Z → 撤掉刚加的属性（之前的还在）');
   await page.keyboard.press('Control+y'); await sleep(1200);
   ok(/射程: 30/.test(gmd()), 'Ctrl+Y → 属性回来');
-  await page.fill('.side textarea', '咕噜人的正文'); await page.click('.side h3'); await sleep(1200);
+  if (!(await page.$('.side textarea.body'))) { await page.click('.modesw a:has-text("源码")'); await sleep(300); } // 👤 2026-10-17 正文默认是预览
+  await page.fill('.side textarea.body', '咕噜人的正文'); await page.click('.side h3'); await sleep(1200);
   ok(/咕噜人的正文/.test(gmd()), '正文失焦保存');
   await page.mouse.click(700, 760); await sleep(200); await page.keyboard.press('Control+z'); await sleep(1200);
   ok(!/咕噜人的正文/.test(gmd()), 'Ctrl+Z → 正文撤回去');

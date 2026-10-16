@@ -8,7 +8,8 @@ export const ASPECTS = ['auto', '1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3
 // base64 头几个字节认格式（接口不一定给 mime）
 const mimeOf = b64 => b64.startsWith('/9j') ? 'image/jpeg' : b64.startsWith('iVBOR') ? 'image/png' : b64.startsWith('UklGR') ? 'image/webp' : 'image/jpeg';
 
-export async function genImage(cfg, { prompt, aspect = 'auto', quality = 'low', resolution = '1k', model: want = null }, { fetchFn = fetch } = {}) { // 默认最便宜：low、1k
+export async function genImage(cfg, { prompt, aspect = 'auto', quality = null, resolution = null, model: want = null }, { fetchFn = fetch } = {}) { // 没指定 = AI 设置里的默认（cfg.imageQuality / imageRes），再没有 = 最便宜：low、1k
+  quality = quality || cfg.imageQuality || 'low'; resolution = resolution || cfg.imageRes || '1k';
   const key = onlineKey(cfg, 'xai');
   if (!key) throw new Error('没有 Grok（xAI）的 key：⋯ → 🤖 AI 设置「在线」页填');
   const model = want || cfg.imageModel || IMAGE_MODEL, t0 = Date.now();

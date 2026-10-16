@@ -95,7 +95,8 @@ export const VALIDATORS = {
     const loose = a.id == null || a.id === '', id = loose ? null : one(a.id), prompt = String(a.prompt || '').trim();
     if (!prompt) throw new Error('prompt 不能空：写清画面内容和风格');
     const aspect = ['auto', '1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '2:1', '1:2', '21:9'].includes(a.aspect) ? a.aspect : 'auto';
-    const quality = a.quality === 'medium' ? 'medium' : 'low', resolution = a.resolution === '2k' ? '2k' : '1k', model = ['grok-imagine-image-2.0', 'grok-imagine-image-quality', 'grok-imagine-image'].includes(a.model) ? a.model : null;
+    // 没写的参数留 null = 用 AI 设置里的默认（👤 2026-10-17 生图默认可选）；模型名认 xAI 列表里带 image 的（新模型不用改这里）
+    const quality = ['low', 'medium'].includes(a.quality) ? a.quality : null, resolution = ['1k', '2k'].includes(a.resolution) ? a.resolution : null, model = typeof a.model === 'string' && /^grok-[\w.-]*image[\w.-]*$/.test(a.model) ? a.model : null;
     const tag = [aspect !== 'auto' && aspect, quality === 'medium' && '高质量', resolution === '2k' && '2k', model && model.replace('grok-imagine-image', 'imagine')].filter(Boolean).join('，');
     return { id, ...(loose ? { scope: scope ?? ROOT } : {}), prompt: prompt.slice(0, 2000), aspect, quality, resolution, ...(model ? { model } : {}), desc: `配图（Grok 生成，花钱）：${loose ? '这一页的散图' : `「${label(id)}」`}←${prompt.slice(0, 40)}${prompt.length > 40 ? '…' : ''}${tag ? '（' + tag + '）' : ''}` };
   },

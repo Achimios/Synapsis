@@ -768,3 +768,11 @@ aside.outline > :not(.bar) { zoom: var(--zl, 1); } aside.side > :not(.bar) { zoo
 .ctx .mi.row.pages > a { flex: 1; text-align: center; padding: 2px 8px; border-radius: 3px; cursor: pointer; color: var(--dim); }
 .ctx .mi.row.pages > a.on { color: var(--strong); background: var(--panel2); box-shadow: inset 0 -2px 0 var(--accent); }
 .ctx .mi.row.pages > a:hover { background: var(--hover); }
+/* 👤 2026-10-17 AI 框配图确认卡 + AI 设置「生图默认」 */
+.agentbox .plan li .imgedit { display: flex; flex-direction: column; gap: 4px; margin: 2px 0 6px; }
+.agentbox .plan li .imgedit textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 54px; font: 12px/1.5 system-ui, "Microsoft YaHei"; background: var(--panel2); color: var(--text); border: 1px solid var(--line2); border-radius: 3px; padding: 4px 6px; }
+.agentbox .plan li .imgedit .iparams { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 11px; color: var(--dim); }
+.agentbox .plan li .imgedit .iparams label { display: inline-flex; gap: 4px; align-items: center; }
+.agentbox .plan li .imgedit .seg a { padding: 0 6px; }
+.imgdefaults { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; border-top: 1px dashed var(--line); padding-top: 6px; margin-top: 4px; }
+.imgdefaults label { display: inline-flex !important; gap: 4px; align-items: center; }

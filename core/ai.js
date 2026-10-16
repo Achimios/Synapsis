@@ -62,6 +62,8 @@ export const chatModel = (cfg, task = 'agent') => {
   return taskSrc(cfg, task) === 'online' ? onlineId(t.model || cfg.onlineModel || 'deepseek-flash') : (t.chat || cfg.chat);
 };
 export function onlineKey(cfg, provider) {
+  // 👤 2026-10-17 offline（自检工作区都开着）= 一律拿不到 key：以前只挡了聊天模型，配图 / Grok 搜索照样读本机 keys.json → 自检真花了一次生图的钱
+  if (cfg?.offline) return null;
   if (process.env[ONLINE[provider].env]) return process.env[ONLINE[provider].env];
   try { return JSON.parse(readFileSync(cfg.keys, 'utf8'))[provider] || null; } catch { return null; }
 }
@@ -88,7 +90,8 @@ async function onlineModels(cfg) {
         // 👤 2026-10-16 新的在上面：按发布时间（created）倒序；没有 created 就按名字倒序（数字按大小比）
         // 👤 2026-10-16「过早的可以不显示」：发布超过半年的不列（没有发布时间的照列；设置里正选着的旧模型界面会单独补一行）
         const old = Date.now() / 1000 - 183 * 86400;
-        onlineCache[p] = { t: Date.now(), list: (await r.json()).data.filter(m => !/imagine|image|video|embed|tts|audio/i.test(m.id) && !(m.created && m.created < old))
+        const data = (await r.json()).data;
+        onlineCache[p] = { t: Date.now(), images: data.filter(m => /image/i.test(m.id) && !/video/i.test(m.id)).sort((a, b) => (b.created || 0) - (a.created || 0) || b.id.localeCompare(a.id, 'en', { numeric: true })).map(m => m.id), list: data.filter(m => !/imagine|image|video|embed|tts|audio/i.test(m.id) && !(m.created && m.created < old))
           .sort((a, b) => (b.created || 0) - (a.created || 0) || b.id.localeCompare(a.id, 'en', { numeric: true })).map(m => { const ctx = m.context_window || (p === 'xai' && XAI_CTX.find(([re]) => re.test(m.id))?.[1]) || null; return { id: p + ':' + m.id, name: m.name || m.id, embed: false, loaded: true, online: true, ctx, maxCtx: ctx }; }) };
       } catch { continue; }
     }
@@ -148,7 +151,8 @@ export async function aiStatus(cfg) {
 }
 // online = 在线对话模型列表；hasKey = 各家有没有 key（只回有没有，不回 key）
 async function onlinePart(cfg) {
-  return { online: await onlineModels(cfg), hasKey: Object.fromEntries(Object.keys(ONLINE).map(p => [p, !!onlineKey(cfg, p)])) };
+  const online = await onlineModels(cfg);
+  return { online, images: onlineCache.xai?.images || [], hasKey: Object.fromEntries(Object.keys(ONLINE).map(p => [p, !!onlineKey({ ...cfg, offline: false }, p)])) /* 只说「有没有」，offline 也照实说 */ };
 }
 // 这次用的对话模型的信息（上下文容量等）
 export const chatInfo = (st, id) => (st.chat || []).find(m => m.id === id) || (st.online || []).find(m => m.id === id) || null;
