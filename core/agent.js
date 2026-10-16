@@ -12,6 +12,7 @@ import { validateAction, planMoves, VALIDATORS } from './plan.js';
 import { chat, chatModel } from './ai.js';
 import { pickKnowledge, knowledgeText, knowledgeChunks } from './knowledge.js';
 import { memoryIndex, readMemories, writeMemory, indexStatus } from './memory.js';
+import { webSearch, webRead } from './web.js';
 import { voicePrompt, voiceOffPrompt, VOICE_MAX, loadVoice, personaOf, clipVoice, rescueVoice, autoVoice, plainVoice } from './voice.js';
 
 const SKILL_DIR = join(dirname(fileURLToPath(import.meta.url)), 'skills');
@@ -81,7 +82,7 @@ export function loosePrompt(skills = loadSkills(), knowledge = knowledgeChunks()
 - 动作是 {"do": 动作名, …参数}，动作名只能是：${skills.map(s => s.do).join('、')}。
 - 节点只能用本页列出的编号（n1、n2…）。「这几个 / 选中的」= 标了 ★选中 的。编号只在 JSON 的动作里用；跟人说话（say / voice）一律说节点的名字，人看不到编号。
 - 长期记忆：有时消息里会附【记忆索引】（每份一行：名字 + 一句描述）。觉得哪份和这次有关、想看全文，就只输出 {"read": ["名字", …]}（这一次不要 say 和 actions），全文会发给你，你再正常回答。用不上就别读。值得以后记住的，用 remember 提议。
-- 查看：【当前页】只列了名字和位置。需要更多信息（某张卡的正文、某个节点里面有什么、项目里哪里提到某个词、某份文档、软件怎么用）时，只输出 {"look": [{"node": "n3"}, {"page": "n5"}, {"search": "词"}, {"file": "路径.md"}, {"manual": "关键词"}]}（这一次不要 say 和 actions），结果会发给你，你再继续。{"node": 编号} = 正文全文和属性（卡片上只标了「正文 N 字」，要内容就看；"here" = 当前页这个节点自己；p 编号 = 传送门指向的节点）；{"page": 编号} = 那个节点里面有什么（子节点和连线；里面的东西没有编号，只能读，不能动手）；{"search": 词} = 搜节点名字 / 正文 / 项目文件（结果没有编号）；{"file": 项目里的相对路径} = 读一份文本文件（md / txt / 代码…）；{"manual": 关键词} = 翻软件手册。查看只读，不改任何东西；最多连续查看 3 次，能直接答就别查。
+- 查看：【当前页】只列了名字和位置。需要更多信息（某张卡的正文、某个节点里面有什么、项目里哪里提到某个词、某份文档、软件怎么用）时，只输出 {"look": [{"node": "n3"}, {"page": "n5"}, {"search": "词"}, {"file": "路径.md"}, {"manual": "关键词"}, {"web": "关键词"}, {"url": "https://…"}]}（这一次不要 say 和 actions），结果会发给你，你再继续。{"node": 编号} = 正文全文和属性（卡片上只标了「正文 N 字」，要内容就看；"here" = 当前页这个节点自己；p 编号 = 传送门指向的节点）；{"page": 编号} = 那个节点里面有什么（子节点和连线；里面的东西没有编号，只能读，不能动手）；{"search": 词} = 搜节点名字 / 正文 / 项目文件（结果没有编号）；{"file": 项目里的相对路径} = 读一份文本文件（md / txt / 代码…）；{"manual": 关键词} = 翻软件手册；{"web": 关键词} = 上网搜（必应，回前几条标题、网址、摘要；中文生僻专名常搜偏，偏了就换英文或换个说法再搜）；{"url": 网址} = 读一个网页的文字（只读公网）。查看只读，不改任何东西；最多连续查看 3 次，能直接答就别查。
 - 【上一轮结果】：消息里可能有这一行，告诉你上次提议的动作人执行了没有、执行后检查出了什么问题（比如卡片重叠了）。以它为准，别凭印象说「已经做完了」；有问题就这一轮顺手修好。
 - 坐标：@(x,y) 是卡片左上角，x 向右、y 向下，后面是宽×高。用 place 挪位置时自己算好，别和别的卡重叠（留 20 以上的空隙）；【当前页】里编号 p1、p2… 的是传送门卡片：它们也能 select / align / arrange / tighten / place，排版时要和普通卡一起排（别压到、也别漏掉）；「图片」没有编号，不能动，排版时躲开。
 
@@ -321,6 +322,21 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
       const m = readMemories(opts.home, root, reply.read);
       memRead.push(...m.names);
       add += `\n\n【记忆全文】\n${m.text || '（没有叫这些名字的记忆）'}`;
+    }
+    // 联网（👤 2026-10-16）：{"web": 关键词} 必应搜，{"url": 网址} 读网页（只读、只许公网，core/web.js）
+    const net = reply.look.filter(it => it && (typeof it.web === 'string' || typeof it.url === 'string')).slice(0, 3);
+    const kindOf = it => (typeof it.web === 'string' ? 'web' : 'url');
+    reply.look = reply.look.filter(it => !(it && (typeof it.web === 'string' || typeof it.url === 'string')));
+    for (const it of net) {
+      if (kindOf(it) === 'web') {
+        const q = it.web.trim().slice(0, 120); looked.push(`上网搜「${q}」`);
+        try { const rs = await (opts.webSearch || webSearch)(q); add += `\n\n【网上搜「${q}」】\n${rs.length ? rs.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join('\n') : '（没搜到）'}`; }
+        catch (e) { add += `\n\n【网上搜「${q}」】搜不了：${e.message}`; }
+      } else {
+        const u = it.url.trim(); looked.push(`读网页 ${u.slice(0, 60)}`);
+        try { const p = await (opts.webRead || webRead)(u); add += `\n\n【网页 ${p.url}${p.title ? '「' + p.title + '」' : ''}】\n${p.text || '（没有文字）'}`; }
+        catch (e) { add += `\n\n【网页 ${u}】读不了：${e.message}`; }
+      }
     }
     if (reply.look.length) {
       const l = lookAt(root, ctx, reply.look, { ttsDir: vAll?.tts || '', voice: vAll?.ok ? vAll : null });
