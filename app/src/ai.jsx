@@ -239,6 +239,19 @@ export function RelatedDock({ api, id, label, onJump, onOpenFile, onLink }) {
 //   「日志」页 = 每次调对话模型的原始记录（core/ai.js aiLog）。短记忆存在工作区（「清空记忆」= 新话题）
 // >v<🤖AI辅助-生成词表-按这个工作区的节点让对话模型起草 _配色.md（看过、可手改，再写入；旧的进 _过期的/）。
 //   👤 2026-10-08「这种操作不该丢 AI 配置页面…丢指令页面」→ 指令框的一页
+// >v<🤖AI指令-待办页-👤 2026-10-16：<项目>/.synapsis/AI待办.md，人直接改（- [ ] / - [x]）；AI 在对话里也会记、会勾（core/todo.js）
+function TodoTab({ api }) {
+  const [d, setD] = useState(null), [txt, setTxt] = useState(''), [msg, setMsg] = useState('');
+  useEffect(() => { api('/ai/todo').then(r => { setD(r); setTxt(r.text); }).catch(e => setMsg('❌ ' + e.message)); }, []);
+  const save = () => api('/ai/todo', { method: 'PUT', body: JSON.stringify({ text: txt }) }).then(r => { setD(r); setTxt(r.text); setMsg('✓ 已保存'); }).catch(e => setMsg('❌ ' + e.message));
+  if (!d) return <div className="hint pad">{msg || '读取中…'}</div>;
+  const open = (txt.match(/^\s*[-*]\s*\[ \]/gm) || []).length, done = (txt.match(/^\s*[-*]\s*\[[xX]\]/gm) || []).length;
+  return <div className="voicetab">
+    <div className="hint">对话里说定的「以后要做的事」。AI 会记、会勾，你也可以直接改。没做完 {open} 条 · 做完 {done} 条。文件：{d.file}</div>
+    <textarea value={txt} onChange={e => setTxt(e.target.value)} spellCheck={false} onKeyDown={e => { e.stopPropagation(); if (e.ctrlKey && e.key === 's') { e.preventDefault(); save(); } }} />
+    <div className="row"><button onClick={save} disabled={txt === d.text}>保存（Ctrl+S）</button>{txt !== d.text && <button onClick={() => setTxt(d.text)}>撤回没保存的</button>}<span className="hint">{msg}</span></div>
+  </div>;
+}
 // >v<🤖AI指令-语音页-👤 2026-10-16：只选 TTS 文件夹 / 角色 / 优先后端（存 settings.yaml 的 voice 段）；TTS 的数据每次从它的 bridge/roles.json 现读
 function VoiceTab({ api }) {
   // 👤 2026-10-16 Synapsis 只是 TTS 的调用端：这里只选三样（TTS 文件夹、角色、优先后端）；角色、情绪、简介、口吻都每次从 TTS 的 bridge/roles.json 现读，
@@ -440,7 +453,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
     api('/ai/agent', { method: 'POST', body: JSON.stringify({ scope, selected, text: t, images: im, boxes: boxes?.() || {}, voice: voiceOn }) })
       .then(d => {
         setText(''); setImgs([]); setBusy(''); setUsage(d.usage?.total_tokens ? d.usage : null); if (d.compacting) setCompacting(true);
-        setTurns(ts => [...ts, { t: new Date().toISOString(), user: t || '（看图）', ...(im.length ? { imgs: im } : {}), say: d.say, done: [], know: d.knowledge, memRead: d.memRead, looked: d.looked, ...(d.voice ? { voice: d.voice.text } : {}), ...(d.usage?.prompt_cache_hit_tokens != null && d.usage.prompt_tokens ? { cache: [d.usage.prompt_cache_hit_tokens, d.usage.prompt_tokens] } : {}) }]); if (d.spoke && !d.spoke.ok) setNote('🔊 没念出来：' + d.spoke.why); // imgs 在这里是图本身（这次会话里还能点开看），刷新后只剩张数
+        setTurns(ts => [...ts, { t: new Date().toISOString(), user: t || '（看图）', ...(im.length ? { imgs: im } : {}), say: d.say, done: [], know: d.knowledge, memRead: d.memRead, looked: d.looked, ...(d.voice ? { voice: d.voice.text } : {}), ...(d.todo ? { todo: d.todo } : {}), ...(d.usage?.prompt_cache_hit_tokens != null && d.usage.prompt_tokens ? { cache: [d.usage.prompt_cache_hit_tokens, d.usage.prompt_tokens] } : {}) }]); if (d.spoke && !d.spoke.ok) setNote('🔊 没念出来：' + d.spoke.why); // imgs 在这里是图本身（这次会话里还能点开看），刷新后只剩张数
         const good = d.actions.filter(a => a.ok);
         if (d.actions.length) { setPlan(d); onPreview([...new Set(good.flatMap(a => a.ids || [a.id, a.from, a.to].filter(Boolean)))]); }
       })
@@ -471,6 +484,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
         <a className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')} title="对话">💬<span className="tl"> 对话</span></a>
         <a className={tab === 'log' ? 'on' : ''} onClick={() => setTab('log')} title="日志">📜<span className="tl"> 日志</span></a>
         <a className={tab === 'words' ? 'on' : ''} onClick={() => setTab('words')} title="词表">🎨<span className="tl"> 词表</span></a>
+        <a className={tab === 'todo' ? 'on' : ''} onClick={() => setTab('todo')} title="待办">📋<span className="tl"> 待办</span></a>
         <a className={tab === 'voice' ? 'on' : ''} onClick={() => setTab('voice')} title="语音">🔊<span className="tl"> 语音</span></a></span>
         <button className={'voicebtn' + (voiceOn ? ' on' : '')} title={voiceOn ? '📢 开着：AI 可以自己决定发一句语音（只有 ☁ 在线模型）。点一下关' : '📢 关着：AI 不发语音。点一下打开（只有 ☁ 在线模型；角色、后端在「🔊 语音」页）'} onClick={flipVoice}>{voiceOn ? '📢' : '🔇'}</button>
         <CtxMeter ctx={ctx} usage={usage} />
@@ -489,6 +503,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
             {t.know?.length > 0 && !t.done?.length && <div className="know" title={t.know.join('\n')}>📖 参考了：{[...new Set(t.know.map(k => k.split('·')[0]))].join('、')}（{t.know.length} 段）</div>}
             {t.memRead?.length > 0 && <div className="know">🧠 读了记忆：{t.memRead.join('、')}</div>}
             {t.looked?.length > 0 && <div className="know">🔎 查看了：{t.looked.join('、')}</div>}
+            {t.todo && <div className="know">📋 {t.todo.added?.length ? '记进待办：' + t.todo.added.join('；') : ''}{t.todo.added?.length && t.todo.checked?.length ? '　' : ''}{t.todo.checked?.length ? '勾掉：' + t.todo.checked.join('；') : ''}</div>}
             {t.cache && <div className="know" title="DeepSeek 上下文缓存：请求开头和之前完全一样的部分按便宜价算、也更快。开关 📢、换优先角色、压缩 / 清空记忆会让下一轮命中掉一截">⚡ 缓存命中 {t.cache[0]} / {t.cache[1]}（{Math.round(t.cache[0] / t.cache[1] * 100)}%）</div>}
             {t.done?.length > 0 && <ul className="done">{t.done.map((d, j) => <li key={j}>✓ {d}</li>)}</ul>}
             {t.warnings?.length > 0 && <div className="know">⚠ 执行后检查：{t.warnings.join('；')}</div>}
@@ -509,7 +524,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
         {imgs.length > 0 && <div className="askimgs">{imgs.map((u, i) => <span key={i}><img src={u} title="单击放大" onClick={() => onZoom?.(imgs, i)} /><a title="不附这张" onClick={() => setImgs(a => a.filter((_, j) => j !== i))}>✕</a></span>)}<span className="hint">{loose ? '随下一句发出（不进短记忆）' : '随下一句发出（本地模型要能看图，比如 Qwen VL）'}</span></div>}
         <textarea ref={inp} className="ask" rows={2} value={text} onChange={e => setText(e.target.value)}
           placeholder={plan?.actions.some(a => a.ok) ? 'Enter = 执行上面的动作；或者接着说（改主意 / 补充）' : '说要做什么…（Enter 发送，Shift+Enter 换行，Ctrl+V / 拖进来 = 附图）' + (selected.length ? `　已选 ${selected.length} 个` : '')} />
-      </> : tab === 'voice' ? <VoiceTab api={api} /> : tab === 'words' ? <WordsTab api={api} onWordsApplied={onWordsApplied} scope={wordsScope} label={wordsLabel} /> : <div className="logs">
+      </> : tab === 'todo' ? <TodoTab api={api} /> : tab === 'voice' ? <VoiceTab api={api} /> : tab === 'words' ? <WordsTab api={api} onWordsApplied={onWordsApplied} scope={wordsScope} label={wordsLabel} /> : <div className="logs">
         <UsageBar api={api} tick={log} />
         {!log ? <div className="hint pad">读取中…</div> : !log.length ? <div className="hint pad">还没有调用记录</div> : groupLog(log).map((l, i) => <div key={i} className="logrow">
           <div className="head" onClick={() => l.n > 1 ? null : setOpenLog(openLog === i ? null : i)}>

@@ -13,6 +13,7 @@ import { chat, chatModel } from './ai.js';
 import { pickKnowledge, knowledgeText, knowledgeChunks } from './knowledge.js';
 import { memoryIndex, readMemories, writeMemory, indexStatus } from './memory.js';
 import { webSearch, webRead } from './web.js';
+import { loadTodo, applyTodo, todoPrompt } from './todo.js';
 import { voicePrompt, voiceOffPrompt, VOICE_MAX, loadVoice, personaOf, clipVoice, rescueVoice, autoVoice, plainVoice } from './voice.js';
 
 const SKILL_DIR = join(dirname(fileURLToPath(import.meta.url)), 'skills');
@@ -124,7 +125,8 @@ export function parseReply(raw, max = 1200) {
   if (a < 0 || b <= a) throw new Error('输出里没有 JSON 对象');
   const j = JSON.parse(s.slice(a, b + 1));
   if (typeof j !== 'object' || Array.isArray(j)) throw new Error('不是 JSON 对象');
-  return { voice: j.voice && typeof j.voice === 'object' && j.voice.text ? { text: String(j.voice.text), role: j.voice.role ? String(j.voice.role) : '', mood: j.voice.mood ? String(j.voice.mood) : '', lang: j.voice.lang ? String(j.voice.lang) : '', pref: j.voice.pref ? String(j.voice.pref) : '', fx: j.voice.fx ? String(j.voice.fx) : '' } : null, say: typeof j.say === 'string' ? j.say.slice(0, max) : '', actions: Array.isArray(j.actions) ? j.actions.slice(0, 60) : [], read: Array.isArray(j.read) ? j.read.slice(0, 6).map(String) : [], look: Array.isArray(j.look) ? j.look.slice(0, 6).filter(x => x && typeof x === 'object' && !Array.isArray(x)) : [] };
+  const arr = x => Array.isArray(x) ? x.map(String) : typeof x === 'string' ? [x] : [];
+  return { todo: j.todo && typeof j.todo === 'object' ? { add: arr(j.todo.add), done: arr(j.todo.done) } : null, voice: j.voice && typeof j.voice === 'object' && j.voice.text ? { text: String(j.voice.text), role: j.voice.role ? String(j.voice.role) : '', mood: j.voice.mood ? String(j.voice.mood) : '', lang: j.voice.lang ? String(j.voice.lang) : '', pref: j.voice.pref ? String(j.voice.pref) : '', fx: j.voice.fx ? String(j.voice.fx) : '' } : null, say: typeof j.say === 'string' ? j.say.slice(0, max) : '', actions: Array.isArray(j.actions) ? j.actions.slice(0, 60) : [], read: Array.isArray(j.read) ? j.read.slice(0, 6).map(String) : [], look: Array.isArray(j.look) ? j.look.slice(0, 6).filter(x => x && typeof x === 'object' && !Array.isArray(x)) : [] };
 }
 
 // —— 短记忆 ——
@@ -164,7 +166,7 @@ export function memoryOf(root, loose, cfg = null) {
 export const memTokens = m => estTokens(m.summary) + m.turns.reduce((a, t) => a + estTokens(turnText(t)), 0);
 export const needCompact = (root, loose, cfg) => { const c = memCfg(cfg, loose), m = memoryOf(root, loose); return c.autoCompact && m.turns.length > c.memKeep && memTokens(m) > c.memLimit; };
 export const SUMMARY_PROMPT = `你在给一段人和 AI 搭档（Synapsis 节点图工具里的助手）的对话写「记忆摘要」，以后的对话只看这份摘要，看不到原文。
-保留：人的目标和正在做的事；定下来的决定和偏好（包括人给 AI 定的人设、语气、称呼）；AI 提议过、人确认执行了的改动（和执行后发现的问题）；人否掉 / 说不做 / 说「今天不弄」的提议，写成「人说不做：…」一句带过，别写成待办；「待办」只写人自己说要做的事，AI 自己提过、人没接的不算待办。
+保留：人的目标和正在做的事；定下来的决定和偏好（包括人给 AI 定的人设、语气、称呼）；AI 提议过、人确认执行了的改动（和执行后发现的问题）；人否掉 / 说不做的提议一句带过。待办另有地方记（指令框「📋 待办」页），摘要里不写待办。
 丢掉：寒暄、重复的话、被否掉方案的细节、已经过时的中间状态。
 节点编号（n1、n2…）每页都会变，不要记编号，记节点名字。
 写成简洁的中文要点（- 开头），不超过 600 字，不要 JSON，不要代码块。有旧摘要就把它和新内容合并成一份新的。`;
@@ -304,7 +306,7 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   const memNote = idx && !recent.some(t => t.memNote) ? `【记忆索引】（想看全文就只回 {"read": ["名字"]}）\n${idx}` : '';
   const vAll = opts.voice || (opts.home ? loadVoice(opts.home) : null); // TTS 文件夹 / 角色表：look 读 TTS、借口吻用（不管 📢 开没开）
   const vo = loose && opts.voice ? opts.voice : null; // 📢 开着（只给在线宽松版）：提示词后面加几行语音说明（声音简介 / 可选口吻都来自 TTS 的 roles.json）
-  const sys = (loose ? loosePrompt(undefined, undefined, { model: chatModel(cfg).replace(/^\w+:/, ''), online: true, ctx: opts.ctx || null, ...memCfg(cfg, true) }) : systemPrompt()) + (vo ? voicePrompt(vo) : loose && vAll?.ok ? voiceOffPrompt : '');
+  const sys = (loose ? loosePrompt(undefined, undefined, { model: chatModel(cfg).replace(/^\w+:/, ''), online: true, ctx: opts.ctx || null, ...memCfg(cfg, true) }) : systemPrompt()) + (vo ? voicePrompt(vo) : loose && vAll?.ok ? voiceOffPrompt : '') + (loose ? todoPrompt(loadTodo(root)) : ''); // 待办：在线版每轮看到没做完的几条（core/todo.js）
   const lastNote = outcomeNote(recent.at(-1));
   let user = `${ctx.text}\n\n${lastNote ? lastNote + '\n\n' : ''}人说：${String(text).trim()}${memNote ? '\n\n' + memNote : ''}`;
   const out = loose ? 3000 : 1200, temp = loose ? 0.6 : 0.1; // 宽松版：话可以长、温度高些（有个性）
@@ -355,9 +357,10 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   // 嘴上说做了、手上没给动作（8B 实测会这样）→ 明说，别让人以为做了
   if (!actions.some(a => a.ok) && (loose ? /^已(经)?(将|把|为|创建|新建|标记|改|连|设|排|对齐|选|挪|收紧)/ : /^(已|将|会|我会|我将)|已(经)?(将|把|为|创建|新建|标记|删除|改|连|设|完成|排|对齐|选)/).test(reply.say)) reply.say += /删/.test(text) ? '（⚠ 删除节点不归 AI 做：请右键节点 → 删除）' : '（⚠ 模型没有给出能执行的动作，实际什么都没做）';
   const vRaw = vo ? reply.voice || rescueVoice(reply.say) || autoVoice(reply.say) : null, voice = vRaw ? { ...vRaw, text: clipVoice(plainVoice(vRaw.text)), ...(reply.voice ? {} : { rescued: true }) } : null; // 📢 开着每轮必有声音：没写 voice → 先捞「」里的台词，再不行念回答开头
+  const todo = loose && reply.todo ? applyTodo(root, reply.todo) : null; // 记进 / 勾掉待办（人在「📋 待办」页看得到）
   // cache = 在线模型报的缓存命中 [命中, 提示总数]（最后一次调用）
-  pushChat(root, { t: new Date().toISOString(), mode: loose ? 'loose' : 'strict', scope: ctx.scope, user: String(text).trim(), ...(usage.prompt_cache_hit_tokens != null && usage.prompt_tokens ? { cache: [usage.prompt_cache_hit_tokens, usage.prompt_tokens] } : {}), ...(voice ? { voice: voice.text } : {}), ...(images.length ? { imgs: images.length } : {}), say: reply.say, actions: reply.actions, done: actions.filter(a => a.ok).map(a => a.desc), ...(memNote ? { memNote } : {}), ...(memRead.length ? { memRead } : {}), ...(looked.length ? { looked } : {}) });
-  return { say: reply.say, actions, raw, knowledge: loose ? [] : know.map(c => c.src), usage, mode: loose ? 'loose' : 'strict', memRead, looked, memIndex: !!memNote, voice };
+  pushChat(root, { t: new Date().toISOString(), mode: loose ? 'loose' : 'strict', scope: ctx.scope, user: String(text).trim(), ...(usage.prompt_cache_hit_tokens != null && usage.prompt_tokens ? { cache: [usage.prompt_cache_hit_tokens, usage.prompt_tokens] } : {}), ...(voice ? { voice: voice.text } : {}), ...(todo && (todo.added.length || todo.checked.length) ? { todo: { added: todo.added, checked: todo.checked } } : {}), ...(images.length ? { imgs: images.length } : {}), say: reply.say, actions: reply.actions, done: actions.filter(a => a.ok).map(a => a.desc), ...(memNote ? { memNote } : {}), ...(memRead.length ? { memRead } : {}), ...(looked.length ? { looked } : {}) });
+  return { say: reply.say, actions, raw, knowledge: loose ? [] : know.map(c => c.src), usage, mode: loose ? 'loose' : 'strict', memRead, looked, memIndex: !!memNote, voice, todo: todo && (todo.added.length || todo.checked.length) ? { added: todo.added, checked: todo.checked } : null };
 }
 
 // >v<🤖AI指令-执行-👤 确认后：大纲类（新建 / 改名 / 状态 / 连线 / 删线 / 大纲排序）一次存盘 = 一步撤销；

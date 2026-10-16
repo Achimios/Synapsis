@@ -11,6 +11,7 @@ import { workspaceRoot, manualText, synItems, synWrite } from '../core/cli.js';
 import { wakeLms, aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, suggestPatternWords, readAiLog, readUsage } from '../core/ai.js';
 import { lmsEstimate, lmsReload } from '../core/lmstudio.js';
 import { loadVoice, saveVoiceCfg, speak } from '../core/voice.js';
+import { loadTodo, saveTodo, todoFile, TODO_HEAD } from '../core/todo.js';
 import { runAgent, applyPlan, loadChat, clearChat, setSummaryText, estimateContext, isLoose, loadSummary, compactChat, needCompact } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
 const STASH = new Map(); // 工作区 → 界面暂存（见 /ui/stash）
@@ -140,6 +141,10 @@ function workspaceApi() {
             if (url.pathname === '/ai/usage') return send(200, readUsage(cfg));
             if (url.pathname === '/ai/log') return send(200, { entries: cfg.log ? readAiLog(cfg.log, Number(url.searchParams.get('n')) || 60) : [] });
             // summary = 各模式的记忆摘要 {loose|strict: {text, upto}}（界面在 upto 那一轮下面画「以上已压缩」）；compacting = 后台正在压
+            if (url.pathname === '/ai/todo') { // 📋 待办页：<项目>/.synapsis/AI待办.md
+              if (req.method === 'PUT') { const b = await body(req); return send(200, { text: saveTodo(root, b.text), file: todoFile(root) }); }
+              return send(200, { text: loadTodo(root) || TODO_HEAD, file: todoFile(root) });
+            }
             if (url.pathname === '/ai/chat' && req.method === 'GET') return send(200, { turns: loadChat(root), summary: loadSummary(root), compacting: !!(STASH.get(root) || {}).compacting });
             if (url.pathname === '/ai/chat' && req.method === 'DELETE') { clearChat(root); return send(200, { turns: [], summary: {} }); }
             // 🗜 手动压缩：除了最近 keep 轮（默认按设置），旧原文 + 旧摘要 → 新摘要
