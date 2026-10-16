@@ -722,3 +722,4 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 .card.uibox .props.uiprops { margin: 0 6px 2px; position: relative; z-index: 2; }
 .voicetab .vdesc { white-space: normal; overflow: visible; color: color-mix(in srgb, var(--accent) 70%, var(--text)); font-size: 12.5px; }
 .voicetab .vpersona { white-space: pre-wrap; font-size: 12.5px; line-height: 1.55; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; overflow: auto; min-height: 0; flex: 1; }
+.aigroup .provider { border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; margin-bottom: 6px; }

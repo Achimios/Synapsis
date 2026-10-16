@@ -2,7 +2,7 @@
 import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { voicePrompt, voiceOffPrompt, clipVoice, rescueVoice, loadVoice, saveVoiceCfg, speak, VOICE_MAX, loadCatalog, resolveVoice, personaOf } from '../voice.js';
+import { voicePrompt, voiceOffPrompt, clipVoice, rescueVoice, plainVoice, loadVoice, saveVoiceCfg, speak, VOICE_MAX, loadCatalog, resolveVoice, personaOf } from '../voice.js';
 import { parseReply, lookAt } from '../agent.js';
 import { loadSettings } from '../settings.js';
 
@@ -62,6 +62,8 @@ ok(!('mood' in speak(h, { text: '嗯', mood: 'urgent' }).job), '角色没有的�
 
 ok(parseReply('{"say":"嗯","actions":[],"voice":{"text":"严格来说","mood":"curious","lang":"en"}}').voice.mood === 'curious' && parseReply('{"say":"x","actions":[]}').voice === null, 'JSON 里的 voice 字段读得出，没有就是 null');
 ok(VOICE_MAX <= 200, '有长度上限');
+ok(plainVoice('**严格来说**，你看 `n32`：\n- 第一\n- 第二\n## 标题\n[链接](http://x) 嘿~ 停___顿') === '严格来说，你看 n32： 第一 第二 标题 链接 嘿~ 停___顿', '念之前去掉 Markdown（~ 和 ___ 留着）');
+ok(!('x' in {}) && speak(h, { text: '**加粗** 的话' }).job.text === '加粗 的话', 'speak 发出去的是纯文本');
 const longT = '这是一句完整的话，不长。'.repeat(20);
 ok(clipVoice(longT).endsWith('。') && clipVoice(longT).length <= VOICE_MAX && clipVoice('短句。') === '短句。', '超长在句号处截，不截在半句上');
 ok(rescueVoice('语音来了，黑斯廷斯：\n\n「Desmond，你又忘了。」\n要不要记下？').text === 'Desmond，你又忘了。' && rescueVoice('「只是引用一句话」') === null && rescueVoice('语音来了，但没有引号') === null, '没写 voice、嘴上说了语音并把台词放「」里 → 兜底拿出来；没说语音 / 没引号的不动');

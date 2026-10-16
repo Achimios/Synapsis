@@ -134,7 +134,7 @@ export const clearChat = root => { try { mkdirSync(dirname(chatFile(root)), { re
 export const recentTurns = (root, loose, n = 8) => loadChat(root).filter(t => (t.mode || 'strict') === (loose ? 'loose' : 'strict')).slice(-n);
 const saveChat = (root, h) => { mkdirSync(dirname(chatFile(root)), { recursive: true }); writeFileSync(chatFile(root), JSON.stringify(h, null, 1)); };
 // 存 200 轮给界面看；喂给模型的见 memoryOf。t 保证严格递增（摘要靠「t 在 upto 之后」切原文，同一毫秒的两轮会切错）
-const pushChat = (root, turn) => { const h = loadChat(root), last = h.at(-1)?.t; if (last && turn.t <= last) turn = { ...turn, t: new Date(Date.parse(last) + 1).toISOString() }; saveChat(root, [...h, turn].slice(-200)); };
+const pushChat = (root, turn) => { const h = loadChat(root), last = h.at(-1)?.t; if (last && turn.t <= last && !isNaN(Date.parse(last))) turn = { ...turn, t: new Date(Date.parse(last) + 1).toISOString() }; saveChat(root, [...h, turn].slice(-200)); };
 
 // >v<🤖AI指令-压缩记忆-👤 2026-10-11：短记忆 = 【摘要】+ 摘要之后的原文。原文超过 memLimit token → 让模型把「除了最近 memKeep 轮」的旧原文连同旧摘要
 //   重新写成一份摘要（滚动，摘要永远只有一份）。原文不删（界面照样显示、日志照样有），只是不再喂。按模式（loose / strict）各一份。

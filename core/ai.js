@@ -22,11 +22,17 @@ const cfgFile = home => join(home, '.synapsis', 'ai.json');
 //   key 放 <Synapsis>/.synapsis/keys.json 的 {"deepseek": "sk-…"}（.synapsis/ 整个不进 git），或环境变量 DEEPSEEK_API_KEY；界面里也能填（写进同一个文件）。
 //   key 只在服务端读，不进 cfg、不回给界面（只回「有没有」）、不写日志。
 //   cfg.offline === true → 不查在线模型、全部走本地（自检用，免得跑测试时联网花钱）
-export const ONLINE = { deepseek: { url: 'https://api.deepseek.com', env: 'DEEPSEEK_API_KEY' } };
+// 在线服务商（OpenAI 兼容接口）。👤 2026-10-16 加 Grok（xAI）。thinking = DeepSeek 专有的思考开关参数，别家不发
+export const ONLINE = {
+  deepseek: { name: 'DeepSeek', url: 'https://api.deepseek.com', env: 'DEEPSEEK_API_KEY', site: 'platform.deepseek.com', thinking: true },
+  xai: { name: 'Grok（xAI）', url: 'https://api.x.ai/v1', env: 'XAI_API_KEY', site: 'console.x.ai' },
+};
+// 设置里存的在线模型名：DeepSeek 的不带前缀（老写法），别家带「服务商:」前缀（如 xai:grok-4）
+export const onlineId = m => /^\w+:/.test(m) ? m : 'deepseek:' + m;
 export const keyFile = home => join(home, '.synapsis', 'keys.json');
 // SYNAPSIS_ONLINE_URL = 自检用：把在线请求指到本机假服务
 const onlineOf = id => { const m = /^(\w+):(.+)$/.exec(id || ''); return m && ONLINE[m[1]] ? { provider: m[1], model: m[2], ...ONLINE[m[1]], ...(process.env.SYNAPSIS_ONLINE_URL ? { url: process.env.SYNAPSIS_ONLINE_URL } : {}) } : null; };
-// 这次调用实际用哪个对话模型（在线的带「deepseek:」前缀）
+// 这次调用实际用哪个对话模型（在线的带「服务商:」前缀，如 deepseek:deepseek-flash、xai:grok-4）
 // >v<🤖AI辅助-按用途选模型-👤 2026-10-10「开发阶段调用什么模型，在 AI 配置页分细一点」：每个用途可以单独指定 本地 / 在线 + 模型；
 //   没指定 = 继承通用（高频后台那几个跟 bulkSrc，其余跟 agentSrc；在线模型跟 onlineModel，本地跟 chat）。cfg.tasks = { 用途: { src?, model?（在线）, chat?（本地） } }
 export const TASKS = [
@@ -48,7 +54,7 @@ export const taskSrc = (cfg, task) => {
 export const chatModel = (cfg, task = 'agent') => {
   if (task === true) task = 'rerank'; else if (!task) task = 'agent';
   const t = cfg.tasks?.[task] || {};
-  return taskSrc(cfg, task) === 'online' ? 'deepseek:' + (t.model || cfg.onlineModel || 'deepseek-flash') : (t.chat || cfg.chat);
+  return taskSrc(cfg, task) === 'online' ? onlineId(t.model || cfg.onlineModel || 'deepseek-flash') : (t.chat || cfg.chat);
 };
 function onlineKey(cfg, provider) {
   if (process.env[ONLINE[provider].env]) return process.env[ONLINE[provider].env];
@@ -168,13 +174,13 @@ export async function chat(cfg, system, user, maxTokens = 300, opts = {}) {
     if (on) { // 在线：默认不思考（一句话 < 1 秒，省钱）；设了思考强度 → reasoning_effort，思考过程丢掉只要答案
       const key = onlineKey(cfg, on.provider);
       if (!key) throw new Error(`没有 ${on.provider} 的 key：AI 设置「在线」页填，或写进 ${cfg.keys}（{"${on.provider}": "sk-…"}），或设环境变量 ${on.env}`);
-      const eff = EFFORTS.includes(cfg.onlineEffort) && cfg.onlineEffort !== 'off' ? { reasoning_effort: cfg.onlineEffort, max_tokens: maxTokens + 4000 } : { thinking: { type: 'disabled' } };
+      const eff = !ONLINE[on.provider]?.thinking ? {} : EFFORTS.includes(cfg.onlineEffort) && cfg.onlineEffort !== 'off' ? { reasoning_effort: cfg.onlineEffort, max_tokens: maxTokens + 4000 } : { thinking: { type: 'disabled' } }; // 思考开关只有 DeepSeek 认
       const res = await fetch(on.url + '/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key }, body: JSON.stringify({ ...body, ...eff }), signal: AbortSignal.timeout(180000) });
       if (!res.ok) throw new Error(`${on.provider} ${res.status}：${(await res.text()).slice(0, 200)}`);
       r = await res.json();
     } else r = await post(cfg, '/chat/completions', body);
     raw = r.choices?.[0]?.message?.content || '';
-    if (r.usage) Object.assign(u, r.usage);
+    if (r.usage) { Object.assign(u, r.usage); if (u.prompt_cache_hit_tokens == null && u.prompt_tokens_details?.cached_tokens != null) u.prompt_cache_hit_tokens = u.prompt_tokens_details.cached_tokens; } // 缓存命中：DeepSeek 用 prompt_cache_hit_tokens，xAI / OpenAI 式用 prompt_tokens_details.cached_tokens
   } catch (e) { err = e; }
   aiLog(cfg, { kind: opts.kind || 'chat', model, effort: on ? cfg.onlineEffort : undefined, ms: Date.now() - t0, messages: logMsgs, raw, error: err?.message, usage: Object.keys(u).length ? u : undefined });
   addUsage(cfg, { online: !!on, kind: opts.kind || 'chat', usage: u });

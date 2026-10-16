@@ -107,7 +107,7 @@ function TaskRows({ status, cfg, save }) {
         <select value={cur} onChange={e => pick(e.target.value)} title="这个用途用哪个模型；「继承默认」= 跟上面的默认走">
           <option value="">{'继承默认（' + (dflt === 'online' ? '☁ 在线' : '本地') + '）'}</option>
           <optgroup label="本地"><option value="local:">本地 · 默认本地模型</option>{(status?.chat || []).map(m => <option key={m.id} value={'local:' + m.id}>本地 · {m.id}</option>)}</optgroup>
-          <optgroup label="在线"><option value="online:">☁ 在线 · 默认在线模型</option>{(status?.online || []).map(m => <option key={m.id} value={'online:' + m.id.replace(/^\w+:/, '')}>☁ 在线 · {m.id}</option>)}</optgroup>
+          <optgroup label="在线"><option value="online:">☁ 在线 · 默认在线模型</option>{(status?.online || []).map(m => <option key={m.id} value={'online:' + modelKey(m.id)}>☁ 在线 · {m.id}</option>)}</optgroup>
         </select>
       </div>;
     })}
@@ -149,22 +149,30 @@ function LocalTab({ api, status, cfg, save, onStatus }) {
 }
 
 const EFFORT_ZH = { off: '不思考（快、省钱，推荐）', low: '低', high: '高', max: '最高（慢、贵）' };
+// 在线服务商（👤 2026-10-16 加 Grok）：每家一个 key（只存本机），模型列表合在一起选；DeepSeek 的模型名不带前缀（老写法），别家带「服务商:」
+const PROVIDERS = [['deepseek', 'DeepSeek', 'sk-…', 'platform.deepseek.com'], ['xai', 'Grok（xAI）', 'xai-…', 'console.x.ai']];
+const modelKey = id => id.startsWith('deepseek:') ? id.slice(9) : id; // 存进设置的写法
 function OnlineTab({ api, status, cfg, save, onStatus }) {
-  const [key, setKey] = useState(''), [msg, setMsg] = useState('');
-  const has = status?.hasKey?.deepseek, list = status?.online || [];
-  const putKey = k => api('/ai/key', { method: 'PUT', body: JSON.stringify({ provider: 'deepseek', key: k }) }).then(s => { onStatus(s); setKey(''); setMsg(k ? '✓ 已存' : '已删除'); }).catch(e => setMsg('❌ ' + e.message));
-  const cur = list.find(x => x.id === 'deepseek:' + cfg.onlineModel);
+  const [keys, setKeys] = useState({}), [msg, setMsg] = useState('');
+  const list = status?.online || [];
+  const putKey = (p, k) => api('/ai/key', { method: 'PUT', body: JSON.stringify({ provider: p, key: k }) }).then(s => { onStatus(s); setKeys(x => ({ ...x, [p]: '' })); setMsg(k ? '✓ 已存' : '已删除'); }).catch(e => setMsg('❌ ' + e.message));
+  const curKey = cfg.onlineModel || 'deepseek-flash', cur = list.find(x => modelKey(x.id) === curKey), isDs = !/^\w+:/.test(curKey) || curKey.startsWith('deepseek:');
+  const opts = list.length ? list : [{ id: 'deepseek:deepseek-flash', name: 'deepseek-flash' }, { id: 'deepseek:deepseek-v4-pro', name: 'deepseek-v4-pro' }];
   return (
     <div className="aigroup">
-      <div className={'aistat ' + (list.length ? 'on' : 'off')}>{!status ? '检查中…' : list.length ? '● 已连上 DeepSeek（' + list.length + ' 个模型）' : has ? '● 有 key，但连不上 DeepSeek（网络？key 失效？）' : '● 还没有 key'}</div>
-      <label>API key <span className="hint">只存本机 Synapsis/.synapsis/keys.json（不进 git，也不会回传到页面）</span>
-        <span className="row"><input type="password" value={key} placeholder={has ? '已设置（要换就填新的）' : 'sk-…'} onChange={e => setKey(e.target.value)} style={{ flex: 1 }} />
-          <button disabled={!key.trim()} onClick={() => putKey(key.trim())}>保存</button>{has && <button onClick={() => putKey('')}>删除</button>}</span></label>
-      <label>在线模型<select value={cfg.onlineModel || 'deepseek-flash'} onChange={e => save({ onlineModel: e.target.value })}>
-        {(list.length ? list : [{ id: 'deepseek:deepseek-flash', name: 'deepseek-flash' }, { id: 'deepseek:deepseek-v4-pro', name: 'deepseek-v4-pro' }]).map(x => <option key={x.id} value={x.id.replace(/^deepseek:/, '')}>{x.name}{/flash/i.test(x.id) ? '（快、便宜，推荐）' : /pro/i.test(x.id) ? '（更强、更贵）' : ''}</option>)}
+      {PROVIDERS.map(([p, name, ph, site]) => { const has = status?.hasKey?.[p], n = list.filter(x => x.id.startsWith(p + ':')).length;
+        return <div key={p} className="provider">
+          <div className={'aistat ' + (n ? 'on' : 'off')}>{!status ? '检查中…' : n ? `● ${name}：已连上（${n} 个模型）` : has ? `● ${name}：有 key，但连不上（网络？key 失效？）` : `○ ${name}：没填 key`}</div>
+          <label>API key <span className="hint">只存本机 Synapsis/.synapsis/keys.json（不进 git，也不会回传到页面）；在 {site} 申请</span>
+            <span className="row"><input type="password" value={keys[p] || ''} placeholder={has ? '已设置（要换就填新的）' : ph} onChange={e => setKeys(x => ({ ...x, [p]: e.target.value }))} style={{ flex: 1 }} />
+              <button disabled={!(keys[p] || '').trim()} onClick={() => putKey(p, keys[p].trim())}>保存</button>{has && <button onClick={() => putKey(p, '')}>删除</button>}</span></label>
+        </div>; })}
+      <label>在线模型<select value={curKey} onChange={e => save({ onlineModel: e.target.value })}>
+        {!opts.some(x => modelKey(x.id) === curKey) && <option value={curKey}>{curKey}（没连上）</option>}
+        {PROVIDERS.map(([p, name]) => { const ms = opts.filter(x => x.id.startsWith(p + ':')); return ms.length ? <optgroup key={p} label={name}>{ms.map(x => <option key={x.id} value={modelKey(x.id)}>{x.name}{/flash/i.test(x.name) ? '（快、便宜，默认）' : ''}</option>)}</optgroup> : null; })}
       </select></label>
-      <label>思考强度<select value={cfg.onlineEffort || 'off'} onChange={e => save({ onlineEffort: e.target.value })}>{Object.entries(EFFORT_ZH).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></label>
-      <div className="hint">{cur?.ctx ? `🧠 上下文 ${kfmt(cur.ctx)} token。` : ''}按量计费，余额在 DeepSeek 平台看。{msg}</div>
+      {isDs && <label>思考强度<select value={cfg.onlineEffort || 'off'} onChange={e => save({ onlineEffort: e.target.value })}>{Object.entries(EFFORT_ZH).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></label>}
+      <div className="hint">{cur?.ctx ? `🧠 上下文 ${kfmt(cur.ctx)} token。` : ''}按量计费，余额在各家平台看。{isDs ? '' : '思考强度只对 DeepSeek 有效。'}{msg}</div>
     </div>
   );
 }
@@ -282,7 +290,8 @@ function WordsTab({ api, onWordsApplied, scope = '', label = '项目' }) { // �
 //   没拖过 = 默认底部居中；双击标题栏空白处回默认。拖出窗口的会被拉回来
 const GEO_KEY = 'syn.agentbox';
 export const EDGES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
-const CHAT_SCROLL = { top: null, bottom: true }; // 指令框对话列表的滚动位置（关掉框再打开也记得）
+const CHAT_SCROLL = (() => { try { return JSON.parse(sessionStorage.getItem('syn.chatScroll')) || { top: null, bottom: true }; } catch { return { top: null, bottom: true }; } })(); // 指令框对话列表的滚动位置（关掉框再打开、刷新窗口都记得）
+const saveScroll = () => { try { sessionStorage.setItem('syn.chatScroll', JSON.stringify(CHAT_SCROLL)); } catch { /* 无痕 */ } };
 export function useBoxGeometry(storeKey = GEO_KEY) { // 钉子窗口也用（pindock.jsx），各自记各自的位置
   const ref = useRef(null), styleSize = useRef(null), [, bump] = useState(0);
   // 窗口缩小 → 重画一遍：记下来的位置 / 大小不改，只是显示时拉回屏幕里（窗口再放大，框回到原来记的位置）
@@ -389,23 +398,31 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   const [note, setNote] = useState(''); // 一次性提示（不挡发送；busy 非空时发不出去）
   const compact = () => { if (busy) return; setBusy('🗜 压缩中…'); setNote(''); api('/ai/chat/compact', { method: 'POST', body: '{}' }).then(d => { takeChat(d); setBusy(''); setNote(d.ok ? `🗜 压进摘要 ${d.n} 轮（原文还在，只是不再发给模型）` : '🗜 ' + d.why); }).catch(e => setBusy('❌ ' + e.message)); };
   useEffect(() => { if (tab === 'log') api('/ai/log').then(d => setLog(d.entries)).catch(e => setLog([{ kind: '❌', raw: e.message }])); }, [tab, turns.length]);
-  // 👤 2026-10-16 滚动位置要记住：切走再切回「对话」、关掉框再打开，都回到离开时的位置（CHAT_SCROLL，这个窗口开着时有效）。
+  // 👤 2026-10-16 滚动位置要记住：切走再切回「对话」、关掉框再打开，都回到离开时的位置（CHAT_SCROLL，存 sessionStorage：刷新窗口也在）。
   //   人在最底下时（贴底）：新消息、内容晚渲染完、框大小变都跟到底；往上翻着看时不动。自己发一句 = 回到底
   useEffect(() => {
     const el = list.current; if (!el || typeof ResizeObserver === 'undefined') return;
     const S = CHAT_SCROLL;
-    const pin = () => { if (S.bottom) el.scrollTop = el.scrollHeight; };
-    if (S.bottom || S.top == null) el.scrollTop = el.scrollHeight; else el.scrollTop = S.top;
-    const onScroll = () => { S.top = el.scrollTop; S.bottom = el.scrollHeight - el.clientHeight - el.scrollTop < 40; };
+    // 刚打开时对话记录还没从服务端读回来（列表是空的，滚不动）：先挂着，等内容够高了再恢复；恢复完之前的 scroll 事件不算人滚的
+    let restoring = true; const t0 = Date.now();
+    const restore = () => {
+      if (S.bottom || S.top == null) el.scrollTop = el.scrollHeight;
+      else if (el.scrollHeight - el.clientHeight >= S.top) { el.scrollTop = S.top; restoring = false; }
+      if (Date.now() - t0 > 2500) restoring = false; // 等不到（记录变短了）就算了
+    };
+    const pin = () => { if (restoring) restore(); else if (S.bottom) el.scrollTop = el.scrollHeight; };
+    restore();
+    const onScroll = () => { if (restoring) return; S.top = el.scrollTop; S.bottom = el.scrollHeight - el.clientHeight - el.scrollTop < 40; saveScroll(); };
+    const onWheel = () => { restoring = false; }; // 人自己动了滚轮 = 不再替他恢复
     const ro = new ResizeObserver(pin), watch = () => { ro.observe(el); for (const c of el.children) ro.observe(c); };
     const mo = new MutationObserver(() => { watch(); pin(); });
-    watch(); mo.observe(el, { childList: true, subtree: true }); el.addEventListener('scroll', onScroll);
-    return () => { ro.disconnect(); mo.disconnect(); el.removeEventListener('scroll', onScroll); };
+    watch(); mo.observe(el, { childList: true, subtree: true }); el.addEventListener('scroll', onScroll); el.addEventListener('wheel', onWheel, { passive: true });
+    return () => { ro.disconnect(); mo.disconnect(); el.removeEventListener('scroll', onScroll); el.removeEventListener('wheel', onWheel); };
   }, [tab]); // 👤 2026-10-16 切走再切回「对话」也回到最底下
   useEffect(() => { if (!busy) inp.current?.focus(); }, [busy, plan, tab]);
   const send = () => {
     const t = text.trim(), im = imgs; if ((!t && !im.length) || (busy && !busy.startsWith('❌'))) return;
-    CHAT_SCROLL.bottom = true; // 自己发一句 = 回到底
+    CHAT_SCROLL.bottom = true; saveScroll(); // 自己发一句 = 回到底
     setBusy('🧠 思考中…（第一次要等模型加载）' + (im.length ? `　附 ${im.length} 张图` : '')); setPlan(null); setNote('');
     api('/ai/agent', { method: 'POST', body: JSON.stringify({ scope, selected, text: t, images: im, boxes: boxes?.() || {}, voice: voiceOn }) })
       .then(d => {

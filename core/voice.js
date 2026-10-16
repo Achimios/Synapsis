@@ -10,6 +10,16 @@ import { loadSettings, saveSettings } from './settings.js';
 import { spawn } from 'node:child_process';
 
 export const VOICE_MAX = 150; // 一条语音最多多少字（👤 2026-10-16 120 时常被截在半句上）
+// 念之前去掉 Markdown（** ` # 列表符号 [文字](链接) 这些火山会照念）；~ 和 ___ 留着（TTS 的写台词技巧：拖尾 / 停顿有用）
+export function plainVoice(t) {
+  return String(t || '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/\*\*|`+/g, '')
+    .replace(/(^|\s)\*(\S[^*]*?)\*(?=\s|$|[，。！？,.!?])/g, '$1$2')
+    .replace(/^\s{0,3}(#{1,6}\s+|>\s*|[-*+•]\s+|\d+[.)、]\s+)/gm, '')
+    .replace(/\s*\n+\s*/g, ' ')
+    .trim();
+}
 // 超长的在句子边界截（。！？!?~…），不从半句中间断；实在没有句号才硬截
 export function clipVoice(t, max = VOICE_MAX) {
   t = String(t || '').trim(); if (t.length <= max) return t;
@@ -78,6 +88,7 @@ export const voicePrompt = v => {
   return `
 
 【语音】人开了语音：想说话就在 JSON 里加 "voice" 字段，TTS 会念出来。例：{"say": "……", "actions": [], "voice": {"text": "严格来说，你又忘了保存。"}}
+- voice.text 写纯文本，别用 Markdown（** # - 这些会被照念出来）。
 - ⚠️ 只有 voice 字段会被念；写在 say 里的台词人只能看、听不到。说了「语音来了 / 念给你听」就必须带 voice；台词放进 voice.text，say 里别再重复整段。人要你发语音时一定发。
 - 人开喇叭 = 想听你说话（👤 2026-10-16）：默认每轮都带一句 voice。闲聊、玩梗、有情绪时说台词；回答技术问题、长列表时，用一两句口头总结要点（别念全文）；只有纯粹确认动作（「好，执行了」这种）可以不说。一次一段，${VOICE_MAX} 字以内；别念代码、路径、列表；数字写成中文。
 - 可选字段：role 换声音（不写 = ${v.role}；人点名用谁就用谁）、mood 情绪（只能用这一句所用角色列出的，没列就别写）、pref 后端（不写 = ${v.backend || '自动'}，人没要求别写）、lang（整句不是中文时写，德语法语必写）、fx 音效（如 对讲机 / 空房间，人要求或很合适才用）。
@@ -97,7 +108,7 @@ export const voiceOffPrompt = `
 // 念出来：起 <TTS 文件夹>/tts_v1.py，stdin 喂一行 JSON（不经过 shell，中文直接 UTF-8）。不等播完
 export function speak(v, voice, id) {
   if (!v.ok) return { ok: false, why: v.error };
-  const text = clipVoice(voice?.text);
+  const text = clipVoice(plainVoice(voice?.text));
   if (!text) return { ok: false, why: '没有内容' };
   if (!existsSync(v.script)) return { ok: false, why: `TTS 文件夹里没有 ${TTS_SCRIPT}：点「寻找 TTS 文件夹位置」重新选` };
   const lang = /^[a-z]{2}$/.test(voice.lang || '') ? voice.lang : ''; // 模型说了是哪种语言就发，不然 TTS 自己猜
