@@ -1,5 +1,6 @@
 // 右键菜单、属性面板、文件树（外部区）、文件预览。外壳把状态和动作传进来，这里只管显示。
 import { useStash } from './stash.js';
+import { MdLite } from './mdlite.jsx';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, Children } from 'react';
 
 import { PALETTE, parseColor, satHex } from './colors.js';
@@ -205,6 +206,68 @@ export function RawText({ text, hl, file, onSelMenu }) {
   return <pre className="raw" ref={ref} onContextMenu={menu}>{lines.map((l, i) => <span key={i} data-ln={i + 1} className={hl?.line === i + 1 ? 'ln hl' : 'ln'}>{l}{i < lines.length - 1 ? '\n' : ''}</span>)}</pre>;
 }
 
+// >v<📝右栏-正文-预览 / 源码（👤 2026-10-17，Ctrl+E 切换；顶替原来的「原文」页签）
+//   预览 = MdLite 渲染（粗体、斜体、表格…），双击某一块 = 进源码、光标落在那一行；
+//   源码 = 上面灰着的 frontmatter（只读，属性在上面的表里改）+ 正文框（失焦保存）。切换时按行对齐：看到的第一行（光标在框里 = 光标那行）在原来的高度。
+//   源码框背后垫一层同样排版的镜像（一行一个 span，data-ln = 文件里的行号）：量行的位置、钉子跳过来时高亮那一行
+const fmOf = raw => { const m = /^---\r?\n[\s\S]*?\r?\n---[^\n]*(\n|$)/.exec(raw || ''); return m ? m[0].replace(/\r?\n$/, '') : ''; };
+function topLine(box) { // 容器里看得到的第一行 → {line, dy}
+  const top = box.getBoundingClientRect().top;
+  for (const el of box.querySelectorAll('[data-ln]')) { const r = el.getBoundingClientRect(); if (r.bottom > top + 2 && r.height) return { line: +el.dataset.ln, dy: r.top - top }; }
+  return null;
+}
+function scrollToLine(box, a) { // 把第 a.line 行（没有就往前找最近的一块）摆回 a.dy 的高度
+  let best = null;
+  for (const el of box.querySelectorAll('[data-ln]')) if (+el.dataset.ln <= a.line && el.getBoundingClientRect().height) best = el;
+  if (!best) { box.scrollTop = 0; return; }
+  box.scrollTop += best.getBoundingClientRect().top - box.getBoundingClientRect().top - a.dy;
+}
+export function MdBody({ id, body, setBody, onSave, raw, editable, mode, onMode, hl, file, onSelMenu }) {
+  const box = useRef(null), ta = useRef(null), anchor = useRef(null), caret = useRef(null);
+  const fm = useMemo(() => fmOf(raw), [raw]);
+  // 正文第一行在文件里是第几行：文件行数 − 正文行数（和 pinSelection 一个算法）；还没读到文件就按 frontmatter 行数算
+  const off = useMemo(() => { const rl = raw ? raw.split('\n').length : 0, bl = String(body).split('\n').length; return raw && rl >= bl ? rl - bl + 1 : (fm ? fm.split('\n').length + 1 : 1); }, [raw, body, fm]);
+  const remember = () => { if (!box.current) return; const t = ta.current; if (mode === 'src' && t && document.activeElement === t) { const ln = off + t.value.slice(0, t.selectionStart).split('\n').length - 1, el = box.current.querySelector(`.mirror [data-ln="${ln}"]`); if (el) { anchor.current = { line: ln, dy: el.getBoundingClientRect().top - box.current.getBoundingClientRect().top }; return; } } anchor.current = topLine(box.current); };
+  // 切过来以后（新 DOM）：把对齐行摆回原来的高度。对齐行是切之前随手记的（滚动 / 光标动 / 双击时），所以外面 Ctrl+E 切也对得上。
+  //   进源码 = 光标放到对齐行、可以直接打字；回预览 = 先存（框被拿掉不会触发失焦）
+  const first = useRef(true);
+  useLayoutEffect(() => {
+    const b = box.current; if (!b) return;
+    if (first.current) { first.current = false; anchor.current = topLine(b); return; }
+    if (anchor.current) scrollToLine(b, anchor.current);
+    if (mode === 'prev') onSave();
+    else if (editable && ta.current && !(hl && Date.now() - hl.n < 1500)) { // 钉子刚跳过来 = 只看，不抢焦点
+      const t = ta.current, lines = t.value.split('\n'), k = Math.max(0, Math.min(lines.length - 1, (caret.current ?? anchor.current?.line ?? off) - off)), pos = lines.slice(0, k).join('\n').length + (k ? 1 : 0);
+      t.focus({ preventScroll: true }); t.setSelectionRange(pos, pos);
+    }
+    caret.current = null;
+  }, [mode]);
+  useLayoutEffect(() => { anchor.current = box.current && topLine(box.current); }, [id]);
+  // 钉子跳过来：滚到那一行（居中）
+  useEffect(() => { if (!hl || mode !== 'src') return; const t = setTimeout(() => box.current?.querySelector(`[data-ln="${hl.line}"]`)?.scrollIntoView({ block: 'center' }), 30); return () => clearTimeout(t); }, [hl, mode, raw]);
+  const prevMenu = e => { // 预览里选中文字右键 → 钉到…（行号按那一块的 data-ln）
+    const s = window.getSelection(); if (!onSelMenu || !file || !s || s.isCollapsed || !box.current?.contains(s.anchorNode)) return;
+    const el = (s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentElement)?.closest('[data-ln]'); if (!el) return;
+    const lines = String(body).split('\n'), k = +el.dataset.ln - off; if (k < 0 || k >= lines.length) return;
+    const start = lines.slice(0, k).join('\n').length + (k ? 1 : 0), txt = s.toString().split('\n')[0], j = Math.max(0, lines[k].indexOf(txt.slice(0, 12)));
+    e.preventDefault(); onSelMenu(e, { from: 'body', file, text: body, start: start + j, end: start + j + Math.min(txt.length, lines[k].length - j) });
+  };
+  const blines = String(body).split('\n'), fl = fm ? fm.split('\n') : [];
+  return <div className={'mdbody ' + mode} ref={box} onScroll={() => { if (document.activeElement !== ta.current) anchor.current = topLine(box.current); }}>
+    {mode === 'prev' ? <div className="mdprev" title={editable ? '双击进源码（光标落在那一行）· Ctrl+E 切换' : ''} onContextMenu={prevMenu}
+        onDoubleClick={e => { if (!editable) return; const el = e.target.closest('[data-ln]'); remember(); caret.current = el ? +el.dataset.ln : off; if (el) anchor.current = { line: +el.dataset.ln, dy: el.getBoundingClientRect().top - box.current.getBoundingClientRect().top }; onMode('src'); }}>
+        {body.trim() ? <MdLite text={body} ln={off} /> : <div className="hint">{editable ? '（空）双击或 Ctrl+E 开始写' : '（空）'}</div>}</div>
+      : <>
+        {fl.length > 0 && <pre className="fm" title="frontmatter（只读：状态、颜色、属性在上面改）">{fl.map((l, i) => <span key={i} data-ln={i + 1} className={hl?.line === i + 1 ? 'ln hl' : 'ln'}>{l}{'\n'}</span>)}</pre>}
+        <div className="srcwrap">
+          <div className="mirror" aria-hidden="true">{blines.map((l, i) => <span key={i} data-ln={off + i} className={hl?.line === off + i ? 'ln hl' : 'ln'}>{l || '​'}{i < blines.length - 1 ? '\n' : '​'}</span>)}</div>
+          <textarea ref={ta} className="body" value={body} readOnly={!editable} spellCheck={false} placeholder={editable ? '想法、职责、验收方式……（存进这个节点的 .md）' : ''}
+            onChange={e => setBody(e.target.value)} onBlur={onSave} onKeyUp={remember} onClick={remember}
+            onContextMenu={e => { const t = e.target; if (!onSelMenu || !file || t.selectionStart === t.selectionEnd) return; e.preventDefault(); onSelMenu(e, { from: 'body', file, text: t.value, start: t.selectionStart, end: t.selectionEnd }); }} />
+        </div></>}
+  </div>;
+}
+
 // >v<🎨画布-饱和度档-25 / 50 / 75 / 100（👤 2026-10-12：单独的 sat: 键，叠在自动色 / 手动色上，不把自动色变成手动；手动标注用）
 function TintButtons({ cur = 0, onTint }) { // 框里的「不透」（不透明度）= 叠多少节点色：跟随 / 12 / 25 / 50 / 75 / 100（👤 2026-10-12）
   return [12, 25, 50, 75, 100, 0].map(t => <button key={t} className={'tint' + (cur === t ? ' on' : '')} onClick={() => onTint(t)}>{t || '跟随'}</button>);
@@ -212,7 +275,7 @@ function TintButtons({ cur = 0, onTint }) { // 框里的「不透」（不透明
 function SatButtons({ base, cur = 100, onSat }) {
   return [12, 25, 50, 75, 100].map(p => <button key={p} title={p + '%（只改深浅，颜色还是自动 / 手动不变）'} className={cur === p ? 'on' : ''} style={{ background: base ? satHex(base, p) : 'var(--line2)' }} onClick={() => onSat(p)}>{p}</button>);
 }
-export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, tab, onTab, raw, onReveal, onRename, color, onColor, baseColor, satNow, onSat, pattern, onPattern, words, onWords, onEdgeKind, onEdgeRemove, hl, onSelMenu }) {
+export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, bodyMode = 'prev', onBodyMode, raw, onReveal, onRename, color, onColor, baseColor, satNow, onSat, pattern, onPattern, words, onWords, onEdgeKind, onEdgeRemove, hl, onSelMenu }) {
   // 自动色 / 底纹是哪一层词表的哪个词给的（👤 2026-10-11 层级词表）：点 = 打开那份词表
   const why = k => { const w = words?.[k]?.why; return w ? <a className="why" title={`自动${k === 'color' ? '颜色' : '底纹'}来自「${w.fromLabel}」的词表，命中「${w.word}」；点 = 打开那份词表`} onClick={() => onWords?.(w.from)}>词：{w.word}（{w.fromLabel}）</a> : null; };
   const n = graph.nodes.get(id);
@@ -230,14 +293,8 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
     {onEdgeRemove && <button className="ex" title="删除这条连线" onClick={() => onEdgeRemove(e.from, e.to)}>✕</button>}</li>;
   return (
     <aside className="side">
-      <div className="bar tabs"><a className={tab !== 'raw' ? 'on' : ''} onClick={() => onTab('info')}>概览</a>
-        {file && <a className={tab === 'raw' ? 'on' : ''} onClick={() => onTab('raw')} title="节点 .md 原文（含 frontmatter）">原文</a>}
+      <div className="bar tabs"><a className="on">概览</a>
         <span className="hint" title={id}>{id}</span><button onClick={onClose} title="关闭（I）">✕</button></div>
-      {tab === 'raw' && file ? <div className="sidebody"><h3>{n.label}</h3>
-        <div className="filerow"><span className="hint" title={file}>{file}</span>
-          <button onClick={() => onReveal(file, 'select')} title="在资源管理器中显示">📂</button>
-          <button onClick={() => onReveal(file, 'open')} title="用默认程序打开（Obsidian / 编辑器）">↗</button></div>
-        {raw == null ? <pre className="raw">读取中…</pre> : <RawText text={raw} hl={hl} file={file} onSelMenu={onSelMenu} />}</div> :
       <div className="sidebody">
         {/* >v<🎨画布-属性面板-名字（改了回车 / 失焦 = 改名）、状态、颜色（色块 = 写 color:，自动 = 删掉）—— 👤 2026-10-08 */}
         <h3><input key={id + '|' + n.label} className="nameedit" defaultValue={n.label} title="改名：回车或点别处生效，Esc 还原"
@@ -270,14 +327,15 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
           {ins.length > 0 && <><div className="eh in">← 输入{sub.size > 1 ? '（含子节点）' : ''}</div><ul>{ins.map(e => edgeRow(e, e.from, e.to))}</ul></>}
           {outs.length > 0 && <><div className="eh out">→ 输出{sub.size > 1 ? '（含子节点）' : ''}</div><ul>{outs.map(e => edgeRow(e, e.to, e.from))}</ul></>}
         </div>}
-        <div className="eh">正文{editable ? '（失焦自动保存）' : '（样例模式不可编辑）'}</div>
-        <textarea className="body" value={body} readOnly={!editable} placeholder={editable ? '想法、职责、验收方式……（存进这个节点的 .md）' : ''}
-          onChange={e => setBody(e.target.value)} onBlur={() => { if (editable && body !== (wsNode?.body || '')) onBody(id, body); }}
-          onContextMenu={e => { const t = e.target; if (!onSelMenu || !file || t.selectionStart === t.selectionEnd) return; e.preventDefault(); onSelMenu(e, { from: 'body', file, text: t.value, start: t.selectionStart, end: t.selectionEnd }); }} />
-        {file && tab !== 'raw' && <div className="filerow"><span className="hint" title={file}>{file}</span>
+        <div className="eh bodyhead">正文<span className="modesw" title="预览 / 源码（Ctrl+E）：源码里能改，也看得到 frontmatter">
+          {[['prev', '预览'], ['src', '源码']].map(([m, t]) => <a key={m} className={bodyMode === m ? 'on' : ''} onClick={() => onBodyMode(m)}>{t}</a>)}<kbd>Ctrl+E</kbd></span>
+          <span className="hint">{editable ? (bodyMode === 'src' ? '失焦自动保存' : '双击进源码') : '样例模式不可编辑'}</span></div>
+        <MdBody id={id} body={body} setBody={setBody} onSave={() => { if (editable && body !== (wsNode?.body || '')) onBody(id, body); }} raw={raw} editable={editable}
+          mode={bodyMode} onMode={onBodyMode} hl={hl} file={file} onSelMenu={onSelMenu} />
+        {file && <div className="filerow"><span className="hint" title={file}>{file}</span>
           <button onClick={() => onReveal(file, 'select')} title="在资源管理器中显示">📂</button>
           <button onClick={() => onReveal(file, 'open')} title="用默认程序打开（Obsidian / 编辑器）">↗</button></div>}
-      </div>}
+      </div>
     </aside>
   );
 }

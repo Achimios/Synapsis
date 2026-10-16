@@ -483,7 +483,7 @@ export function Shell({ name, Canvas }) {
   // >v<🎨画布-右键菜单-动作：删除（工作区里 = 移进 .junk/）、改状态、改名、属性
   const [menu, setMenu] = useState(null);       // {x, y, id|null}
   // >v<🎨画布-属性面板-默认开着（👤：点了节点总要看概览）；「概览 / 原文」两页，看原文不再顶掉属性
-  const [propsTab, setPropsTab] = useState('info'); // info | raw
+  const [bodyMode, setBodyMode] = useStash('body.mode', 'prev'); // 右栏正文：prev 预览 | src 源码（Ctrl+E；👤 2026-10-17 顶替「原文」页签）
   const [rawText, setRawText] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
   // >v<🔎搜索-接入-Ctrl+F 跳过去（换页 + 选中 + 居中）；L / 右键「连线到…」= 选目标连线（可以连到别的页，那头会变成传送门）
@@ -556,7 +556,7 @@ export function Shell({ name, Canvas }) {
   };
   const setStatus = (id, s) => setText(withStatus(graph, id, s));
   const menuActions = {
-    props: id => { setSelected(id); setPropsOpen(true); setPropsTab('info'); },
+    props: id => { setSelected(id); setPropsOpen(true); },
     rename: id => focusLabel(id),
     ...(mode === 'ws' ? { editBody: id => cardActions.editBody(id) } : {}),
     status: setStatus,
@@ -604,7 +604,7 @@ export function Shell({ name, Canvas }) {
     expChange: k => expChange(k),
     expToggle: (id, k) => { const flip = x => { const y = { ...x }; if (y[id]) delete y[id]; else y[id] = true; return y; }; ({ kids: setExpanded, props: setPropsShut, text: setTextOpen, frame: setFramed })[k](flip); },
     hasFile: id => !!nodeFile(id),
-    openMd: id => { setSelected(id); setPropsOpen(true); setPropsTab('raw'); },
+    openMd: id => { setSelected(id); setPropsOpen(true); setBodyMode('src'); },
     reveal: id => reveal(nodeFile(id), 'select'),
     linkTo: id => setFinder({ mode: 'link', from: id }),
     linkFrom: id => setFinder({ mode: 'linkfrom', to: id }), // 从另一个节点连到这个：和「连线到…」同一个弹窗，反过来连
@@ -644,13 +644,14 @@ export function Shell({ name, Canvas }) {
   // 文件树：节点 md → 画布跳过去 + 属性面板「原文」页；其它文件 → 旁边开预览（属性面板不动）
   const onTreeOpen = p => {
     const id = fileToNode.get(p);
-    if (id && graph.nodes.has(id)) { pick(id); setPropsTab('raw'); } else openFile(p);
+    if (id && graph.nodes.has(id)) { pick(id); setPropsOpen(true); setBodyMode('src'); } else openFile(p);
   };
-  // 「原文」页：选中节点的 md 原文（文件变了跟着刷新）
+  // 右栏正文用的 md 原文（源码模式显示 frontmatter、算正文从第几行起；文件变了跟着刷新）
   useEffect(() => {
-    if (propsTab !== 'raw' || !sel || !nodeFile(sel)) { setRawText(null); return; }
-    api('/raw?p=' + encodeURIComponent(nodeFile(sel))).then(r => setRawText(r.text ?? r.note)).catch(e => setRawText('读取失败：' + e.message));
-  }, [propsTab, sel, wsData]);
+    if (!propsOpen || !propId || !nodeFile(propId)) { setRawText(null); return; }
+    const p = nodeFile(propId);
+    api('/raw?p=' + encodeURIComponent(p)).then(r => setRawText({ p, text: r.text ?? '' })).catch(() => setRawText(null)); // 记着是哪个文件的：切了节点、新的还没回来时不拿旧的 frontmatter 顶着
+  }, [propsOpen, propId, wsData]);
   // >v<🧭导航-撤销重做-属性 / 正文编辑也进撤销栈（👤 待办）：记 {op, id, undo: 改之前, redo: 改之后}，撤销 = 把旧值写回
   const pushOp = e => { const h = hist2.current; if (!h.committed) return; const lb = graph.nodes.get(e.id)?.label || e.id; h.undo.push({ ...e, desc: e.desc || (e.op === 'meta' ? `改属性 ${lb}：${Object.keys(e.redo).join('、')}` : `改正文 ${lb}`), t: Date.now() }); h.redo = []; persistHist(); };
   // 📌 钉子的每一步：旧 doc / 新 doc 整份存进撤销栈（很小）。撤销 / 重做时折叠、当前组用现在的（那只是看法，不是内容）
@@ -697,7 +698,7 @@ export function Shell({ name, Canvas }) {
   // 双击钉子：节点 = 跳过去；行 = 打开那个文件、找回那一行、高亮（行号 / 文字变了顺手更新；找不到就让人在最像的几行里选）
   const showFile = (file, line, nid) => {
     const hl = line ? { file, line, n: Date.now() } : null;
-    if (nid && graph.nodes.has(nid)) { jumpTo(nid); setPropsTab('raw'); setRawHl(hl); } // 节点的 md → 右栏「原文」页
+    if (nid && graph.nodes.has(nid)) { jumpTo(nid); setPropsOpen(true); setBodyMode('src'); setRawHl(hl); if (mode === 'ws') api('/ws').then(setWsData).catch(() => {}); } // 节点的 md → 右栏正文的源码模式（文件可能在外面改过：重读，正文和行号才对得上）
     else { setFileHl(hl); openFile(file); } // 别的文件 → 文件预览
   };
   // 钉的是节点 md 里的一行：画布跳到那个节点，卡片里把正文展开，并滚到那一行（找渲染出来的文字，不靠行号；只是展开卡片，不挪别的节点）
@@ -914,6 +915,12 @@ export function Shell({ name, Canvas }) {
       if (e.ctrlKey && !e.altKey && !e.shiftKey && e.code === 'KeyH' && mode === 'ws') { e.preventDefault(); e.stopPropagation(); if (repl) setRepl(null); else { const m = cardActions.getMulti?.() || []; setRepl({ find: '', to: '', ids: m.length > 1 ? m : null, idx: 0, note: '' }); } return; } // 👤 2026-10-10 Ctrl+H = 替换节点名
       if (e.ctrlKey && !e.altKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); e.stopPropagation(); if (e.target === taRef.current || e.target === findRef.current) { findRef.current?.focus(); findRef.current?.select(); return; } setFinder({ mode: 'go' }); return; } // 在输入框里也能用；在「文本」页 = 文本查找
       const inText = e.target.closest && e.target.closest('textarea, input, [contenteditable="true"]');
+      // 👤 2026-10-17 Ctrl+E = 右栏正文 预览 ⇄ 源码（在正文框里也能用；别的输入框里不管）；右栏关着 = 打开并进源码
+      if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && e.code === 'KeyE' && (!inText || e.target.closest('.mdbody'))) {
+        e.preventDefault(); e.stopPropagation();
+        if (!propsOpen) { setPropsOpen(true); setBodyMode('src'); } else setBodyMode(m => m === 'src' ? 'prev' : 'src');
+        return;
+      }
       if (inText) return;
       if (menu) return; // 右键菜单开着：WASD / E / Esc 归菜单（panels.jsx menuNav）
       if (finder && e.key === 'Tab') return; // 连线 / 搜索弹窗开着：Tab 归弹窗（切页签），别当成开关左栏
@@ -1308,7 +1315,7 @@ export function Shell({ name, Canvas }) {
       {propsOpen && <div className="resizer right" title="拖动调宽度" onPointerDown={e => dragPanel(e, 'right')} />}
       {propsOpen && propId && (
         <PropsPanel id={propId} graph={graph} wsNode={wsData?.nodes[propId]} edges={mode === 'ws' ? (wsData?.edges || []) : graph.edges}
-          editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} onMeta={saveMeta} metaHints={mode === 'ws' ? metaHints(propId) : []} file={nodeFile(propId)} tab={propsTab} onTab={setPropsTab} raw={rawText} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)}
+          editable={mode === 'ws'} onStatus={setStatus} onBody={saveBody} onMeta={saveMeta} metaHints={mode === 'ws' ? metaHints(propId) : []} file={nodeFile(propId)} bodyMode={bodyMode} onBodyMode={setBodyMode} raw={rawText && rawText.p === nodeFile(propId) ? rawText.text : null} onReveal={reveal} onSelect={id => { const p = graph.nodes.get(id)?.parent; if (p != null && p !== realScope) go(p); setSelected(id); }} onClose={() => setPropsOpen(false)}
           onRename={commitRename} onEdgeKind={mode === 'ws' ? cycleKind : null} onEdgeRemove={(from, to) => removeEdges([[from, to]])} color={colors.get(propId)} onColor={mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null} baseColor={propId != null && graph.nodes.has(propId) ? baseColor(graph, propId, getMeta(propId), cTables, semCols) : null} satNow={satOf(getMeta(propId))} onSat={menuActions.sat} pattern={patterns.get(propId)} onPattern={menuActions.pattern} words={wordsInfo(propId)} onWords={menuActions.words}
           hl={rawHl && rawHl.file === nodeFile(propId) ? rawHl : null} onSelMenu={mode === 'ws' ? (e, s) => setMenu({ x: e.clientX, y: e.clientY, sel: s }) : null} />
       )}
