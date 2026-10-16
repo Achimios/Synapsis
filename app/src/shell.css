@@ -727,4 +727,4 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 /* AI 框里面单独缩放（Ctrl+滚轮，👤 2026-10-16）：只缩放标题栏以下的内容，框的大小 / 位置不变 */
 .agentbox > :not(.bar):not(.edge) { zoom: var(--abz, 1); }
 .agentbox .notelink { cursor: pointer; text-decoration: underline dotted; }
-.agentbox .know.cachehit { font-size: 50%; opacity: .7; } /* 👤 2026-10-16 缓存命中缩成一半，不抢注意力 */
+.agentbox .know.cachehit { font-size: 60%; opacity: .7; } /* 👤 2026-10-16 缓存命中缩小，不抢注意力 */
