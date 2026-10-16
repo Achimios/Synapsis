@@ -406,8 +406,8 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   }, []);
   const geo = useBoxGeometry();
   const [boxW, setBoxW] = useState(999), [moreOpen, setMoreOpen] = useState(null); // 框宽：< 640 压缩 / 清空记忆收进 ⋯，< 520 页签只留图标；moreOpen = ⋯ 菜单的屏幕位置
-  // 👤 2026-10-16 逐级收：< 760 摘要 / 压缩 / 清空只留 emoji；< 600 🧠 只留图标（数字进悬停）；< 520 页签只留图标；< 460 三个 emoji 收进 ⋯
-  const iconBtns = boxW < 760, meterIcon = boxW < 600, tiny = boxW < 520, narrow = boxW < 460;
+  // 👤 2026-10-16 逐级收：< 760 摘要 / 压缩 / 清空只留 emoji；< 520 页签只留图标；< 460 三个 emoji 收进 ⋯（🧠 一直只留图标）
+  const iconBtns = boxW < 760, tiny = boxW < 520, narrow = boxW < 460;
   useEffect(() => { const el = geo.ref.current; if (!el || typeof ResizeObserver === 'undefined') return; const ro = new ResizeObserver(() => setBoxW(el.offsetWidth)); ro.observe(el); return () => ro.disconnect(); }, []);
   useEffect(() => { if (!moreOpen) return; const c = e => { if (!e.target.closest?.('.amore, .amoremenu')) setMoreOpen(null); }; window.addEventListener('pointerdown', c, true); return () => window.removeEventListener('pointerdown', c, true); }, [moreOpen]);
   const [log, setLog] = useState(null);
@@ -501,7 +501,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
         <a className={tab === 'todo' ? 'on' : ''} onClick={() => setTab('todo')} title="待办">📋<span className="tl"> 待办</span></a>
         <a className={tab === 'voice' ? 'on' : ''} onClick={() => setTab('voice')} title="语音">🔊<span className="tl"> 语音</span></a></span>
         <button className={'voicebtn' + (voiceOn ? ' on' : '')} title={voiceOn ? '📢 开着：AI 可以自己决定发一句语音（只有 ☁ 在线模型）。点一下关' : '📢 关着：AI 不发语音。点一下打开（只有 ☁ 在线模型；角色、后端在「🔊 语音」页）'} onClick={flipVoice}>{voiceOn ? '📢' : '🔇'}</button>
-        <CtxMeter ctx={ctx} usage={usage} compact={meterIcon} />
+        <CtxMeter ctx={ctx} usage={usage} compact /> {/* 👤 2026-10-16 上下文占用不抢注意力：一直只留 🧠（颜色表示多满），数字在悬停提示里 */}
         {tab === 'chat' && (() => { const bs = [...(mySum?.upto ? [<button key="s" title="看 / 改压缩摘要（模型现在记得的旧对话）" onClick={() => { setSumEdit(mySum.text); setSumModal(true); }}>{iconBtns && !narrow ? '📝' : '📝 摘要'}</button>] : []), <button key="c" title={'压缩短记忆：除了最近几轮，旧的对话让模型写成一段摘要（原文不删，只是不再发给模型）。自动压缩的参数在 ⋯ → 🤖 AI 设置'} disabled={compacting} onClick={compact}>{iconBtns && !narrow ? (compacting ? '🗜…' : '🗜') : compacting ? '🗜 压缩中…' : '🗜 压缩'}</button>, <button key="x" title="清空短记忆（换个话题；摘要一起清）" onClick={() => api('/ai/chat', { method: 'DELETE' }).then(d => { takeChat(d); setPlan(null); setUsage(null); setNote(''); })}>{iconBtns && !narrow ? '🧹' : '🧹 清空记忆'}</button>]; // 👤 2026-10-16 框窄时收进 ⋯（以前会被挤没）
           return narrow ? <span className="amore" key="m"><button className="morebtn" title="压缩 / 清空记忆" onClick={e => { if (moreOpen) return setMoreOpen(null); const r = e.currentTarget.getBoundingClientRect(), down = innerHeight - r.bottom > 110; setMoreOpen({ right: innerWidth - r.right, ...(down ? { top: r.bottom + 4 } : { bottom: innerHeight - r.top + 4 }) }); }}>⋯</button>
             {moreOpen && createPortal(<div className="amoremenu" style={moreOpen} onClick={() => setMoreOpen(null)}>{bs}</div>, document.body)}</span> : bs; })()}
