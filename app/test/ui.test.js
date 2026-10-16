@@ -1831,7 +1831,7 @@ for (const kind of ['reactflow']) {
 {
   console.log('== Ctrl+Tab 生效区');
   const ws = mkdtempSync(join(tmpdir(), 'syn-zone-ui-')); noAi(ws);
-  saveOutline(ws, '甲\n  甲一\n乙\n丙\n丁\n戊');
+  saveOutline(ws, '甲 -> 乙\n  甲一\n乙\n丙 -> 丁\n丁\n戊'); // 连线 = 分组视图里分成 {甲 乙} {丙 丁} {戊}
   const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
   const errs = []; page.on('pageerror', e => errs.push(e.message));
   await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
@@ -1842,10 +1842,31 @@ for (const kind of ['reactflow']) {
   ok(await zone() === 'right' && await page.$eval('aside.outline', e => e.offsetParent !== null), 'Ctrl+Tab：画布 → 右栏（左栏没被当成 Tab 关掉）');
   await page.keyboard.press('Control+Tab'); await sleep(200);
   ok(await zone() === 'left', '再按 → 左栏（轮转）');
-  await page.keyboard.press('s'); await sleep(200);
-  const first = await osel();
-  await page.keyboard.press('Shift+S'); await sleep(400);
-  ok(first && (await osel()) !== first && (await page.$eval('.card.sel .lab', e => e.textContent).catch(() => '')) === await osel(), '左栏 S / Shift+S 在大纲里走，选中跟画布同步 ' + first + ' → ' + await osel());
+  // 👤 2026-10-16 大纲里 WASD 只挪光标（不选中、画布不跳页），E 才选中；按屏幕位置走
+  const ocur = () => page.$eval('.orow.zkb', e => e.textContent.replace(/[·▾▸→\s]/g, '')).catch(() => '');
+  const sel0 = await osel(), c0 = await ocur();
+  await page.keyboard.press('s'); await sleep(150); const c1 = await ocur();
+  await page.keyboard.press('Shift+S'); await sleep(150); const c2 = await ocur();
+  ok(c0 && c1 && c2 && c0 !== c1 && c1 !== c2 && (await osel()) === sel0, '左栏 S / Shift+S 挪光标，选中没跟着变 ' + [c0, c1, c2, sel0].join(' '));
+  await page.keyboard.press('e'); await sleep(400);
+  ok((await osel()) === c2 && (await page.$eval('.card.sel .lab', e => e.textContent).catch(() => '')) === c2, 'E → 选中光标那一行（画布同步） ' + await osel());
+  // 两列：D 去右边那一列；S 到列底不跳到隔壁列
+  await page.click('aside.outline .colsbtn'); await sleep(400);
+  await page.keyboard.press('Control+Tab'); await page.keyboard.press('Control+Tab'); await page.keyboard.press('Control+Tab'); await sleep(200); // 轮回左栏
+  const xOf = () => page.$eval('.orow.zkb', e => Math.round(e.getBoundingClientRect().left)).catch(() => -1);
+  await page.keyboard.press('Shift+W'); await sleep(100); const x0 = await xOf();
+  await page.keyboard.press('a'); await sleep(150); const xl = await xOf();
+  await page.keyboard.press('d'); await sleep(150); const xr = await xOf();
+  ok(xl < x0 && xr === x0, 'A 去左边那一列、D 回右边 ' + [x0, xl, xr].join(' '));
+  for (let i = 0; i < 8; i++) await page.keyboard.press('s'); await sleep(150); const xb = await xOf();
+  ok(await zone() === 'left' && xr > xl && xb === xr, '两列：D 到右边那一列，S 一直往下也留在这一列 ' + [xl, xr, xb].join(' '));
+  // 分组 + 两列：组里左列走到底再 S = 下一组（不是同组右边那一列）
+  await page.click('aside.outline .groupbtn'); await sleep(500);
+  await page.keyboard.press('a'); await page.keyboard.press('a'); await page.keyboard.press('Shift+W'); await page.keyboard.press('Shift+W'); await sleep(150);
+  const g0 = await ocur(); await page.keyboard.press('s'); await sleep(100); const g1 = await ocur(); await page.keyboard.press('s'); await sleep(150); const g2 = await ocur();
+  ok(g0 === '甲' && g1 === '甲一' && g2 === '丙', '分组两列：甲 → 甲一 → 下一组的丙（不去同组的乙） ' + [g0, g1, g2].join(' '));
+  await page.click('aside.outline .groupbtn'); await sleep(300);
+  await page.click('aside.outline .colsbtn'); await page.click('aside.outline .colsbtn'); await sleep(300); // 回一列
   await page.keyboard.press('Control+Tab'); await sleep(200); await page.keyboard.press('Control+Tab'); await sleep(200);
   ok(await zone() === 'right', '再轮两下 → 右栏');
   for (let i = 0; i < 15 && !(await page.$('aside.side textarea.zkb')); i++) { await page.keyboard.press('s'); await sleep(60); }
