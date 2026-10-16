@@ -87,6 +87,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       {item('＋ 在这里新建节点', actions.addHere)}
       {actions.addUiHere && item('▭ 新建 UI 框', actions.addUiHere)}
       {actions.pickFile && item('📎 引入…', actions.pickFile)}
+      {actions.aiImageHere && item('🎨 AI 配图…', actions.aiImageHere)}
       {actions.canUp && item('↑ 返回上一层', actions.up, { key: 'Alt+W', quiet: true })}
     </div>
   );
@@ -99,6 +100,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       {node.file && item('📎 打开引用的文件', () => actions.openProjectFile(node.file))}
       {node.ref && item('↗ 跳到它指的节点', () => actions.gotoRef(node.id))}
       {node.ui && item('▭ 复制 UI 布局', () => actions.copyUiLayout(node.id))}
+      {actions.aiImage && !node.ref && item('🎨 AI 配图…', () => actions.aiImage(node.id))}
       <div className="mi row" onPointerDown={e => e.stopPropagation()}>
         <span>状态</span>
         {STATUS.map(([s, ic]) => <button key={s} className={node.status === s ? 'on' : ''} onClick={() => { actions.status(node.id, s); }}>{ic}</button>)}

@@ -443,6 +443,27 @@ for (const kind of ['reactflow']) {
   await page.mouse.click(lb.x + lb.width / 2, lb.y + lb.height / 2); await sleep(200);
   await page.keyboard.press('Delete'); await sleep(1500);
   ok((await page.$$('.loosepic')).length === 0 && readdirSync(looseDir).length === 0, '选中散图 Del → 删掉（文件进 _过期的/）');
+  // 👤 2026-10-17 没选中时 Ctrl+V 贴图 → 散图落在鼠标处（以前落在默认位置）
+  { const pr = await (await page.$('.react-flow__pane')).boundingBox(), mx = pr.x + blank.x, my = pr.y + blank.y;
+    await page.mouse.click(mx, my); await sleep(200); await page.mouse.move(mx + 3, my + 3); await sleep(100);
+    await page.evaluate(png => {
+      const bin = atob(png.split(',')[1]), u8 = Uint8Array.from(bin, c => c.charCodeAt(0));
+      const dt = new DataTransfer(); dt.items.add(new File([u8], 'x.png', { type: 'image/png' }));
+      window.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    }, PNG);
+    await sleep(2500);
+    const b = await (await page.$('.loosepic'))?.boundingBox();
+    ok(b && Math.abs(b.x - mx) < 40 && Math.abs(b.y - my) < 40, `粘贴图片 → 散图左上角在鼠标处（鼠标 ${Math.round(mx)},${Math.round(my)}；图 ${b && Math.round(b.x)},${b && Math.round(b.y)}）`);
+    if (b) { await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await sleep(200); await page.keyboard.press('Delete'); await sleep(1500); }
+    // 右键「AI 配图…」：空白处 / 卡片上都有，点了 = 打开 AI 框写好半句话（不调接口）
+    await page.mouse.click(mx, my, { button: 'right' }); await sleep(300);
+    ok(await page.$('.ctx .mi:has-text("AI 配图")'), '空白处右键有「AI 配图…」');
+    await page.click('.ctx .mi:has-text("AI 配图")'); await sleep(600);
+    ok(/在这里画一张/.test(await page.$eval('.agentbox textarea', t => t.value).catch(() => '')), '点了 → AI 框打开，写好「在这里画一张…」');
+    await page.keyboard.press('Escape'); await sleep(300);
+    await page.click('.react-flow__node[data-id="游戏AI/感知"] .lab', { button: 'right' }); await sleep(300);
+    ok(await page.$('.ctx .mi:has-text("AI 配图")'), '卡片右键也有「AI 配图…」');
+    await page.keyboard.press('Escape'); await sleep(200); }
   // 左右栏拖宽（👤 2026-10-08）
   const sideW = () => page.$eval('aside.side', a => a.offsetWidth);
   const sw0 = await sideW(), rz = await (await page.$('.resizer.right')).boundingBox();

@@ -71,6 +71,7 @@ export function Shell({ name, Canvas }) {
   const [viewports, setViewports] = useState(() => DEMO ? load('syn.vp.' + name, {}) : {});
   const [outlineGroup, setOutlineGroup] = useState(false); // 大纲分组视图（按连线分组，组内按流向排）
   const [agentPreset, setAgentPreset] = useState(null);
+  const imgAt = useRef(null); // 空白处右键「AI 配图」点的位置（画布坐标）：生成的散图落这里
   const [outlineHere, setOutlineHere] = useState(0); // 大纲范围三态：0 完整 / 1 本节点和它上一层 / 2 只本节点里面（旧版存的 true = 2）
   const [multiIds, setMultiIds] = useState([]); // 多选（画布和大纲共用一组；≥2 个才算）
   const [outlineLock, setOutlineLock] = useState(null); // 🔒 大纲锁：{root, scope, selected}，锁住时列表不跟着导航换页 / 展开 / 滚动
@@ -572,6 +573,17 @@ export function Shell({ name, Canvas }) {
         setTimeout(() => { const el = document.querySelector('.react-flow__node[data-id="' + CSS.escape(d.id) + '"] .uibox'), r = el?.getBoundingClientRect(); if (r && (r.right > innerWidth - 20 || r.bottom > innerHeight - 20)) cardActions.centerOn?.(d.id, true); }, 400); // 框比较大，落在屏幕边上看不全 → 移到视野里
       } catch (e) { setSaveState('❌ 新建 UI 框失败：' + e.message); }
     },
+    // 👤 2026-10-17 右键「AI 配图…」：打开 AI 框写好半句话，人补上画什么再 Enter（生成花钱，确认后才调）。空白处 = 散图落在右键点的位置；卡片上 = 图进那张卡
+    ...(mode === 'ws' ? {
+      aiImageHere: () => {
+        imgAt.current = menu && cardActions.toFlow ? cardActions.toFlow({ x: menu.x, y: menu.y }) : null;
+        setAgentPreset({ text: '在这里画一张（散图，不归给卡片）：', n: Date.now() }); setAgentOpen(true);
+      },
+      aiImage: id => {
+        imgAt.current = null; setSelected(id);
+        setAgentPreset({ text: '给「' + (graph.nodes.get(id)?.label || id) + '」配一张图：', n: Date.now() }); setAgentOpen(true);
+      },
+    } : {}),
     copyUiLayout: id => { // 右键 UI 框 → 复制 UI 布局：选中了好几个就一起；每个 UI 节点带四角位置，普通节点带名字和正文
       const ids = cardActions.multi?.length && cardActions.multi.includes(id) ? cardActions.multi : [id];
       const nodes = wsData?.nodes || {}, meta = Object.fromEntries(Object.entries(nodes).map(([k, n]) => [k, n.meta || {}])), body = Object.fromEntries(Object.entries(nodes).map(([k, n]) => [k, n.body || '']));
@@ -1085,7 +1097,8 @@ export function Shell({ name, Canvas }) {
       if (!files.length) return;
       e.preventDefault(); e.stopPropagation();
       const target = sel && !sel.startsWith('@') ? sel : null;
-      Promise.all(files.map(readFile)).then(us => addImages(target, us.map(dataUrl => ({ dataUrl }))));
+      const at = !target && mouse.current && cardActions.toFlow ? cardActions.toFlow(mouse.current) : null; // 散图落在鼠标处（👤 2026-10-17）
+      Promise.all(files.map(readFile)).then(us => addImages(target, us.map(dataUrl => ({ dataUrl })), at));
     };
     window.addEventListener('paste', onPaste, true);
     return () => window.removeEventListener('paste', onPaste, true);
@@ -1311,7 +1324,8 @@ export function Shell({ name, Canvas }) {
         onPreview={ids => ids.length && cardActions.select?.(ids)} onClose={() => setAgentOpen(false)} onZoom={(urls, i) => setLightbox({ urls, i })}
         onWordsApplied={d => { setWsData(d); setSaveState('配色词表已更新：' + d.file); }}
         onApplied={async good => {
-          const d = await api('/ai/apply', { method: 'POST', body: JSON.stringify({ actions: good, boxes: cardActions.boxes?.() || {} }) });
+          const d = await api('/ai/apply', { method: 'POST', body: JSON.stringify({ actions: good, boxes: cardActions.boxes?.() || {}, at: imgAt.current }) });
+          if (good.some(a => a.do === 'image' && !a.id)) { imgAt.current = null; setPositions(p => ({ ...p, ...Object.fromEntries(Object.entries(d.layout || {}).filter(([k]) => k.startsWith('@pic:'))) })); }
           lastSaved.current = d.report.outline; setText(d.report.outline); setWsData(d); recordSave(d.report.outline, d.report);
           if (Object.keys(d.moves).length) move(d.moves);
           if (d.select.length) cardActions.select?.(d.select);

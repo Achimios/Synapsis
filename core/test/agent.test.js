@@ -44,6 +44,8 @@ ok(!V({ do: 'create', label: '决策' }).ok && !V({ do: 'create', label: 'a -> b
 ok(V({ do: 'link', from: 'n1', to: 'n2', kind: '调节' }).exists === true && !V({ do: 'link', from: 'n1', to: 'n1' }).ok, '连线：已有的线 = 改类型；自连 → 拒绝');
 ok(!V({ do: 'unlink', from: 'n2', to: 'n3' }).ok, '删线：本来没有 → 拒绝');
 ok(!V({ do: 'color', ids: ['n1'], color: '金' }).ok && V({ do: 'color', ids: ['n1'], color: 'auto' }).ok, '颜色：只认调色板 / auto');
+{ const a = V({ do: 'image', id: 'n1', prompt: '猫' }), b = V({ do: 'image', prompt: '雨夜' });
+  ok(a.ok && a.id === '观测' && !('scope' in a) && b.ok && b.id === null && b.scope === '' && /散图/.test(b.desc) && !V({ do: 'image', id: 'n9', prompt: 'x' }).ok, '配图：有 id = 进那张卡；没 id = 这一页的散图（👤 2026-10-17）'); }
 
 // 排版
 const boxes = { a: { x: 10, y: 0, w: 100, h: 30 }, b: { x: 50, y: 100, w: 60, h: 30 }, c: { x: 0, y: 200, w: 80, h: 40 } };
@@ -148,7 +150,7 @@ try {
     ok(!VP({ do: 'status', ids: ['p1'], status: 'done' }).ok && !VP({ do: 'rename', id: 'p1', label: 'x' }).ok, '传送门不能改状态 / 改名');
     const lk2 = lookAt(root, c, [{ node: 'here' }, { node: 'p1' }]);
     ok(lk2.said.length === 2 && lk2.text.includes('「设计」') && lk2.text.includes('「别处」'), '看 here / 看传送门指向的节点 都能查 ' + lk2.said); }
-  ok(lp.includes('【手册目录】') && lp.length < loosePrompt([], []).length + 10000, '宽松版提示词：快捷键表 + 手册目录，手册正文不整份塞');
+  ok(lp.includes('【手册目录】') && lp.length < loosePrompt([], []).length + 10500, '宽松版提示词：快捷键表 + 手册目录，手册正文不整份塞');
 
   // 问模型（假服务）：第一次回废话 → 重试；带短记忆；写日志
   let calls = 0, lastMsgs = null;

@@ -90,13 +90,14 @@ export const VALIDATORS = {
     return { ids, desc: '大纲顺序改成：' + ids.map(label).join(' → ') };
   },
   // 👤 2026-10-16 配图（Grok 生成，花钱）：执行时由服务端调 core/imagegen.js，图存进这张卡的 _pics_
-  image: (a, { one, label }) => {
-    const id = one(a.id), prompt = String(a.prompt || '').trim();
+  //   👤 2026-10-17 不写 id = 当前页的散图（空白处右键「AI 配图」落在右键点的位置）
+  image: (a, { one, label, scope }) => {
+    const loose = a.id == null || a.id === '', id = loose ? null : one(a.id), prompt = String(a.prompt || '').trim();
     if (!prompt) throw new Error('prompt 不能空：写清画面内容和风格');
     const aspect = ['auto', '1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '2:1', '1:2', '21:9'].includes(a.aspect) ? a.aspect : 'auto';
     const quality = a.quality === 'medium' ? 'medium' : 'low', resolution = a.resolution === '2k' ? '2k' : '1k', model = ['grok-imagine-image-2.0', 'grok-imagine-image-quality', 'grok-imagine-image'].includes(a.model) ? a.model : null;
     const tag = [aspect !== 'auto' && aspect, quality === 'medium' && '高质量', resolution === '2k' && '2k', model && model.replace('grok-imagine-image', 'imagine')].filter(Boolean).join('，');
-    return { id, prompt: prompt.slice(0, 2000), aspect, quality, resolution, ...(model ? { model } : {}), desc: `配图（Grok 生成，花钱）：「${label(id)}」← ${prompt.slice(0, 40)}${prompt.length > 40 ? '…' : ''}${tag ? '（' + tag + '）' : ''}` };
+    return { id, ...(loose ? { scope: scope ?? ROOT } : {}), prompt: prompt.slice(0, 2000), aspect, quality, resolution, ...(model ? { model } : {}), desc: `配图（Grok 生成，花钱）：${loose ? '这一页的散图' : `「${label(id)}」`}←${prompt.slice(0, 40)}${prompt.length > 40 ? '…' : ''}${tag ? '（' + tag + '）' : ''}` };
   },
   color: (a, { many, label }) => {
     const ids = many(a.ids);

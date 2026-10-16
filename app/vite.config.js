@@ -169,9 +169,15 @@ function workspaceApi() {
               const b = await body(req), all = b.actions || [], imgs = all.filter(a => a && a.ok && a.do === 'image');
               const r = applyPlan(root, all.filter(a => !(a && a.do === 'image')), b.boxes || {}, { home: SYN_HOME });
               // 配图（花钱，慢）：大纲改完再一张张生成，存进那张卡的 _pics_；失败的写进 warnings（AI 下一轮会知道）
-              for (const a of imgs.slice(0, 4)) {
-                try { saveAsset(root, a.id, await genImage(cfg, a)); (r.made ??= []).push('配图：' + a.id.split('/').pop()); }
-                catch (e) { r.warnings.push(`配图「${a.id.split('/').pop()}」失败：${e.message}`); }
+              //   没 id = 当前页的散图，落在 b.at（空白处右键「AI 配图」点的位置；几张错开）
+              for (const [i, a] of imgs.slice(0, 4).entries()) {
+                const name = a.id ? a.id.split('/').pop() : '散图';
+                try {
+                  const img = await genImage(cfg, a);
+                  if (a.id) saveAsset(root, a.id, img);
+                  else { const s = saveLooseImage(root, a.scope ?? '', img); if (b.at && !s.node) saveLayout(root, { ['@pic:' + s.path]: { x: b.at.x + i * 30, y: b.at.y + i * 30 } }); }
+                  (r.made ??= []).push('配图：' + name);
+                } catch (e) { r.warnings.push(`配图「${name}」失败：${e.message}`); }
               }
               delete (STASH.get(root) || {}).plan; return send(200, { ...r, ...payload(root) });
             }
