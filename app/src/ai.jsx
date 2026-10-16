@@ -229,34 +229,27 @@ export function RelatedDock({ api, id, label, onJump, onOpenFile, onLink }) {
 //   「日志」页 = 每次调对话模型的原始记录（core/ai.js aiLog）。短记忆存在工作区（「清空记忆」= 新话题）
 // >v<🤖AI辅助-生成词表-按这个工作区的节点让对话模型起草 _配色.md（看过、可手改，再写入；旧的进 _过期的/）。
 //   👤 2026-10-08「这种操作不该丢 AI 配置页面…丢指令页面」→ 指令框的一页
-// >v<🤖AI指令-语音页-👤 2026-10-12：TTS 路径、声线、短人格（每次进提示词）、长人格（模型想看自己翻）都在这一份 md 里，本机（Synapsis 目录 .synapsis/语音.md，不进 git）
+// >v<🤖AI指令-语音页-👤 2026-10-16：只选 TTS 文件夹 / 角色 / 优先后端（存 .synapsis/语音.json）；TTS 的数据每次从它的 bridge/roles.json 现读
 function VoiceTab({ api }) {
-  // 👤 2026-10-16 Synapsis 是 TTS 的调用端：这里只选三样（TTS 文件夹、角色、优先后端），角色 / 后端列表每次从 TTS 的 bridge/roles.json 现读；
-  //   读不到就停用语音、提示去找文件夹（不退回任何手写列表）。下面的人格是给模型的，不是 TTS 的数据
-  const [d, setD] = useState(null), [txt, setTxt] = useState(''), [msg, setMsg] = useState('');
-  const take = r => { setD(r); setTxt(r.text); };
-  useEffect(() => { api('/ai/voice').then(take).catch(e => setMsg('❌ ' + e.message)); }, []);
-  const pick = set => api('/ai/voice', { method: 'PUT', body: JSON.stringify({ set }) }).then(r => { setD(r); setMsg(r.ok ? '已选：' + r.role + (r.backend ? ' · ' + r.backend : ' · 自动') : ''); }).catch(e => setMsg('❌ ' + e.message));
+  // 👤 2026-10-16 Synapsis 只是 TTS 的调用端：这里只选三样（TTS 文件夹、角色、优先后端）；角色、情绪、简介、口吻都每次从 TTS 的 bridge/roles.json 现读，
+  //   读不到就停用语音、提示去找文件夹。Synapsis 不存 TTS 的任何数据
+  const [d, setD] = useState(null), [msg, setMsg] = useState('');
+  useEffect(() => { api('/ai/voice').then(setD).catch(e => setMsg('❌ ' + e.message)); }, []);
+  const pick = set => api('/ai/voice', { method: 'PUT', body: JSON.stringify({ set }) }).then(r => { setD(r); setMsg(''); }).catch(e => setMsg('❌ ' + e.message));
   const findTts = async () => {
     const dir = window.synapsisDesktop?.pickDir ? await window.synapsisDesktop.pickDir('选 TTS 文件夹（里面有 tts_v1.py 和 bridge/roles.json）') : prompt('TTS 文件夹的完整路径（里面有 tts_v1.py）', d?.tts || '');
     if (dir) pick({ tts: dir });
   };
-  const savePersona = () => api('/ai/voice', { method: 'PUT', body: JSON.stringify({ text: txt }) }).then(r => { take(r); setMsg('人格已保存' + (r.short ? '' : '；⚠ 短人格是空的')); }).catch(e => setMsg('❌ ' + e.message));
-  const test = () => api('/ai/voice', { method: 'POST', body: JSON.stringify({ text: '试音。严格来说，这句话没有任何意义。' }) }).then(r => setMsg(r.ok ? '🔊 已送去念（' + r.role + '）' : '❌ ' + r.why)).catch(e => setMsg('❌ ' + e.message));
   if (!d) return <div className="hint pad">{msg || '读取中…'}</div>;
   return <div className="voicetab">
     <div className="row vpick">
       <label>角色 <select value={d.role} disabled={!d.roles.length} onChange={e => pick({ role: e.target.value })}>{(d.roles.includes(d.role) ? d.roles : [d.role, ...d.roles]).map(r => <option key={r} value={r}>{r}</option>)}</select></label>
       <label>优先后端 <select value={d.backend || ''} disabled={!d.ok} onChange={e => pick({ backend: e.target.value })}><option value="">自动</option>{d.backends.map(b => <option key={b} value={b}>{b}</option>)}</select></label>
       <button onClick={findTts} title={d.tts || '还没指定'}>📁 寻找 TTS 文件夹位置</button>
-      <button onClick={test} disabled={!d.ok} title="用现在选的角色念一句">🔊 试听</button>
     </div>
-    {d.ok ? <div className="hint vdesc" title={d.tts}>{d.desc}{d.moods.length ? `　情绪：${d.moods.join(' / ')}（AI 自己挑）` : '　没有分情绪的音色'}</div>
+    {d.ok ? <div className="hint vdesc" title={d.tts}>{d.desc}{d.moods.length ? `　情绪：${d.moods.join(' / ')}（AI 自己挑）` : ''}{d.persona ? '　有口吻设定（闲聊时可用）' : ''}</div>
       : <div className="warn">⚠ 语音停用：{d.error}</div>}
-    <div className="hint">人格（给模型的）：「短人格」每次都给它，「长人格」它想细看才翻。右上角 📢 打开后，☁ 在线模型自己决定什么时候说一句。</div>
-    <textarea value={txt} onChange={e => setTxt(e.target.value)} spellCheck={false} onKeyDown={e => { e.stopPropagation(); if (e.ctrlKey && e.key === 's') { e.preventDefault(); savePersona(); } }} />
-    <div className="row"><button onClick={savePersona} disabled={txt === d.text}>保存人格（Ctrl+S）</button>
-      {txt !== d.text && <button onClick={() => setTxt(d.text)}>撤回没保存的</button>}<span className="hint">{txt.length > 1500 ? '⚠ 有点长了：短人格每次都发给模型，长的放「长人格」　' : ''}{msg}</span></div>
+    <div className="hint">右上角 📢 打开后，☁ 在线模型自己决定什么时候说一句。角色、情绪、口吻都在 TTS 那边改。{msg}</div>
   </div>;
 }
 function WordsTab({ api, onWordsApplied, scope = '', label = '项目' }) { // 👤 2026-10-12 按层起草：画布没选中 = 当前画布那个节点，选中分组 = 它；写进那一层的 _词表.md
@@ -412,7 +405,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
         <a className={tab === 'words' ? 'on' : ''} onClick={() => setTab('words')}>🎨 词表</a>
         <a className={tab === 'voice' ? 'on' : ''} onClick={() => setTab('voice')}>🔊 语音</a>
         <span style={{ flex: 1 }} />
-        <button className={'voicebtn' + (voiceOn ? ' on' : '')} title={voiceOn ? '📢 开着：AI 可以自己决定发一句语音（只有 ☁ 在线模型）。点一下关' : '📢 关着：AI 不发语音。点一下打开（只有 ☁ 在线模型；声线、人格在「🔊 语音」页）'} onClick={flipVoice}>📢</button>
+        <button className={'voicebtn' + (voiceOn ? ' on' : '')} title={voiceOn ? '📢 开着：AI 可以自己决定发一句语音（只有 ☁ 在线模型）。点一下关' : '📢 关着：AI 不发语音。点一下打开（只有 ☁ 在线模型；角色、后端在「🔊 语音」页）'} onClick={flipVoice}>📢</button>
         <CtxMeter ctx={ctx} usage={usage} />
         {tab === 'chat' && <button title={'压缩短记忆：除了最近几轮，旧的对话让模型写成一段摘要（原文不删，只是不再发给模型）。自动压缩的参数在 ⋯ → 🤖 AI 设置' + (mySum ? '\n\n现在的摘要：\n' + mySum.text : '')} disabled={compacting} onClick={compact}>{compacting ? '🗜 压缩中…' : '🗜 压缩'}</button>}
         {tab === 'chat' && <button title="清空短记忆（换个话题；摘要一起清）" onClick={() => api('/ai/chat', { method: 'DELETE' }).then(d => { takeChat(d); setPlan(null); setUsage(null); setNote(''); })}>🧹 清空记忆</button>}

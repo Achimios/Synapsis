@@ -10,7 +10,7 @@ import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 import { workspaceRoot, manualText, synItems, synWrite } from '../core/cli.js';
 import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, suggestPatternWords, readAiLog, readUsage } from '../core/ai.js';
 import { lmsEstimate, lmsReload, lmsServerStart } from '../core/lmstudio.js';
-import { loadVoice, saveVoice, saveVoiceCfg, speak } from '../core/voice.js';
+import { loadVoice, saveVoiceCfg, speak } from '../core/voice.js';
 let lmsTried = false;
 import { runAgent, applyPlan, loadChat, clearChat, estimateContext, isLoose, loadSummary, compactChat, needCompact } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
@@ -179,9 +179,8 @@ function workspaceApi() {
                   return send(200, r);
                 } finally { delete st.thinking; }
               } // 待确认的动作服务端也记一份：AI 还在想时关掉框，回来照样能确认
-              if (url.pathname === '/ai/voice') { // 🔊 语音页：读 / 存 <Synapsis>/.synapsis/语音.md
-                if (req.method === 'PUT') { const b = await body(req); if (typeof b.text === 'string') saveVoice(SYN_HOME, b.text); return send(200, b.set ? saveVoiceCfg(SYN_HOME, b.set) : loadVoice(SYN_HOME)); } // text = 人格；set = 人的三个选择 {tts, role, backend}
-                if (req.method === 'POST') { const v = loadVoice(SYN_HOME); return send(200, speak(v, { text: (await body(req)).text || '试音：一二三。' }, 'test-' + Date.now().toString(36))); } // 试听
+              if (url.pathname === '/ai/voice') { // 🔊 语音页：人的三个选择（.synapsis/语音.json）+ TTS 现读的角色表
+                if (req.method === 'PUT') { const b = await body(req); return send(200, saveVoiceCfg(SYN_HOME, b.set || {})); } // set = 人的三个选择 {tts, role, backend}
                 return send(200, loadVoice(SYN_HOME));
               }
               if (url.pathname === '/ai/related') return send(200, { items: await related(root, url.searchParams.get('id') || '', cfg) });

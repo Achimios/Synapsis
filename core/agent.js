@@ -281,7 +281,7 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   }
   const idx = loose && opts.home ? memoryIndex(opts.home, root) : '';
   const memNote = idx && !recent.some(t => t.memNote) ? `【记忆索引】（想看全文就只回 {"read": ["名字"]}）\n${idx}` : '';
-  const vo = loose && opts.voice ? opts.voice : null; // 📢 开着（只给在线宽松版）：提示词后面加几行语音说明 + 短人格
+  const vo = loose && opts.voice ? opts.voice : null; // 📢 开着（只给在线宽松版）：提示词后面加几行语音说明（声音简介 / 可选口吻都来自 TTS 的 roles.json）
   const sys = (loose ? loosePrompt(undefined, undefined, { model: chatModel(cfg).replace(/^\w+:/, ''), online: true, ctx: opts.ctx || null, ...memCfg(cfg, true) }) : systemPrompt()) + (vo ? voicePrompt(vo) : '');
   const lastNote = outcomeNote(recent.at(-1));
   let user = `${ctx.text}\n\n${lastNote ? lastNote + '\n\n' : ''}人说：${String(text).trim()}${memNote ? '\n\n' + memNote : ''}`;
@@ -301,8 +301,6 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
       memRead.push(...m.names);
       add += `\n\n【记忆全文】\n${m.text || '（没有叫这些名字的记忆）'}`;
     }
-    const vLook = reply.look.filter(it => it && it.voice != null); // look {"voice": "人格"} = 长人格
-    if (vLook.length) { reply.look = reply.look.filter(it => !(it && it.voice != null)); looked.push('人格'); add += `\n\n【人格全文】\n${vo?.long || '（没有长人格）'}`; }
     if (reply.look.length) {
       const l = lookAt(root, ctx, reply.look);
       looked.push(...l.said);
