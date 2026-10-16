@@ -81,7 +81,9 @@ async function onlineModels(cfg) {
         const r = await fetch(o.url + '/models', { headers: { authorization: 'Bearer ' + key }, signal: AbortSignal.timeout(5000) });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         // 聊天下拉只要对话模型（xAI 列表里混着图片 / 视频）
-        onlineCache[p] = { t: Date.now(), list: (await r.json()).data.filter(m => !/imagine|image|video|embed|tts|audio/i.test(m.id)).map(m => ({ id: p + ':' + m.id, name: m.name || m.id, embed: false, loaded: true, online: true, ctx: m.context_window || null, maxCtx: m.context_window || null })) };
+        // 👤 2026-10-16 新的在上面：按发布时间（created）倒序；没有 created 就按名字倒序（数字按大小比）
+        onlineCache[p] = { t: Date.now(), list: (await r.json()).data.filter(m => !/imagine|image|video|embed|tts|audio/i.test(m.id))
+          .sort((a, b) => (b.created || 0) - (a.created || 0) || b.id.localeCompare(a.id, 'en', { numeric: true })).map(m => ({ id: p + ':' + m.id, name: m.name || m.id, embed: false, loaded: true, online: true, ctx: m.context_window || null, maxCtx: m.context_window || null })) };
       } catch { continue; }
     }
     out.push(...onlineCache[p].list);
