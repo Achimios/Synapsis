@@ -291,7 +291,7 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   const sumPair = mem.summary ? [{ role: 'user', content: `【之前对话的记忆摘要】（更早的原文已经压缩掉了）\n${mem.summary}` }, { role: 'assistant', content: JSON.stringify({ say: '好的，我记得这些。', actions: [] }) }] : [];
   // 记忆索引附在那一轮的人话后面、跟着历史走：8 轮之内模型都看得见；滚出去了（或新对话 / 清空后）再附一次
   // 上一轮的结果（执行了 / 没执行 / 执行后检查出的问题）写在「下一轮的人话」前面，不写在 assistant 那条里 —— 免得 8B 学着在 JSON 后面加废话
-  const history = [...sumPair, ...recent.flatMap((t, i) => { const pre = outcomeNote(recent[i - 1]); return [{ role: 'user', content: (pre ? pre + '\n\n' : '') + t.user + (t.imgs ? `\n（这一轮附了 ${t.imgs} 张图，图没有保存，现在看不到）` : '') + (t.memNote ? '\n\n' + t.memNote : '') }, { role: 'assistant', content: JSON.stringify({ say: t.say, actions: t.actions || [] }) }]; })];
+  const history = [...sumPair, ...recent.flatMap((t, i) => { const pre = outcomeNote(recent[i - 1]); return [{ role: 'user', content: (pre ? pre + '\n\n' : '') + t.user + (t.imgs ? `\n（这一轮附了 ${t.imgs} 张图，图没有保存，现在看不到）` : '') + (t.memNote ? '\n\n' + t.memNote : '') }, { role: 'assistant', content: JSON.stringify({ say: t.say, actions: t.actions || [], ...(t.voice ? { voice: { text: t.voice } } : {}) }) }]; })];
   // 问用法（怎么 / 如何 / 哪 / 快捷键 / 问号…）→ 走问答：单独的提示词 + 挑出来的软件知识，纯文本回答、不出动作。
   //   和做事混在一个 JSON 提示词里时，8B 会给「将切换到白色主题」+ 乱编动作、或者知识就在眼前还说「手册里没写」（2026-10-08 实测）
   const know = pickKnowledge(text), usage = {}; // usage = LM Studio 报的 token 用量（prompt / completion / total），界面显示「已用 / 容量」

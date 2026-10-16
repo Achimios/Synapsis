@@ -67,7 +67,8 @@ ok(plainVoice('**严格来说**，你看 `n32`：\n- 第一\n- 第二\n## 标题
 ok(!('x' in {}) && speak(h, { text: '**加粗** 的话' }).job.text === '加粗 的话', 'speak 发出去的是纯文本');
 const longT = '这是一句完整的话，不长。'.repeat(20);
 ok(clipVoice(longT).endsWith('。') && clipVoice(longT).length <= VOICE_MAX && clipVoice('短句。') === '短句。', '超长在句号处截，不截在半句上');
-ok(rescueVoice('语音来了，黑斯廷斯：\n\n「Desmond，你又忘了。」\n要不要记下？').text === 'Desmond，你又忘了。' && rescueVoice('「只是引用一句话」') === null && rescueVoice('语音来了，但没有引号') === null, '没写 voice、嘴上说了语音并把台词放「」里 → 兜底拿出来；没说语音 / 没引号的不动');
+ok(rescueVoice('语音来了，黑斯廷斯：\n\n「Desmond，你又忘了保存，严格来说这是第三次了。」\n要不要记下？').text.startsWith('Desmond') && rescueVoice('「只是引用一句话，而且挺长的一句话」') === null && rescueVoice('语音来了，但没有引号') === null, '明说语音来了、台词在「」里 → 兜底拿出来；没说 / 没引号的不动');
+ok(rescueVoice('能控制语言的只有语音的 lang 字段。「[中文]」「[English]」前缀是我加的') === null && rescueVoice('你说「发一段中文，发两次」，语音这块我先确认') === null, '只是提到「语音」、「」里是引用 / 短标签 → 不当台词');
 ok(speak(h, { text: '嗯', fx: '对讲机' }).job.fx === '对讲机' && !('fx' in speak(h, { text: '嗯', fx: 'x'.repeat(80) }).job), 'fx 音效原样带上（太长的不要）');
 ok(/没开语音/.test(voiceOffPrompt) && voiceOffPrompt.length < 120, '选了 TTS 但没开 📢：一句话提醒，别说已经发了');
 ok(parseReply('{"say":"x","actions":[],"voice":{"text":"嗯","role":"bt","pref":"edge"}}').voice.pref === 'edge', 'JSON 里模型写的 role / pref 读得出');

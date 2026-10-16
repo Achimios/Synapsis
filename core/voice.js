@@ -34,9 +34,11 @@ export function autoVoice(say) {
 }
 // 📢 开着、模型却没写 voice 字段，但嘴上说了「语音来了 / 念给你」并把台词写在「」里 → 把那段拿出来念（👤 2026-10-16 实测 8 轮里 5 轮这样）
 export function rescueVoice(say) {
+  // 👤 2026-10-16 收紧：只认明说「语音来了 / 这条我发语音 / 念给你听」的，且「」里是像样的一段台词（≥12 字）；
+  //   以前只要出现「语音」两个字就拿第一对「」，结果念出了「[中文]」、人的原话
   const s = String(say || '');
-  if (!/语音|念给|念出来|说给你听|开口/.test(s)) return null;
-  const m = /「([^「」]{4,})」/.exec(s);
+  if (!/(语音|念)(来了|走起|上线)|发语音说|用语音说|念给你听|这就念|我念了|听好/.test(s)) return null;
+  const m = /「([^「」]{12,})」/.exec(s);
   return m ? { text: m[1] } : null;
 }
 export const TTS_SCRIPT = 'tts_v1.py';
