@@ -10,6 +10,7 @@ import { loadWorkspace, listTree, DIR, ensureWords } from './workspace.js';
 import { PALETTE, WORDS_FILE, DEFAULT_WORDS, parseColorWords, wordColor, wordTables, hierHit } from './colors.js';
 import { PATTERNS, PATTERN_HINT, PATTERN_FILE, DEFAULT_PATTERN_WORDS, parsePatternWords, wordPattern, patternTables, splitWords, joinWords, wordsHead } from './patterns.js';
 import { isDropped } from './outline.js';
+import { lmsServerStart } from './lmstudio.js';
 
 // agentSrc = AI 指令框 / 问答 / 生成词表 / 「?」关系说明 用本地还是在线；bulkSrc = 高频后台（潜在关联重排、语义配色归类），默认本地（👤「高频调用的默认不用在线」）
 export const AI_DEFAULTS = { url: 'http://127.0.0.1:1234/v1', embed: 'text-embedding-qwen3-embedding-0.6b', chat: 'qwen3-8b', semColors: true,
@@ -100,8 +101,17 @@ export function saveAiConfig(home, patch) {
   return aiConfig(home);
 }
 
+// 👤 2026-10-16 后开的 LM Studio：本地连不上（服务没开）→ 用 lms 把服务开起来再试一次。最多 30 秒试一次（不刷 lms），只对本机 1234 端口
+let lmsWokeAt = 0;
+const connRefused = e => /ECONNREFUSED|fetch failed/i.test(String(e?.cause?.code || e?.message || e));
+export async function wakeLms(cfg) {
+  if (!/\/\/(127\.0\.0\.1|localhost):1234\b/.test(cfg?.url || '') || Date.now() - lmsWokeAt < 30000) return false;
+  lmsWokeAt = Date.now();
+  try { await lmsServerStart(); return true; } catch { return false; }
+}
 const post = async (cfg, path, body, ms = 120000) => {
-  const r = await fetch(cfg.url.replace(/\/$/, '') + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
+  const go = () => fetch(cfg.url.replace(/\/$/, '') + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
+  let r; try { r = await go(); } catch (e) { if (connRefused(e) && await wakeLms(cfg)) r = await go(); else throw e; }
   if (!r.ok) throw new Error(`LM Studio ${path} ${r.status}：${(await r.text()).slice(0, 200)}`);
   return r.json();
 };

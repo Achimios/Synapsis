@@ -8,10 +8,9 @@ import { loadWorkspace, workspaceOutline, saveOutline, saveLayout, saveAsset, en
 import { scaffoldPlan, scaffoldWrite } from '../core/scaffold.js';
 
 import { workspaceRoot, manualText, synItems, synWrite } from '../core/cli.js';
-import { aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, suggestPatternWords, readAiLog, readUsage } from '../core/ai.js';
-import { lmsEstimate, lmsReload, lmsServerStart } from '../core/lmstudio.js';
+import { wakeLms, aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, suggestPatternWords, readAiLog, readUsage } from '../core/ai.js';
+import { lmsEstimate, lmsReload } from '../core/lmstudio.js';
 import { loadVoice, saveVoiceCfg, speak } from '../core/voice.js';
-let lmsTried = false;
 import { runAgent, applyPlan, loadChat, clearChat, estimateContext, isLoose, loadSummary, compactChat, needCompact } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
 const STASH = new Map(); // 工作区 → 界面暂存（见 /ui/stash）
@@ -135,7 +134,7 @@ function workspaceApi() {
             const cfg = { ...aiConfig(SYN_HOME, root), log: existsSync(join(root, DIR)) ? join(root, '.synapsis', 'ai_log.jsonl') : null };
             if (url.pathname === '/ai/status') { // 👤 2026-10-11 模型加载了、HTTP 服务没开 → 本机地址时顺手开一次（每个服务进程只试一次；开服务不加载模型、不占显存）
               let s = await aiStatus(cfg);
-              if (!s.ok && /ECONNREFUSED/.test(s.error || '') && /\/\/(127\.0\.0\.1|localhost):1234\b/.test(cfg.url || '') && !lmsTried) { lmsTried = true; try { await lmsServerStart(); s = await aiStatus(cfg); } catch {} }
+              if (!s.ok && /ECONNREFUSED|fetch failed/.test(s.error || '') && await wakeLms(cfg)) { try { s = await aiStatus(cfg); } catch {} } // 👤 2026-10-16 后开的 LM Studio 也能接上：连不上就试着开服务（最多 30 秒一次）
               return send(200, s);
             }
             if (url.pathname === '/ai/usage') return send(200, readUsage(cfg));
