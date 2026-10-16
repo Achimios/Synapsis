@@ -281,6 +281,7 @@ function WordsTab({ api, onWordsApplied, scope = '', label = '项目' }) { // �
 //   没拖过 = 默认底部居中；双击标题栏空白处回默认。拖出窗口的会被拉回来
 const GEO_KEY = 'syn.agentbox';
 export const EDGES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
+const CHAT_SCROLL = { top: null, bottom: true }; // 指令框对话列表的滚动位置（关掉框再打开也记得）
 export function useBoxGeometry(storeKey = GEO_KEY) { // 钉子窗口也用（pindock.jsx），各自记各自的位置
   const ref = useRef(null), styleSize = useRef(null), [, bump] = useState(0);
   // 窗口缩小 → 重画一遍：记下来的位置 / 大小不改，只是显示时拉回屏幕里（窗口再放大，框回到原来记的位置）
@@ -300,7 +301,7 @@ export function useBoxGeometry(storeKey = GEO_KEY) { // 钉子窗口也用（pin
   // 👤 2026-10-16 四边四角都能拖着改大小（d = n / s / e / w / ne / nw / se / sw）
   const edge = d => e => {
     if (e.button !== 0) return; e.preventDefault(); e.stopPropagation();
-    const r = ref.current.getBoundingClientRect(), x0 = e.clientX, y0 = e.clientY, MW = 360, MH = 160;
+    const r = ref.current.getBoundingClientRect(), x0 = e.clientX, y0 = e.clientY, cs = getComputedStyle(ref.current), MW = parseFloat(cs.minWidth) || 200, MH = parseFloat(cs.minHeight) || 120; // 最小尺寸照各自的 CSS（AI 框 360×160，钉子窗口 200×120）
     const at = m => { const dx = m.clientX - x0, dy = m.clientY - y0; let { left, top, width, height } = r;
       if (d.includes('e')) width = Math.max(MW, r.width + dx);
       if (d.includes('s')) height = Math.max(MH, r.height + dy);
@@ -387,21 +388,23 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   const [note, setNote] = useState(''); // 一次性提示（不挡发送；busy 非空时发不出去）
   const compact = () => { if (busy) return; setBusy('🗜 压缩中…'); setNote(''); api('/ai/chat/compact', { method: 'POST', body: '{}' }).then(d => { takeChat(d); setBusy(''); setNote(d.ok ? `🗜 压进摘要 ${d.n} 轮（原文还在，只是不再发给模型）` : '🗜 ' + d.why); }).catch(e => setBusy('❌ ' + e.message)); };
   useEffect(() => { if (tab === 'log') api('/ai/log').then(d => setLog(d.entries)).catch(e => setLog([{ kind: '❌', raw: e.message }])); }, [tab, turns.length]);
-  useEffect(() => { list.current && (list.current.scrollTop = list.current.scrollHeight); }, [turns, plan, busy, tab]); // 👤 2026-10-16 切走再切回「对话」也回到最底下
-  // 贴底：人在最底下时，内容 / 框大小再变（md、图晚一点渲染完，框被拉回屏幕）也保持在最底；人往上翻着看时不跟
+  // 👤 2026-10-16 滚动位置要记住：切走再切回「对话」、关掉框再打开，都回到离开时的位置（CHAT_SCROLL，这个窗口开着时有效）。
+  //   人在最底下时（贴底）：新消息、内容晚渲染完、框大小变都跟到底；往上翻着看时不动。自己发一句 = 回到底
   useEffect(() => {
     const el = list.current; if (!el || typeof ResizeObserver === 'undefined') return;
-    let stick = true;
-    const onScroll = () => { stick = el.scrollHeight - el.clientHeight - el.scrollTop < 40; };
-    const pin = () => { if (stick) el.scrollTop = el.scrollHeight; };
+    const S = CHAT_SCROLL;
+    const pin = () => { if (S.bottom) el.scrollTop = el.scrollHeight; };
+    if (S.bottom || S.top == null) el.scrollTop = el.scrollHeight; else el.scrollTop = S.top;
+    const onScroll = () => { S.top = el.scrollTop; S.bottom = el.scrollHeight - el.clientHeight - el.scrollTop < 40; };
     const ro = new ResizeObserver(pin), watch = () => { ro.observe(el); for (const c of el.children) ro.observe(c); };
     const mo = new MutationObserver(() => { watch(); pin(); });
-    watch(); mo.observe(el, { childList: true }); el.addEventListener('scroll', onScroll);
+    watch(); mo.observe(el, { childList: true, subtree: true }); el.addEventListener('scroll', onScroll);
     return () => { ro.disconnect(); mo.disconnect(); el.removeEventListener('scroll', onScroll); };
   }, [tab]); // 👤 2026-10-16 切走再切回「对话」也回到最底下
   useEffect(() => { if (!busy) inp.current?.focus(); }, [busy, plan, tab]);
   const send = () => {
     const t = text.trim(), im = imgs; if ((!t && !im.length) || (busy && !busy.startsWith('❌'))) return;
+    CHAT_SCROLL.bottom = true; // 自己发一句 = 回到底
     setBusy('🧠 思考中…（第一次要等模型加载）' + (im.length ? `　附 ${im.length} 张图` : '')); setPlan(null); setNote('');
     api('/ai/agent', { method: 'POST', body: JSON.stringify({ scope, selected, text: t, images: im, boxes: boxes?.() || {}, voice: voiceOn }) })
       .then(d => {

@@ -2,7 +2,7 @@
 //   👤 2026-10-09：能鼠标做的都在界面里做，不加复杂快捷键。组的标题点一下 = 设成当前组（右键「钉到…」默认进它）；双击组名改名；
 //   钉子：☐ 单击勾 / 取消，双击跳过去（节点 = 跳到卡片；📄 行钉子 = 打开文件、高亮那一行，找不到时在下面列最像的几行让人选），✕ 删。组空了不自动消失，要手动点 🗑 删组。每一步都进操作历史（Ctrl+Z）。
 import { useState, useLayoutEffect } from 'react';
-import { useBoxGeometry } from './ai.jsx';
+import { useBoxGeometry, EDGES } from './ai.jsx';
 import { addGroup, removeGroup, renameGroup, setCurrent, toggleCollapsed, removeItem, toggleItem, clearGroup } from './pins.js';
 
 export function PinDock({ doc, graph, edit, view, jump, ask, onChoose, onIgnore, onClose }) {
@@ -18,7 +18,8 @@ export function PinDock({ doc, graph, edit, view, jump, ask, onChoose, onIgnore,
   const newGroup = () => { const r = addGroup(doc); edit(r.doc, `新建钉子组「${r.doc.groups.at(-1).name}」`); setRenaming(r.id); };
   return (
     <div className={'pinbox' + (geo.style ? ' placed' : '')} ref={geo.ref} style={geo.style || { right: defRight }}>
-      <div className="bar" onPointerDown={geo.drag} onDoubleClick={e => !e.target.closest('a, button, input') && geo.reset()} title="拖这条移动；拖右下角改大小；双击空白处回到默认位置">
+      {EDGES.map(d => <div key={d} className={'edge e-' + d} onPointerDown={geo.edge(d)} />)}
+      <div className="bar" onPointerDown={geo.drag} onDoubleClick={e => !e.target.closest('a, button, input') && geo.reset()} title="拖这条移动；拖四边四角改大小；双击空白处回到默认位置">
         <b>📌 钉子</b><span className="hint">{total}</span>
         <span className="grow" />
         <button onClick={newGroup} title="新建一个组（新组成为当前组）">＋ 新组</button>

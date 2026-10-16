@@ -9,7 +9,20 @@ import { join } from 'node:path';
 import { loadSettings, saveSettings } from './settings.js';
 import { spawn } from 'node:child_process';
 
-export const VOICE_MAX = 120; // 一条语音最多多少字
+export const VOICE_MAX = 150; // 一条语音最多多少字（👤 2026-10-16 120 时常被截在半句上）
+// 超长的在句子边界截（。！？!?~…），不从半句中间断；实在没有句号才硬截
+export function clipVoice(t, max = VOICE_MAX) {
+  t = String(t || '').trim(); if (t.length <= max) return t;
+  const cut = t.slice(0, max), k = Math.max(...['。', '！', '？', '!', '?', '~', '…', '. '].map(p => cut.lastIndexOf(p)));
+  return k >= max * 0.4 ? cut.slice(0, k + 1).trim() : cut;
+}
+// 📢 开着、模型却没写 voice 字段，但嘴上说了「语音来了 / 念给你」并把台词写在「」里 → 把那段拿出来念（👤 2026-10-16 实测 8 轮里 5 轮这样）
+export function rescueVoice(say) {
+  const s = String(say || '');
+  if (!/语音|念给|念出来|说给你听|开口/.test(s)) return null;
+  const m = /「([^「」]{4,})」/.exec(s);
+  return m ? { text: m[1] } : null;
+}
 export const TTS_SCRIPT = 'tts_v1.py';
 const CFG0 = { tts: '', role: 'hastings', backend: '' }; // backend '' = 自动（不发 pref）
 
@@ -64,7 +77,8 @@ export const voicePrompt = v => {
   const line = r => `  - ${r.name}${r.name === v.role ? '（默认）' : ''}：${String(r.description || '').trim() || '（没写简介）'}${arrOf(r.moods).length ? `；mood：${arrOf(r.moods).join(' / ')}` : ''}${arrOf(r.backends).length ? `；后端：${arrOf(r.backends).join(' / ')}` : ''}${String(r.persona || '').trim() ? '；有口吻' : ''}`;
   return `
 
-【语音】人开了语音：想说话就在 JSON 里加 "voice": {"text": "一句话"}，TTS 会念出来。
+【语音】人开了语音：想说话就在 JSON 里加 "voice" 字段，TTS 会念出来。例：{"say": "……", "actions": [], "voice": {"text": "严格来说，你又忘了保存。"}}
+- ⚠️ 只有 voice 字段会被念；写在 say 里的台词人只能看、听不到。说了「语音来了 / 念给你听」就必须带 voice；台词放进 voice.text，say 里别再重复整段。人要你发语音时一定发。
 - 自己决定要不要说：有梗、有情绪、值得说出口才说，大多数回合不说；一次一句，${VOICE_MAX} 字以内；别念代码、路径、列表；数字写成中文。
 - 可选字段：role 换声音（不写 = ${v.role}；人点名用谁就用谁）、mood 情绪（只能用这一句所用角色列出的，没列就别写）、pref 后端（不写 = ${v.backend || '自动'}，人没要求别写）、lang（整句不是中文时写，德语法语必写）、fx 音效（如 对讲机 / 空房间，人要求或很合适才用）。
 - 情绪靠 mood，标点只管节奏：急促多用逗号、顿号连着说；伤感 / 安慰用短句、句号断开，关键处放一个 ~。
@@ -83,7 +97,7 @@ export const voiceOffPrompt = `
 // 念出来：起 <TTS 文件夹>/tts_v1.py，stdin 喂一行 JSON（不经过 shell，中文直接 UTF-8）。不等播完
 export function speak(v, voice, id) {
   if (!v.ok) return { ok: false, why: v.error };
-  const text = String(voice?.text || '').trim().slice(0, VOICE_MAX);
+  const text = clipVoice(voice?.text);
   if (!text) return { ok: false, why: '没有内容' };
   if (!existsSync(v.script)) return { ok: false, why: `TTS 文件夹里没有 ${TTS_SCRIPT}：点「寻找 TTS 文件夹位置」重新选` };
   const lang = /^[a-z]{2}$/.test(voice.lang || '') ? voice.lang : ''; // 模型说了是哪种语言就发，不然 TTS 自己猜

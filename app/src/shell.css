@@ -363,9 +363,9 @@ button.aibtn.off { opacity: .7; }
 .agentbox { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(680px, 94vw); max-height: 62vh; z-index: 900; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; box-shadow: 0 8px 28px rgba(0,0,0,.5); overflow: hidden; }
 .agentbox .bar { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); cursor: move; user-select: none; }
 .agentbox { min-width: 360px; min-height: 160px; } /* 四边四角拖大小（.edge，位置和大小记在本机，ai.jsx useBoxGeometry） */
-.agentbox > .edge { position: absolute; z-index: 5; } .agentbox > .e-n, .agentbox > .e-s { left: 8px; right: 8px; height: 6px; cursor: ns-resize; } .agentbox > .e-n { top: -2px; } .agentbox > .e-s { bottom: -2px; }
-.agentbox > .e-e, .agentbox > .e-w { top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; } .agentbox > .e-e { right: -2px; } .agentbox > .e-w { left: -2px; }
-.agentbox > .e-ne, .agentbox > .e-nw, .agentbox > .e-se, .agentbox > .e-sw { width: 12px; height: 12px; } .agentbox > .e-ne { top: -2px; right: -2px; cursor: nesw-resize; } .agentbox > .e-sw { bottom: -2px; left: -2px; cursor: nesw-resize; } .agentbox > .e-nw { top: -2px; left: -2px; cursor: nwse-resize; } .agentbox > .e-se { bottom: -2px; right: -2px; cursor: nwse-resize; }
+:is(.agentbox, .pinbox) > .edge { position: absolute; z-index: 5; } :is(.agentbox, .pinbox) > .e-n, :is(.agentbox, .pinbox) > .e-s { left: 8px; right: 8px; height: 6px; cursor: ns-resize; } :is(.agentbox, .pinbox) > .e-n { top: -2px; } :is(.agentbox, .pinbox) > .e-s { bottom: -2px; }
+:is(.agentbox, .pinbox) > .e-e, :is(.agentbox, .pinbox) > .e-w { top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; } :is(.agentbox, .pinbox) > .e-e { right: -2px; } :is(.agentbox, .pinbox) > .e-w { left: -2px; }
+:is(.agentbox, .pinbox) > .e-ne, :is(.agentbox, .pinbox) > .e-nw, :is(.agentbox, .pinbox) > .e-se, :is(.agentbox, .pinbox) > .e-sw { width: 12px; height: 12px; } :is(.agentbox, .pinbox) > .e-ne { top: -2px; right: -2px; cursor: nesw-resize; } :is(.agentbox, .pinbox) > .e-sw { bottom: -2px; left: -2px; cursor: nesw-resize; } :is(.agentbox, .pinbox) > .e-nw { top: -2px; left: -2px; cursor: nwse-resize; } :is(.agentbox, .pinbox) > .e-se { bottom: -2px; right: -2px; cursor: nwse-resize; }
 .agentbox .bar { flex-wrap: nowrap; } .agentbox .bar > * { flex-shrink: 0; } /* 右边那组（📢 🧠 ⋯ ✕）永远不挤；挤的是左边页签 */
 .agentbox .bar > .atabs { flex: 1 1 auto; min-width: 0; overflow: hidden; display: flex; gap: 10px; align-items: center; white-space: nowrap; }
 .agentbox.tiny .bar .tl { display: none; } /* 很窄：页签只留图标（悬停看名字） */
@@ -533,7 +533,7 @@ button.patsw { width: 26px; height: 18px; background-color: color-mix(in srgb, v
 .histcol .ha { flex: none; font-size: 10.5px; color: var(--dim); }
 
 /* >v<📌钉子-窗口样式-浮窗（拖标题栏移动、右下角改大小，位置记在本机，pindock.jsx）。颜色全用主题变量 */
-.pinbox { position: fixed; right: 16px; top: 120px; width: 270px; height: 340px; min-width: 200px; min-height: 120px; max-width: calc(100vw - 8px); max-height: calc(100vh - 132px); z-index: 880; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 22px rgba(0,0,0,.45); resize: both; overflow: hidden; font-size: 12px; }
+.pinbox { position: fixed; right: 16px; top: 120px; width: 270px; height: 340px; min-width: 200px; min-height: 120px; max-width: calc(100vw - 8px); max-height: calc(100vh - 132px); z-index: 880; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 22px rgba(0,0,0,.45);  overflow: hidden; font-size: 12px; }
 .pinbox .bar { display: flex; gap: 8px; align-items: center; padding: 5px 8px; border-bottom: 1px solid var(--line); cursor: move; user-select: none; }
 .pinbox .bar a, .pinbox .bar button, .pinbox .hghead a { cursor: pointer; }
 .pinbox .grow { flex: 1; }

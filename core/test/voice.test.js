@@ -2,7 +2,7 @@
 import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { voicePrompt, voiceOffPrompt, loadVoice, saveVoiceCfg, speak, VOICE_MAX, loadCatalog, resolveVoice, personaOf } from '../voice.js';
+import { voicePrompt, voiceOffPrompt, clipVoice, rescueVoice, loadVoice, saveVoiceCfg, speak, VOICE_MAX, loadCatalog, resolveVoice, personaOf } from '../voice.js';
 import { parseReply, lookAt } from '../agent.js';
 import { loadSettings } from '../settings.js';
 
@@ -62,6 +62,9 @@ ok(!('mood' in speak(h, { text: '嗯', mood: 'urgent' }).job), '角色没有的�
 
 ok(parseReply('{"say":"嗯","actions":[],"voice":{"text":"严格来说","mood":"curious","lang":"en"}}').voice.mood === 'curious' && parseReply('{"say":"x","actions":[]}').voice === null, 'JSON 里的 voice 字段读得出，没有就是 null');
 ok(VOICE_MAX <= 200, '有长度上限');
+const longT = '这是一句完整的话，不长。'.repeat(20);
+ok(clipVoice(longT).endsWith('。') && clipVoice(longT).length <= VOICE_MAX && clipVoice('短句。') === '短句。', '超长在句号处截，不截在半句上');
+ok(rescueVoice('语音来了，黑斯廷斯：\n\n「Desmond，你又忘了。」\n要不要记下？').text === 'Desmond，你又忘了。' && rescueVoice('「只是引用一句话」') === null && rescueVoice('语音来了，但没有引号') === null, '没写 voice、嘴上说了语音并把台词放「」里 → 兜底拿出来；没说语音 / 没引号的不动');
 ok(speak(h, { text: '嗯', fx: '对讲机' }).job.fx === '对讲机' && !('fx' in speak(h, { text: '嗯', fx: 'x'.repeat(80) }).job), 'fx 音效原样带上（太长的不要）');
 ok(/没开语音/.test(voiceOffPrompt) && voiceOffPrompt.length < 120, '选了 TTS 但没开 📢：一句话提醒，别说已经发了');
 ok(parseReply('{"say":"x","actions":[],"voice":{"text":"嗯","role":"bt","pref":"edge"}}').voice.pref === 'edge', 'JSON 里模型写的 role / pref 读得出');
