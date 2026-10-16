@@ -170,6 +170,9 @@ export function Shell({ name, Canvas }) {
   const uiId = id => isUi(wsData?.nodes[id]?.meta); // 👤 2026-10-10 UI 框不跟「预览展开」的全局三态，只认自己的 ▸ / ⊞
   // 👤 2026-10-11 预览「子级」临时盖过节点自己真展开的子图（不然真成框的节点在预览里看不到子级列表）；预览「子图」同时开着时子图优先；UI 框一样（👤：要联动，UI 框也得能看子级）
   const expE = id => eff(sm.kids, !!expanded[id], id), frmE = id => pre(sm.frame, id) || (!!framed[id] && !pre(sm.kids, id)), txtE = id => eff(sm.text, !!textOpen[id], id), prpE = id => eff(sm.props, !propsShut[id], id);
+  // 普通卡的手动大小（_layout.json 的 w / h）：只在大小变了时才让 view 重算（拖动坐标不触发）
+  const sizeKey = useMemo(() => JSON.stringify(Object.entries(positions).filter(([k, v]) => !k.startsWith('@') && v?.w && v?.h).map(([k, v]) => [k, v.w, v.h])), [positions]);
+  const sizes = useMemo(() => new Map(JSON.parse(sizeKey).map(([k, w, h]) => [k, { w, h }])), [sizeKey]);
   const view = useMemo(() => {
     const v = projectView(graph, realScope, space ? null : new Set([...graph.nodes.keys()].filter(k => graph.nodes.get(k)?.children.length && frmE(k))));
     const lab = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.label]));
@@ -198,7 +201,7 @@ export function Shell({ name, Canvas }) {
         props: prpE(n.id) ? cardProps(wsData?.nodes[n.id]?.meta) : [], propN: cardProps(wsData?.nodes[n.id]?.meta).length,
         vec: getMeta(n.id)?.vec ? parseVec(getMeta(n.id).vec) : null, vecAxes: pAxes,
         spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
-        picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id], body: wsData?.nodes[n.id]?.body || '', file: wsData?.nodes[n.id]?.meta?.file || null, ui: isUi(wsData?.nodes[n.id]?.meta), tint: +(wsData?.nodes[n.id]?.meta?.tint) || 0, uiW: uiSize(wsData?.nodes[n.id]?.meta).w, uiH: uiSize(wsData?.nodes[n.id]?.meta).h, ref: wsData?.nodes[n.id]?.meta?.ref || null, refMissing: !!wsData?.nodes[n.id]?.meta?.ref && !graph.nodes.has(String(wsData.nodes[n.id].meta.ref)), textOpen: txtE(n.id),
+        picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id], body: wsData?.nodes[n.id]?.body || '', file: wsData?.nodes[n.id]?.meta?.file || null, sw: sizes.get(n.id)?.w || 0, sh: sizes.get(n.id)?.h || 0, ui: isUi(wsData?.nodes[n.id]?.meta), tint: +(wsData?.nodes[n.id]?.meta?.tint) || 0, uiW: uiSize(wsData?.nodes[n.id]?.meta).w, uiH: uiSize(wsData?.nodes[n.id]?.meta).h, ref: wsData?.nodes[n.id]?.meta?.ref || null, refMissing: !!wsData?.nodes[n.id]?.meta?.ref && !graph.nodes.has(String(wsData.nodes[n.id].meta.ref)), textOpen: txtE(n.id),
         open: expE(n.id) && n.children.length > 0 && !v.parentOf.has(n.id) && !(frmE(n.id) && !space), renaming: canvasRename === n.id,
         framed: !space && frmE(n.id) && n.children.length > 0, seeDeep: sm.frame === 'deep', // 本页开着 Shift+1 递进预览（画布据此让 UI 框里的子图超出、不裁）
         tempFrame: !space && frmE(n.id) && !framed[n.id] && n.children.length > 0, // 只是「看」临时展开的子图：不挪别的卡，也不存坐标
@@ -209,7 +212,7 @@ export function Shell({ name, Canvas }) {
       // 线 = 出发节点的颜色；kind 是「离散」→ 虚线（聚合的边要每条都离散才虚）
       edges: v.edges.filter(e => pm !== 'hide' || [e.from, e.to].every(x => !x.startsWith('@portal:') || keepPortal.has(x))).map(e => ({ ...e, fadedPortal: pm === 'fade' && [e.from, e.to].some(x => x.startsWith('@portal:') && !keepPortal.has(x)), text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e), color: colOf(e.from), dropped: [e.from, e.to].some(x => isDropped(graph, x.startsWith('@portal:') ? x.slice(8) : x)), dashed: e.raw.every(r => DISCRETE.test(kind.get(r) || '')), mod: e.raw.every(r => MOD.test(kind.get(r) || '')) })),
     };
-  }, [graph, realScope, wsData, expanded, picFold, textOpen, localPicw, space, getMeta, colors, patterns, canvasRename, framed, portalModes, selected, propsShut, seeModes]);
+  }, [graph, realScope, wsData, expanded, picFold, textOpen, localPicw, space, getMeta, colors, patterns, canvasRename, framed, portalModes, selected, propsShut, seeModes, sizes]);
   // >v<🖼️图片-卡片显示-节点的 _pics_名字/ 里所有图（旧版 frontmatter img: 也认）
   const images = useMemo(() => {
     if (local) return localImages;
@@ -408,7 +411,7 @@ export function Shell({ name, Canvas }) {
     if (e.restore?.length) await api('/restore', { method: 'POST', body: JSON.stringify({ pairs: e.restore }) }).then(r => { h.lost = e.restore.length - (r.restored?.length || 0); }).catch(err => setSaveState('❌ 撤销删除失败：' + err.message));
     h.applying = e.text !== lastSaved.current;
     setText(e.text);
-    const diff = Object.fromEntries(Object.entries(e.positions).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(c.positions[k])));
+    const diff = Object.fromEntries(Object.entries(e.positions).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(c.positions[k])).map(([k, v]) => [k, { w: null, h: null, ...v }])); // 没有 w / h = 回到自动：服务端按键合并，要明说 null
     if (Object.keys(diff).length) {
       setPositions(p => ({ ...p, ...diff }));
       api('/layout', { method: 'PUT', body: JSON.stringify({ positions: diff }) }).catch(() => {});
@@ -1124,6 +1127,8 @@ export function Shell({ name, Canvas }) {
     return () => { window.removeEventListener('dragover', no); window.removeEventListener('drop', no); };
   }, []);
   cardActions.resizeLoose = (id, w) => move({ [id]: { w: Math.round(Math.max(60, Math.min(2400, w))) } });
+  // 👤 2026-10-12 普通节点手动大小：存 _layout.json（和坐标一样是「摆放」，不是设计数据）；w = null → 回到自动
+  cardActions.resizeCard = (id, w, h) => move({ [id]: w ? { w: Math.round(Math.max(60, w)), h: Math.round(Math.max(28, h)) } : { w: null, h: null } });
   cardActions.resizeUi = (id, w, h) => { w = Math.round(Math.max(40, Math.min(4000, w))); h = Math.round(Math.max(30, Math.min(4000, h))); if (mode === 'ws') saveMeta(id, { w: String(w), h: String(h) }); };
   cardActions.foldPics = id => setPicFold(f => ({ ...f, [id]: !f[id] }));
   cardActions.toggleProps = id => menuActions.expToggle(id, 'props');
@@ -1361,7 +1366,7 @@ export function nodeDim(id, view, selected) {
 }
 // 卡片上的交互回调（外壳每次渲染时填好；画布组件不用逐层传）
 // 画布右下角的导航 / 选择速查（H 开关）。只放画布上随时要用、按钮上看不到的
-const KEY_HUD = [['F', '看全局 / 回去'], ['W A S D', '选卡'], ['Shift+W A S D', '只本层'], ['Alt+W / S', '上一层 / 进去'], ['Alt+A / D', '后退 / 前进'], ['Alt(Shift)+← →', '扩选'], ['(Shift) ← → ↑ ↓', '挪卡'], ['Ctrl(Alt)+← → ↑ ↓', 'UI 框大小'], ['R / T', '改名 / 建子节点'], ['E', '右键菜单']];
+const KEY_HUD = [['F', '看全局 / 回去'], ['W A S D', '选卡'], ['Shift+W A S D', '只本层'], ['Alt+W / S', '上一层 / 进去'], ['Alt+A / D', '后退 / 前进'], ['Alt(Shift)+← →', '扩选'], ['(Shift) ← → ↑ ↓', '挪卡'], ['Ctrl(Alt)+← → ↑ ↓', '卡片大小'], ['R / T', '改名 / 建子节点'], ['E', '右键菜单']];
 const NUDGE = { step: 8, fast: 4, delay: 200, interval: 100 }; // 和 core/settings.js 的 nudge 默认值一致
 export const cardActions = { toggle: () => {}, openChild: () => {}, foldPics: () => {}, resizePics: () => {}, nudge: { ...NUDGE } };
 // pointerdown 也要拦住，否则 React Flow 会把它当成选中或拖动的开始
@@ -1393,9 +1398,20 @@ export function NodeCard({ node, img, dim, isSel }) {
     const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); cardActions.resizePics(node.id, w); };
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
   };
+  // 拖右下角改卡片大小（👤 2026-10-12）：改过就固定，内容超出 = 裁掉，选中后滚轮滚卡片里面；双击右下角 = 回到自动
+  const startCardResize = e => {
+    e.stopPropagation(); e.preventDefault();
+    const card = e.currentTarget.closest('.card');
+    const w0 = card.offsetWidth, h0 = card.offsetHeight, z = card.getBoundingClientRect().width / w0 || 1, x0 = e.clientX, y0 = e.clientY;
+    let w = w0, h = h0, moved = false;
+    const mv = ev => { moved = true; w = Math.max(60, w0 + (ev.clientX - x0) / z); h = Math.max(28, h0 + (ev.clientY - y0) / z); Object.assign(card.style, { width: w + 'px', height: h + 'px', maxWidth: 'none' }); };
+    const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); if (moved) cardActions.resizeCard(node.id, w, h); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+  };
+  const sized = node.sw > 0;
   return (
-    <div className={'card' + (node.ref ? ' refcard' : '') + (node.pattern ? ' pat-' + node.pattern : '') + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (showPics ? ' hasimg' : '') + (node.status ? ' s-' + node.status : '') + (node.dropped ? ' dropped' : '')}
-      style={{ ...(node.color ? { '--c': node.color } : {}), ...(showPics && node.picw ? { width: node.picw, maxWidth: 'none' } : node.textOpen && node.body?.trim() ? { width: 'max-content', maxWidth: 420 } : {}) }}>
+    <div className={'card' + (sized ? ' sized' + (isSel ? ' nowheel' : '') : '') + (node.ref ? ' refcard' : '') + (node.pattern ? ' pat-' + node.pattern : '') + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (showPics ? ' hasimg' : '') + (node.status ? ' s-' + node.status : '') + (node.dropped ? ' dropped' : '')}
+      style={{ ...(node.color ? { '--c': node.color } : {}), ...(sized ? { width: node.sw, height: node.sh, maxWidth: 'none' } : showPics && node.picw ? { width: node.picw, maxWidth: 'none' } : node.textOpen && node.body?.trim() ? { width: 'max-content', maxWidth: 420 } : {}) }}>
       <div className="title">{node.status && <span className="st">{STATUS_ICON[node.status]}</span>}{node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
         {pics && <span className="picbadge" title={node.foldPics ? '显示图片' : '收起图片'} onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.foldPics(node.id); }}>🖼{img.length > 1 ? img.length : ''}</span>}
@@ -1421,6 +1437,8 @@ export function NodeCard({ node, img, dim, isSel }) {
         </li>))}</ul>}
       {showPics && <div className={'pics n' + Math.min(img.length, 3)}>{img.map((u, i) => <img key={u} src={u} className="nodrag" draggable title="双击放大；拖到空白 = 变散图，拖到别的卡 = 换给它" onDragStart={e => { const p = new URL(u, location.href).searchParams.get('p'); e.dataTransfer.setData(DRAG_PIC, JSON.stringify({ path: p, from: node.id })); e.dataTransfer.effectAllowed = 'move'; }} onDoubleClick={e => { e.stopPropagation(); cardActions.lightbox?.(img, i); }} />)}
         <span className="picgrip nodrag" title="拖动调整大小" onPointerDown={startResize} onMouseDown={stop} onClick={stop} /></div>}
+      {!showPics && <span className="cardgrip nodrag" title={sized ? '拖动改大小；双击 = 回到自动大小' : '拖动改大小（改过就固定，不再跟内容走）'} onPointerDown={startCardResize} onMouseDown={stop} onClick={stop}
+        onDoubleClick={e => { e.stopPropagation(); if (sized) cardActions.resizeCard(node.id, null); }} />}
     </div>
   );
 }

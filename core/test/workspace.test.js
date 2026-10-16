@@ -41,11 +41,14 @@ try {
   ok(parseFrontmatter(readFileSync(B('游戏AI/感知/场景大局观.md'), 'utf8')).meta.status === 'partial', '状态改动写回');
 
   // 改名：同父下 1:1 → 搬文件，正文跟着走；布局跟着走
-  saveLayout(root, { '游戏AI/感知/敌方观察': { x: 11, y: 22 } });
+  saveLayout(root, { '游戏AI/感知/敌方观察': { x: 11, y: 22, w: 260, h: 140 } }); // 👤 2026-10-12 普通节点手动大小也在 _layout.json
   saveOutline(root, workspaceOutline(loadWorkspace(root)).replace('敌方观察 ->', '敌人观察 ->'));
   ok(!existsSync(f) && existsSync(B('游戏AI/感知/敌人观察.md')), '改名 = 搬文件');
   ok(readFileSync(B('游戏AI/感知/敌人观察.md'), 'utf8').includes('人写的说明'), '改名后正文还在');
   ok(loadWorkspace(root).layout['游戏AI/感知/敌人观察']?.x === 11, '改名后坐标跟着走');
+  ok(loadWorkspace(root).layout['游戏AI/感知/敌人观察']?.h === 140, '手动大小（w / h）跟着走');
+  saveLayout(root, { '游戏AI/感知/敌人观察': { w: null, h: null } });
+  ok(loadWorkspace(root).layout['游戏AI/感知/敌人观察']?.x === 11 && !('w' in loadWorkspace(root).layout['游戏AI/感知/敌人观察']), 'w / h 传 null = 回到自动（坐标不动）');
   ok(!('游戏AI/感知/敌方观察' in loadWorkspace(root).layout), '改名后旧 id 的坐标不留');
   { // 删掉再写回（撤销删除 / 历史栏回去）→ 卡片回原位：删掉的节点坐标留着
     const before = workspaceOutline(loadWorkspace(root));

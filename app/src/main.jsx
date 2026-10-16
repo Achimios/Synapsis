@@ -336,7 +336,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   }, []);
   nodesRef.current = nodes;
   // >v<🎨画布-方向键微调（👤 2026-10-12 打字时双手不离键盘）：方向键 = 挪选中的卡（多选一起），Shift = × fast；
-  //   Ctrl+方向键 = UI 框的右边 / 下边往箭头方向走，Ctrl+Alt = 左边 / 上边（箭头 = 边移动的方向；普通卡大小跟内容走，不管）。
+  //   Ctrl+方向键 = 卡片（UI 框 / 普通卡）的右边 / 下边往箭头方向走，Ctrl+Alt = 左边 / 上边（箭头 = 边移动的方向；普通卡改过就固定大小，👤 2026-10-12）。
   //   按下先走一步，停 delay 毫秒后每 interval 毫秒一步（不用系统的按键重复）；几个方向键一起按 = 斜着走；中途按 / 松 Shift、Ctrl 立刻生效。
   //   全松开才存：一次按住 = 一次挪动（Ctrl+Z 一步；往左 / 上撑大 = 改大小 + 挪位置两步）。参数在 ⚙ 设置（settings.yaml 的 nudge）
   const hold = useRef({ keys: new Set(), base: new Map(), acc: new Map(), pend: new Map(), timer: null, mods: {} });
@@ -347,7 +347,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
       if (!a && H.pend.has(n.id)) { const p = H.pend.get(n.id); if (n.data?.node?.uiW === p.w && n.data?.node?.uiH === p.h) { H.pend.delete(n.id); return n; } a = p.a; b = p.b; } // 存了大小、服务器还没回：先按新的画，免得闪回去
       if (!a || !b) return n;
       const out = { ...n, position: { x: b.pos.x + a.x * b.z, y: b.pos.y + a.y * b.z } };
-      if (b.ui && (a.w || a.h)) { const w = b.w + a.w, h = b.h + a.h; out.style = { ...n.style, width: w * b.z, height: h * b.z }; out.data = { ...n.data, node: { ...n.data.node, uiW: w, uiH: h } }; }
+      if (b.sizable && (a.w || a.h)) { const w = b.w + a.w, h = b.h + a.h; out.style = { ...n.style, width: w * b.z, height: h * b.z }; out.data = { ...n.data, node: { ...n.data.node, ...(b.ui ? { uiW: w, uiH: h } : { sw: w, sh: h }) } }; }
       return out;
     });
   };
@@ -363,7 +363,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
         for (const c of codes) {
           const [dx, dy] = DIR[c];
           if (!H.mods.ctrl) { a.x += dx * s; a.y += dy * s; continue; }
-          if (!b.ui) continue;
+          if (!b.sizable) continue;
           // 箭头 = 边往哪边走。Ctrl 动右边 / 下边（大部分时候只要这两边），Ctrl+Alt 动左边 / 上边（👤 2026-10-12）
           const near = H.mods.alt, d = (dx || dy) * s * (near ? -1 : 1); // 动左 / 上边：往右 / 下走 = 变小，位置跟着挪
           if (dx) { const w0 = b.w + a.w, w1 = Math.max(40, w0 + d); a.w += w1 - w0; if (near) a.x -= w1 - w0; }
@@ -381,6 +381,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
       for (const [id, a] of H.acc) {
         const b = H.base.get(id), n = cur.get(id); if (!b || !n) continue;
         if (a.x || a.y) moves[id] = tl(id, n.position);
+        if ((a.w || a.h) && !b.ui) { moves[id] = { ...(moves[id] || tl(id, n.position)), w: Math.round(b.w + a.w), h: Math.round(b.h + a.h) }; continue; } // 普通卡：大小和坐标一起进 _layout.json（一步撤销）
         if (a.w || a.h) { H.pend.set(id, { w: Math.round(Math.max(40, b.w + a.w)), h: Math.round(Math.max(30, b.h + a.h)), a: { ...a }, b }); cardActions.resizeUi?.(id, b.w + a.w, b.h + a.h); }
       }
       H.acc.clear(); H.base.clear();
@@ -398,7 +399,10 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
         const { multi: m, selected: sl } = nudgeLive.current;
         const ids = (m.length ? m : sl ? [sl] : []).filter(id => id !== '@axes');
         H.base.clear();
-        for (const n of nodesRef.current) if (ids.includes(n.id) && n.draggable !== false) H.base.set(n.id, { pos: { ...n.position }, z: n.data?.zoom || 1, ui: !!n.data?.node?.ui, w: n.data?.node?.uiW || 0, h: n.data?.node?.uiH || 0 });
+        for (const n of nodesRef.current) if (ids.includes(n.id) && n.draggable !== false) {
+          const nd = n.data?.node, ui = !!nd?.ui, z = n.data?.zoom || 1, card = nd && n.type === 's' && !nd.framed; // 普通卡（展开成框的分组跟着子节点走，不算）
+          H.base.set(n.id, { pos: { ...n.position }, z, ui, sizable: ui || card, w: ui ? nd.uiW || 0 : nd?.sw || (n.measured?.width || 0) / z, h: ui ? nd.uiH || 0 : nd?.sh || (n.measured?.height || 0) / z });
+        }
         if (!H.base.size) return;
       }
       H.keys.add(e.code);
