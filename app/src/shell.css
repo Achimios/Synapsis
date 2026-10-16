@@ -470,7 +470,7 @@ button.patsw { width: 26px; height: 18px; background-color: color-mix(in srgb, v
 
 /* 大纲树（👤 2026-10-08，参照 Obsidian 彩色文件夹）：第一层 = 彩色标题条；下面每层一根该组颜色的竖向引导线 */
 .orow { line-height: 22px; background-image: repeating-linear-gradient(90deg, transparent 0 9px, color-mix(in srgb, var(--g) 50%, transparent) 9px 10px, transparent 10px 14px); background-size: calc(var(--d) * 14px) 100%; background-repeat: no-repeat; background-position: 4px 0; }
-.orow.top { margin: 5px 5px 1px; border-radius: 5px; background-color: color-mix(in srgb, var(--g) 30%, var(--panel)); font-size: 13.5px; font-weight: 600; line-height: 27px; color: var(--strong); }
+.orow.top { margin: 5px 5px 1px; border-radius: 5px; background-color: color-mix(in srgb, var(--g) 30%, var(--panel)); font-size: 12.5px; font-weight: 600; line-height: 25px; color: var(--strong); }
 .orow.top:hover { background-color: color-mix(in srgb, var(--g) 42%, var(--panel)); }
 .orow.top.sel { background-color: color-mix(in srgb, var(--g) 50%, var(--panel)); box-shadow: 0 0 0 2px var(--accent); }
 .orow.top .ost { font-size: 11px; }
@@ -724,3 +724,6 @@ pre.raw .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shado
 .voicetab .vpersona { white-space: pre-wrap; font-size: 12.5px; line-height: 1.55; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; overflow: auto; min-height: 0; flex: 1; }
 .aigroup .provider { border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; margin-bottom: 6px; }
 .sumline .sumedit { margin-top: 4px; font-size: 11px; } .sumline .sumeditor textarea { width: 100%; min-height: 160px; box-sizing: border-box; resize: vertical; font: 12px/1.5 'Microsoft YaHei', system-ui, sans-serif; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 6px; } .sumline .sumeditor .row { display: flex; gap: 6px; margin-top: 4px; }
+/* AI 框里面单独缩放（Ctrl+滚轮，👤 2026-10-16）：只缩放标题栏以下的内容，框的大小 / 位置不变 */
+.agentbox > :not(.bar):not(.edge) { zoom: var(--abz, 1); }
+.agentbox .notelink { cursor: pointer; text-decoration: underline dotted; }
