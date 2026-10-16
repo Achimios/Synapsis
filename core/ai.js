@@ -86,7 +86,9 @@ async function onlineModels(cfg) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         // 聊天下拉只要对话模型（xAI 列表里混着图片 / 视频）
         // 👤 2026-10-16 新的在上面：按发布时间（created）倒序；没有 created 就按名字倒序（数字按大小比）
-        onlineCache[p] = { t: Date.now(), list: (await r.json()).data.filter(m => !/imagine|image|video|embed|tts|audio/i.test(m.id))
+        // 👤 2026-10-16「过早的可以不显示」：发布超过半年的不列（没有发布时间的照列；设置里正选着的旧模型界面会单独补一行）
+        const old = Date.now() / 1000 - 183 * 86400;
+        onlineCache[p] = { t: Date.now(), list: (await r.json()).data.filter(m => !/imagine|image|video|embed|tts|audio/i.test(m.id) && !(m.created && m.created < old))
           .sort((a, b) => (b.created || 0) - (a.created || 0) || b.id.localeCompare(a.id, 'en', { numeric: true })).map(m => { const ctx = m.context_window || (p === 'xai' && XAI_CTX.find(([re]) => re.test(m.id))?.[1]) || null; return { id: p + ':' + m.id, name: m.name || m.id, embed: false, loaded: true, online: true, ctx, maxCtx: ctx }; }) };
       } catch { continue; }
     }

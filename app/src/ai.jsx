@@ -174,7 +174,7 @@ function OnlineTab({ api, status, cfg, save, onStatus }) {
               <button disabled={!(keys[p] || '').trim()} onClick={() => putKey(p, keys[p].trim())}>保存</button>{has && <button onClick={() => putKey(p, '')}>删除</button>}</span></label>
         </div>; })}
       <label>在线模型<select value={curKey} onChange={e => save({ onlineModel: e.target.value })}>
-        {!opts.some(x => modelKey(x.id) === curKey) && <option value={curKey}>{curKey}（没连上）</option>}
+        {!opts.some(x => modelKey(x.id) === curKey) && <option value={curKey}>{curKey}（{list.length ? '旧模型 / 不在列表' : '没连上'}）</option>}
         {PROVIDERS.map(([p, name]) => { const ms = opts.filter(x => x.id.startsWith(p + ':')); return ms.length ? <optgroup key={p} label={name}>{ms.map(x => <option key={x.id} value={modelKey(x.id)}>{x.name}{/flash/i.test(x.name) ? '（快、便宜，默认）' : ''}</option>)}</optgroup> : null; })}
       </select></label>
       {(isDs || grokEff) && <label>思考强度<select value={cfg.onlineEffort || 'off'} onChange={e => save({ onlineEffort: e.target.value })}>{Object.entries(grokEff ? EFFORT_GROK : EFFORT_ZH).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></label>}
