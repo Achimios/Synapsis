@@ -21,6 +21,7 @@ export function CtxMeter({ ctx, usage }) {
     `对话模型：${ctx.model || '?'}`,
     cap ? `上下文容量：${cap} token（${/^\w+:/.test(ctx.model || '') ? '在线模型' : 'LM Studio 加载时设的'}；这个模型最多 ${ctx.maxCtx || '?'}）` : `模型还没加载，容量未知（最多 ${ctx.maxCtx || '?'}）`,
     usage?.total_tokens ? `上一次实际用了：提示 ${usage.prompt_tokens} + 回答 ${usage.completion_tokens} = ${usage.total_tokens}` : '还没问过 → 下面是估算',
+    usage?.prompt_cache_hit_tokens != null && usage.prompt_tokens ? `其中缓存命中：${usage.prompt_cache_hit_tokens} / ${usage.prompt_tokens}（${Math.round(usage.prompt_cache_hit_tokens / usage.prompt_tokens * 100)}%，命中的部分便宜、也更快）` : '',
     ...(ctx.estimate ? Object.entries(ctx.estimate.parts).map(([k, v]) => `  ≈ ${k} ${v}`) : []),
     cap && cap < 16000 ? '嫌小：LM Studio 里卸载模型 → 加载时把 Context Length 调大（越大越吃显存）' : '',
   ].filter(Boolean).join('\n');
@@ -409,7 +410,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
     api('/ai/agent', { method: 'POST', body: JSON.stringify({ scope, selected, text: t, images: im, boxes: boxes?.() || {}, voice: voiceOn }) })
       .then(d => {
         setText(''); setImgs([]); setBusy(''); setUsage(d.usage?.total_tokens ? d.usage : null); if (d.compacting) setCompacting(true);
-        setTurns(ts => [...ts, { t: new Date().toISOString(), user: t || '（看图）', ...(im.length ? { imgs: im } : {}), say: d.say, done: [], know: d.knowledge, memRead: d.memRead, looked: d.looked, ...(d.voice ? { voice: d.voice.text } : {}) }]); if (d.spoke && !d.spoke.ok) setNote('🔊 没念出来：' + d.spoke.why); // imgs 在这里是图本身（这次会话里还能点开看），刷新后只剩张数
+        setTurns(ts => [...ts, { t: new Date().toISOString(), user: t || '（看图）', ...(im.length ? { imgs: im } : {}), say: d.say, done: [], know: d.knowledge, memRead: d.memRead, looked: d.looked, ...(d.voice ? { voice: d.voice.text } : {}), ...(d.usage?.prompt_cache_hit_tokens != null && d.usage.prompt_tokens ? { cache: [d.usage.prompt_cache_hit_tokens, d.usage.prompt_tokens] } : {}) }]); if (d.spoke && !d.spoke.ok) setNote('🔊 没念出来：' + d.spoke.why); // imgs 在这里是图本身（这次会话里还能点开看），刷新后只剩张数
         const good = d.actions.filter(a => a.ok);
         if (d.actions.length) { setPlan(d); onPreview([...new Set(good.flatMap(a => a.ids || [a.id, a.from, a.to].filter(Boolean)))]); }
       })
@@ -458,6 +459,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
             {t.know?.length > 0 && !t.done?.length && <div className="know" title={t.know.join('\n')}>📖 参考了：{[...new Set(t.know.map(k => k.split('·')[0]))].join('、')}（{t.know.length} 段）</div>}
             {t.memRead?.length > 0 && <div className="know">🧠 读了记忆：{t.memRead.join('、')}</div>}
             {t.looked?.length > 0 && <div className="know">🔎 查看了：{t.looked.join('、')}</div>}
+            {t.cache && <div className="know" title="DeepSeek 上下文缓存：请求开头和之前完全一样的部分按便宜价算、也更快。开关 📢、换优先角色、压缩 / 清空记忆会让下一轮命中掉一截">⚡ 缓存命中 {t.cache[0]} / {t.cache[1]}（{Math.round(t.cache[0] / t.cache[1] * 100)}%）</div>}
             {t.done?.length > 0 && <ul className="done">{t.done.map((d, j) => <li key={j}>✓ {d}</li>)}</ul>}
             {t.warnings?.length > 0 && <div className="know">⚠ 执行后检查：{t.warnings.join('；')}</div>}
             {mySum?.upto && t.t === mySum.upto && <details className="sumline"><summary>🗜 以上已压缩成摘要（模型只看摘要，原文留着给你看）</summary><MdLite text={mySum.text} /></details>}
