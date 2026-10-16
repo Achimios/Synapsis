@@ -1218,6 +1218,12 @@ for (const kind of ['reactflow']) {
   ok((await page.$$('aside.side .swatches.sat button')).length === 5, '右栏属性里也有饱和度一行');
   await page.click('aside.side .swatches.sat button[title^="25%"]'); await sleep(1200);
   ok(/sat: 25/.test(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8')), '右栏点 25% → sat: 25');
+  // 👤 2026-10-16 右键「编辑正文」：卡片里出编辑框、光标在里面（WASD 不动画布），Esc 存好、正文展开着
+  await page.click('.card .lab:text-is("甲")', { button: 'right' }); await sleep(300);
+  await page.click('.ctx .mi:has-text("编辑正文")'); await sleep(400);
+  ok(await page.evaluate(() => document.activeElement?.classList.contains('cardedit')), '编辑正文 → 光标在卡片里的编辑框');
+  await page.keyboard.type('卡里写 **粗** wasd'); await page.keyboard.press('Escape'); await sleep(1200);
+  ok(/卡里写 \*\*粗\*\* wasd/.test(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8')) && !(await page.$('.cardedit')) && !!(await page.$('.card:has(.lab:text-is("甲")) .cardtext b')), 'Esc → 正文存进文件，编辑框收起，卡片里照样展开（渲染成粗体）');
   // 新建 UI 框
   await page.mouse.click(700, 600, { button: 'right' }); await sleep(300);
   await page.click('.ctx .mi:has-text("新建 UI 框")'); await sleep(1500);

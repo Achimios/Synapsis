@@ -114,6 +114,7 @@ export function Shell({ name, Canvas }) {
   useEffect(() => { document.documentElement.dataset.theme = theme; save('syn.theme', theme); }, [theme]);
   const [localPicw, setLocalPicw] = useState(() => load('syn.pw', {}));
   const [renaming, setRenaming] = useState(null); // 大纲树里正在改名的节点
+  const [bodyEdit, setBodyEdit] = useState(null); // 画布卡片里正在改正文的节点（👤 2026-10-16 右键「编辑正文」）
   const [canvasRename, setCanvasRename] = useState(null); // 画布卡片上正在改名的节点（👤 2026-10-08：跳到左栏改「太视觉跳跃」）
   const [localLoose, setLocalLoose] = useState(() => load('syn.loose', {})); // 样例模式的散图：scope -> [{id, url}]
 
@@ -202,7 +203,7 @@ export function Shell({ name, Canvas }) {
         vec: getMeta(n.id)?.vec ? parseVec(getMeta(n.id).vec) : null, vecAxes: pAxes,
         spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
         picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id], body: wsData?.nodes[n.id]?.body || '', file: wsData?.nodes[n.id]?.meta?.file || null, sw: sizes.get(n.id)?.w || 0, sh: sizes.get(n.id)?.h || 0, ui: isUi(wsData?.nodes[n.id]?.meta), tint: +(wsData?.nodes[n.id]?.meta?.tint) || 0, uiW: uiSize(wsData?.nodes[n.id]?.meta).w, uiH: uiSize(wsData?.nodes[n.id]?.meta).h, ref: wsData?.nodes[n.id]?.meta?.ref || null, refMissing: !!wsData?.nodes[n.id]?.meta?.ref && !graph.nodes.has(String(wsData.nodes[n.id].meta.ref)), textOpen: txtE(n.id),
-        open: expE(n.id) && n.children.length > 0 && !v.parentOf.has(n.id) && !(frmE(n.id) && !space), renaming: canvasRename === n.id,
+        open: expE(n.id) && n.children.length > 0 && !v.parentOf.has(n.id) && !(frmE(n.id) && !space), renaming: canvasRename === n.id, editing: bodyEdit === n.id,
         framed: !space && frmE(n.id) && n.children.length > 0, seeDeep: sm.frame === 'deep', // 本页开着 Shift+1 递进预览（画布据此让 UI 框里的子图超出、不裁）
         tempFrame: !space && frmE(n.id) && !framed[n.id] && n.children.length > 0, // 只是「看」临时展开的子图：不挪别的卡，也不存坐标
         frame: v.parentOf.get(n.id) ?? null,
@@ -212,7 +213,7 @@ export function Shell({ name, Canvas }) {
       // 线 = 出发节点的颜色；kind 是「离散」→ 虚线（聚合的边要每条都离散才虚）
       edges: v.edges.filter(e => pm !== 'hide' || [e.from, e.to].every(x => !x.startsWith('@portal:') || keepPortal.has(x))).map(e => ({ ...e, fadedPortal: pm === 'fade' && [e.from, e.to].some(x => x.startsWith('@portal:') && !keepPortal.has(x)), text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e), color: colOf(e.from), dropped: [e.from, e.to].some(x => isDropped(graph, x.startsWith('@portal:') ? x.slice(8) : x)), dashed: e.raw.every(r => DISCRETE.test(kind.get(r) || '')), mod: e.raw.every(r => MOD.test(kind.get(r) || '')) })),
     };
-  }, [graph, realScope, wsData, expanded, picFold, textOpen, localPicw, space, getMeta, colors, patterns, canvasRename, framed, portalModes, selected, propsShut, seeModes, sizes]);
+  }, [graph, realScope, wsData, expanded, picFold, textOpen, localPicw, space, getMeta, colors, patterns, canvasRename, bodyEdit, framed, portalModes, selected, propsShut, seeModes, sizes]);
   // >v<🖼️图片-卡片显示-节点的 _pics_名字/ 里所有图（旧版 frontmatter img: 也认）
   const images = useMemo(() => {
     if (local) return localImages;
@@ -555,6 +556,7 @@ export function Shell({ name, Canvas }) {
   const menuActions = {
     props: id => { setSelected(id); setPropsOpen(true); setPropsTab('info'); },
     rename: id => focusLabel(id),
+    ...(mode === 'ws' ? { editBody: id => cardActions.editBody(id) } : {}),
     status: setStatus,
     addChild: id => { setSelected(id); const r = withNode(graph, id, null); pendingRename.current = r.id; setText(r.text); if (uiId(id)) setFramed(x => ({ ...x, [id]: true })); else setExpanded(x => ({ ...x, [id]: true })); }, // UI 框加子节点 → 展开成子图（不是子列表）
     addSibling: id => { const r = withNode(graph, graph.nodes.get(id).parent, id); pendingRename.current = r.id; setText(r.text); setSelected(r.id); },
@@ -1140,6 +1142,9 @@ export function Shell({ name, Canvas }) {
   cardActions.resizeUi = (id, w, h) => { w = Math.round(Math.max(40, Math.min(4000, w))); h = Math.round(Math.max(30, Math.min(4000, h))); if (mode === 'ws') saveMeta(id, { w: String(w), h: String(h) }); };
   cardActions.foldPics = id => setPicFold(f => ({ ...f, [id]: !f[id] }));
   cardActions.toggleProps = id => menuActions.expToggle(id, 'props');
+  // 👤 2026-10-16 画布里改正文：自动展开正文（手动调过的大小不动），光标进去；Esc / 点别处 = 存好收起编辑（正文照样展开着）
+  cardActions.editBody = id => { setTextOpen(f => f[id] ? f : { ...f, [id]: true }); setBodyEdit(id); };
+  cardActions.endBody = (id, body) => { setBodyEdit(b => b === id ? null : b); saveBody(id, body); };
   cardActions.toggleText = id => setTextOpen(f => { const g = { ...f }; if (g[id]) delete g[id]; else g[id] = true; return g; });
   cardActions.resizePics = (id, w) => {
     w = Math.round(Math.max(80, Math.min(1600, w)));
@@ -1394,6 +1399,16 @@ function RenameInput({ id, label }) {
     onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter' || (e.altKey && e.code === 'KeyR')) { e.preventDefault(); done.current = true; cardActions.commitRename(id, e.target.value); } else if (e.key === 'Escape') { done.current = true; cardActions.cancelRename(); } }}
     onBlur={e => { if (!done.current) cardActions.commitRename(id, e.target.value); }} />;
 }
+// 卡片里改正文：高度跟着字长（手动大小的卡就在卡里滚）；Esc / 失焦 = 存
+function BodyEdit({ id, body }) {
+  const ref = useRef(null), done = useRef(false);
+  const fit = () => { const t = ref.current; if (t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 2 + 'px'; } };
+  useEffect(() => { const t = ref.current; if (!t) return; fit(); t.focus(); t.setSelectionRange(t.value.length, t.value.length); }, []);
+  const end = () => { if (done.current) return; done.current = true; cardActions.endBody(id, ref.current.value); };
+  return <textarea ref={ref} className="cardedit nodrag nowheel" defaultValue={body} placeholder="正文（md）…  Esc 存好退出" spellCheck={false}
+    onInput={fit} onBlur={end} onPointerDown={stop} onMouseDown={stop} onDoubleClick={stop}
+    onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); end(); } }} />;
+}
 export function NodeCard({ node, img, dim, isSel }) {
   const pics = img?.length > 0, showPics = pics && !node.foldPics;
   // 拖图片右下角调宽度：屏幕位移 ÷ 当前缩放（从卡片实际尺寸反推，不依赖 React Flow 的 store）
@@ -1419,7 +1434,7 @@ export function NodeCard({ node, img, dim, isSel }) {
   const sized = node.sw > 0;
   return (
     <div className={'card' + (sized ? ' sized' + (isSel ? ' nowheel' : '') : '') + (node.ref ? ' refcard' : '') + (node.pattern ? ' pat-' + node.pattern : '') + (dim ? ' dim' : '') + (isSel ? ' sel' : '') + (showPics ? ' hasimg' : '') + (node.status ? ' s-' + node.status : '') + (node.dropped ? ' dropped' : '')}
-      style={{ ...(node.color ? { '--c': node.color } : {}), ...(node.tint ? { '--card-tint': node.tint + '%' } : {}), ...(sized ? { width: node.sw, height: node.sh, maxWidth: 'none' } : showPics && node.picw ? { width: node.picw, maxWidth: 'none' } : node.textOpen && node.body?.trim() ? { width: 'max-content', maxWidth: 420 } : {}) }}>
+      style={{ ...(node.color ? { '--c': node.color } : {}), ...(node.tint ? { '--card-tint': node.tint + '%' } : {}), ...(sized ? { width: node.sw, height: node.sh, maxWidth: 'none' } : showPics && node.picw ? { width: node.picw, maxWidth: 'none' } : node.editing ? { width: 340, maxWidth: 'none' } : node.textOpen && node.body?.trim() ? { width: 'max-content', maxWidth: 420 } : {}) }}>
       <div className="title">{node.status && <span className="st">{STATUS_ICON[node.status]}</span>}{node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
         {pics && <span className="picbadge" title={node.foldPics ? '显示图片' : '收起图片'} onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.foldPics(node.id); }}>🖼{img.length > 1 ? img.length : ''}</span>}
@@ -1438,7 +1453,8 @@ export function NodeCard({ node, img, dim, isSel }) {
         {node.props.length > 4 && <div className="hint">… 还有 {node.props.length - 4} 条（Shift+Tab 看全部）</div>}</div>}
       {node.ref && <div className={'sub filesub refsub' + (node.refMissing ? ' miss' : '')} title={node.refMissing ? '指向的节点不见了：' + node.ref : '传送门：指向「' + node.ref + '」（双击跳过去）'}>↗ {node.ref}{node.refMissing ? '（没找到）' : ''}</div>}
       {node.file && <div className="sub filesub" title={'引用项目里的文件：' + node.file + '（双击打开）'}>📎 {node.file}</div>}
-      {node.textOpen && node.body?.trim() && <div className="cardtext nodrag nowheel" onDoubleClick={e => e.stopPropagation()}><MdLite text={node.body} /></div>}
+      {node.editing ? <BodyEdit id={node.id} body={node.body} />
+        : node.textOpen && node.body?.trim() && <div className="cardtext nodrag nowheel" onDoubleClick={e => e.stopPropagation()}><MdLite text={node.body} /></div>}
       {node.spaceAxes && <div className="axchips" title="空间节点：双击进去看成员的坐标投影">⊹ {node.spaceAxes.join(' · ')}</div>}
       {node.vec && <VecBars vec={node.vec} axes={node.vecAxes} />}
       {node.open && node.kids && <ul className="kidlist">{node.kids.map(k => (

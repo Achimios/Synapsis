@@ -95,6 +95,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       <div className="mh">{node.label}</div>
       {item('属性…', () => actions.props(node.id), { key: 'Shift+Tab' })}
       {item('重命名', () => actions.rename(node.id), { key: 'R' })}
+      {actions.editBody && !node.ref && item('编辑正文', () => actions.editBody(node.id))}
       {node.file && item('📎 打开引用的文件', () => actions.openProjectFile(node.file))}
       {node.ref && item('↗ 跳到它指的节点', () => actions.gotoRef(node.id))}
       {node.ui && item('▭ 复制 UI 布局', () => actions.copyUiLayout(node.id))}

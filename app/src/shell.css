@@ -83,6 +83,8 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .ctx .mi.sub:hover > .submenu, .ctx .mi.sub.open > .submenu { display: block; }
 .ctx .mi.kb { background: var(--selbg); box-shadow: inset 2px 0 0 var(--accent); } /* 键盘走到的那一项（E 弹出的菜单里 WASD） */
 .ctx .mi > button.kb, .ctx .mi > a.kb { outline: 3px solid var(--accent) !important; outline-offset: 2px !important; position: relative; z-index: 1; } /* 压过选中色块自己的白圈（👤 2026-10-12：被盖住看不见） */
+.card .cardedit { display: block; box-sizing: border-box; width: 100%; min-height: 4.5em; margin-top: 4px; resize: none; overflow: hidden; font: inherit; font-size: 12px; line-height: 1.5; color: var(--text); background: var(--bg); border: 1px solid var(--accent); border-radius: 4px; padding: 4px 6px; cursor: text; } /* 画布里改正文 */
+.card.sized .cardedit { overflow: auto; max-height: calc(100% - 2em); }
 .ctx .mi.sub > .submenu.looks { width: max-content; } /* 「外观 ▸」：饱和 / 不透 / 颜色 / 图案 一排排按钮，别被挤折行 */
 .ctx .mi.sub > .submenu.flip { left: auto; right: 100%; margin-left: 0; margin-right: 2px; }
 
