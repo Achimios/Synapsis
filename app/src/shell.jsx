@@ -1517,8 +1517,12 @@ export function UiCard({ node, dim, isSel }) {
     <div className={'card uibox' + (compact ? ' compact' : '') + (dim ? ' dim' : '') + (isSel ? ' sel' : '')} style={{ ...(node.tint ? { '--box-tint': node.tint + '%' } : {}), ...(compact ? {} : { width: node.uiW, height: node.uiH }), ...(node.color ? { '--c': node.color } : {}) }}>
       <div className="title">{node.renaming ? <RenameInput id={node.id} label={node.label} /> : <span className="lab">{node.label}</span>}
         <span className="uidim" title="宽 × 高（右下角拖着改）">{Math.round(node.uiW)}×{Math.round(node.uiH)}</span>
+        {node.propN > 0 && <span className={'propbadge' + (node.props?.length ? ' on' : '')} title={node.props?.length ? '收起框上的属性' : '展开属性（' + node.propN + ' 条）'} onPointerDown={stop} onMouseDown={stop}
+          onClick={e => { e.stopPropagation(); cardActions.toggleProps(node.id); }}>☰</span>} {/* 👤 2026-10-16 UI 框也能像普通卡一样展开手写的属性 */}
         {node.children.length > 0 && <span className="kids" title="展开子级列表（2）；双击钻进去" onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggle(node.id); }}>{node.open ? '▾' : '▸'} {node.children.length}</span>}
         {node.children.length > 0 && <span className="kids fr" title={node.framed ? '收起子图：里面的东西不画在框里' : '展开子图：里面的东西画在框里（位置 = 钻进去那一页的坐标）'} onPointerDown={stop} onMouseDown={stop} onClick={e => { e.stopPropagation(); cardActions.toggleFrame(node.id); }}>{node.framed ? '⊟' : '⊞'}</span>}</div>
+      {node.props?.length > 0 && <div className="props uiprops">{node.props.slice(0, 4).map(([k, v]) => <div key={k} title={k + ': ' + v}><span className="pk">{k}</span>{String(v)}</div>)}
+        {node.props.length > 4 && <div className="hint">… 还有 {node.props.length - 4} 条（Shift+Tab 看全部）</div>}</div>}
       {node.open && node.kids && <ul className="kidlist" style={{ margin: '2px 6px' }}>{node.kids.map(k => (
         <li key={k.id} data-nid={k.id} style={k.d ? { paddingLeft: 2 + k.d * 12 } : undefined} title="双击跳进去" onPointerDown={stop} onMouseDown={stop} onDoubleClick={e => { e.stopPropagation(); cardActions.openChild(k.id); }}>
           <span className="st">{k.status ? STATUS_ICON[k.status] : '·'}</span>{k.renaming ? <RenameInput id={k.id} label={k.label} /> : <span>{k.label}</span>}{k.n > 0 && <span className="kn">▸{k.n}</span>}
