@@ -291,10 +291,19 @@ for (const kind of ['reactflow']) {
   ok(await cc('兜底') === PALETTE.黄, '工作区词表（旧的 _配色.md 迁进 _词表.md）生效（兜底 → 黄）');
   const dash = await page.$$eval('.react-flow__edge', es => Object.fromEntries(es.map(e => [e.dataset.id, e.querySelector('.react-flow__edge-path').style.strokeDasharray])));
   ok(dash['游戏AI/行动=>游戏AI/感知'] && !dash['游戏AI/决策=>游戏AI/行动'], 'kind 离散 的边 = 虚线，其余实线 ' + JSON.stringify(dash));
-  await rclick('行动'); await page.hover('.ctx .mi.sub:has(> .looks)'); await page.click('.ctx .swatches button[title="粉"]'); await sleep(1500); // 👤 2026-10-16 颜色 / 图案 / 饱和 / 不透收进「外观 ▸」
+  await rclick('行动'); await page.click('.ctx .pages a:has-text("外观")'); await page.click('.ctx .swatches button[title="粉"]'); await sleep(1500); // 👤 2026-10-16 颜色 / 图案 / 饱和 / 不透收进「外观 ▸」
   ok(/^color: 粉$/m.test(nodeFile('游戏AI/行动/_node.md')) && await cc('行动') === PALETTE.粉, '右键点粉 → color: 粉 写进文件，卡片变粉');
-  await rclick('行动'); await page.hover('.ctx .mi.sub:has(> .looks)'); await page.click('.ctx .swatches button.auto'); await sleep(1500);
+  await rclick('行动'); await page.click('.ctx .pages a:has-text("外观")'); await page.click('.ctx .swatches button.auto'); await sleep(1500);
   ok(!nodeFile('游戏AI/行动/_node.md').includes('color:') && await cc('行动') === PALETTE.绿, '右键「自动」→ 删掉 color:，回到绿');
+  // 👤 2026-10-17 菜单一开就能用键盘：光标在页签行，D 翻到「外观」，S 进第一行
+  await page.keyboard.press('Escape'); await sleep(150); // 上一个菜单（点色块不关）还开着，盖在卡片上
+  await rclick('行动'); await sleep(200);
+  ok((await page.$eval('.ctx .pages a.kb', a => a.textContent).catch(() => '')) === '常用', '右键菜单一开，光标已经在页签行「常用」上（不用先按 WASD）');
+  await page.keyboard.press('d'); await sleep(200);
+  ok((await page.$eval('.ctx .pages a.on', a => a.textContent).catch(() => '')) === '外观' && await page.$('.ctx .swatches') && (await page.$eval('.ctx .pages a.kb', a => a.textContent).catch(() => '')) === '外观', 'D → 翻到「外观」页（颜色、图案直接在这页），光标还在页签行');
+  await page.keyboard.press('s'); await sleep(150);
+  ok(await page.$('.ctx .swatches .kb, .ctx .mi.swatches.kb'), 'S → 进到外观页第一行');
+  await page.keyboard.press('Escape'); await sleep(200);
   await rclick('行动'); await page.click('.ctx .mi:has-text("属性")'); await sleep(400);
   ok((await page.$eval('.side h3 input', e => e.value)) === '行动', '右键 属性 → 面板');
   // 属性面板：颜色色块 → color:；名字框改名（👤 2026-10-08）
@@ -463,7 +472,9 @@ for (const kind of ['reactflow']) {
     ok(/在这里画一张/.test(await page.$eval('.agentbox textarea', t => t.value).catch(() => '')), '点了 → AI 框打开，写好「在这里画一张…」');
     await page.keyboard.press('Escape'); await sleep(300);
     await page.click('.react-flow__node[data-id="游戏AI/感知"] .lab', { button: 'right' }); await sleep(300);
-    ok(await page.$('.ctx .mi:has-text("AI 配图")'), '卡片右键也有「AI 配图…」');
+    await page.click('.ctx .pages a:has-text("更多")'); await sleep(200);
+    ok(await page.$('.ctx .mi:has-text("AI 配图")'), '卡片右键「更多」页里有「AI 配图…」');
+    ok(await page.evaluate(() => { const ms = [...document.querySelectorAll('.ctx .mi')].map(m => m.textContent); return ms.findIndex(t => t.includes('AI 配图')) === ms.findIndex(t => t.includes('贴图…')) + 1; }), '「AI 配图…」紧挨在「贴图…」下面');
     await page.keyboard.press('Escape'); await sleep(200); }
   // 左右栏拖宽（👤 2026-10-08）
   const sideW = () => page.$eval('aside.side', a => a.offsetWidth);
@@ -1005,7 +1016,7 @@ for (const kind of ['reactflow']) {
   ok(await patOf('传感器') === 'pat-dots' && await patOf('情绪恐惧') === 'pat-wave', '图案词表：传感器 = 点阵，情绪恐惧 = 波纹 ' + await patOf('传感器') + ' ' + await patOf('情绪恐惧'));
   ok(existsSync(join(ws, '__synapsis', '_词表.md')) && !existsSync(join(ws, '__synapsis', '_图案.md')), '打开工作区就放出 _词表.md（不再有单独的 _图案.md）');
   await page.mouse.click(...mid(await (await lab('吓坏了')).boundingBox()), { button: 'right' }); await sleep(300);
-  await page.hover('.ctx .mi.sub:has(> .looks)'); await page.click('.ctx .pats button.pat-grid'); await sleep(1500);
+  await page.click('.ctx .pages a:has-text("外观")'); await page.click('.ctx .pats button.pat-grid'); await sleep(1500);
   ok(/pattern: 网格/.test(readFileSync(join(ws, '__synapsis', '吓坏了.md'), 'utf8')) && await patOf('吓坏了') === 'pat-grid', '右键 → 图案 → 网格：写进 pattern:，卡片带网格底纹');
   // 📄 卡片里展开正文（md：标题 / 表格 / 列表）
   await page.mouse.click(700, 760); await sleep(200);
@@ -1229,11 +1240,11 @@ for (const kind of ['reactflow']) {
   const errs = []; page.on('pageerror', e => errs.push(e.message));
   await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
   // 饱和度档：没选颜色时灰着；选了蓝 → 50% → color: 蓝/50
-  await page.click('.card .lab:text-is("甲")', { button: 'right' }); await sleep(300);
+  await page.click('.card .lab:text-is("甲")', { button: 'right' }); await sleep(300); await page.click('.ctx .pages a:has-text("外观")'); await sleep(150);
   ok((await page.$$eval('.ctx .swatches.sat button', e => e.map(x => x.disabled))).every(x => !x) && (await page.$$('.ctx .swatches.sat button')).length === 5, '自动色时饱和度档也能点（不再灰着）');
-  await page.hover('.ctx .mi.sub:has(> .looks)'); await page.click('.ctx .swatches:not(.sat):not(.pats) button[title="蓝"]'); await sleep(1200);
+  await page.click('.ctx .pages a:has-text("外观")'); await page.click('.ctx .swatches:not(.sat):not(.pats) button[title="蓝"]'); await sleep(1200);
   await page.click('.card .lab:text-is("甲")', { button: 'right' }); await sleep(300);
-  await page.hover('.ctx .mi.sub:has(> .looks)'); await page.click('.ctx .swatches.sat button[title^="50%"]'); await sleep(1200);
+  await page.click('.ctx .pages a:has-text("外观")'); await page.click('.ctx .swatches.sat button[title^="50%"]'); await sleep(1200);
   ok(/sat: 50/.test(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8')) && /color: 蓝\s/.test(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8')), '选蓝再点 50% → sat: 50，颜色还是蓝');
   ok((await page.$eval('.card:has(.lab:text-is("甲"))', e => e.style.getPropertyValue('--c'))) !== '#4d9bff', '卡片颜色变淡了（不是原来的蓝）');
   await page.mouse.click(1000, 300); await sleep(300); await page.click('.card .lab:text-is("甲")'); await sleep(500);
@@ -1265,7 +1276,7 @@ for (const kind of ['reactflow']) {
   ok(!(await page.$('.card.uibox .props')), 'ui / w / h 不当普通属性列在卡片上');
   // 复制 UI 布局
   await page.click('.card.uibox .lab', { button: 'right' }); await sleep(300);
-  await page.click('.ctx .mi:has-text("复制 UI 布局")'); await sleep(500);
+  await page.click('.ctx .pages a:has-text("更多")'); await page.click('.ctx .mi:has-text("复制 UI 布局")'); await sleep(500);
   const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => '');
   ok(/\[UI\] 主界面  左上\(/.test(clip) && new RegExp('宽' + w1 + ' 高' + h1).test(clip), '右键 → 复制 UI 布局：带四个角和宽高 ' + clip.split('\n')[1]);
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));

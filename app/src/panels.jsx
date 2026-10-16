@@ -14,6 +14,13 @@ const STATUS = [['done', '✅'], ['partial', '◐'], ['todo', '○'], ['dropped'
 // >v<⌨快捷键-右键菜单键盘操作（👤 2026-10-12）：E 弹出（选中的卡旁边；没选中 = 画布中间的空白菜单），WASD 在菜单里走，E 确定，Esc 关。
 //   W / S 上下一项；一排按钮（状态 / 颜色 / 饱和 / 图案 / 连线）里 A / D 左右；带 ▸ 的 D 进二级、二级里 A 退回；Shift = 一次走 4 格（只管同一层）
 //   直接读菜单的 DOM 走（.mi = 一项；一项里有 button / a = 一排），菜单长什么样这里不用跟着改
+function kbStart(root, pg = 0) {
+  const rows = [...root.children].filter(el => el.classList.contains('mi')); if (!rows.length) return;
+  root._kb = { level: root, row: 0, col: rows[0].classList.contains('pages') ? pg : 0 };
+  root.querySelectorAll('.kb').forEach(x => x.classList.remove('kb'));
+  const cs = [...rows[0].querySelectorAll(':scope > button, :scope > a')];
+  (cs.length ? cs[Math.min(root._kb.col, cs.length - 1)] : rows[0]).classList.add('kb');
+}
 function menuNav(e, onClose) {
   const root = document.querySelector('.ctx:not(.submenu)'); if (!root) return false;
   const K = { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right', KeyE: 'ok' }[e.code];
@@ -34,6 +41,11 @@ function menuNav(e, onClose) {
   if (K === 'up' || K === 'down') { st.row = st.row < 0 ? (K === 'down' ? 0 : rows.length - 1) : Math.max(0, Math.min(rows.length - 1, st.row + (K === 'down' ? n : -n))); st.col = Math.max(0, ctrls(rows[st.row]).findIndex(c => c.classList.contains('on'))); mark(); return true; }
   if (!cur) { st.row = 0; mark(); return true; }
   const cs = ctrls(cur);
+  if ((K === 'left' || K === 'right') && cur.classList.contains('pages')) { // 页签行：A / D = 翻页（点相邻那个页签；翻完光标还在页签行）
+    const i = cs.findIndex(c => c.classList.contains('on')), j = Math.max(0, Math.min(cs.length - 1, i + (K === 'right' ? 1 : -1)));
+    if (j !== i) cs[j].click();
+    return true;
+  }
   if (K === 'left' || K === 'right') {
     if (cs.length) { st.col = Math.max(0, Math.min(cs.length - 1, Math.min(st.col, cs.length - 1) + (K === 'right' ? n : -n))); mark(); return true; }
     if (K === 'right' && cur.classList.contains('sub')) { const sub = cur.querySelector(':scope > .submenu'); cur.classList.add('open'); st.parent = { level: st.level, row: st.row }; Object.assign(st, { level: sub, row: 0, col: 0 }); const r2 = [...sub.children].filter(el => el.classList.contains('mi')); root.querySelectorAll('.kb').forEach(x => x.classList.remove('kb')); r2[0]?.classList.add('kb'); return true; }
@@ -54,6 +66,10 @@ export function ContextMenu({ menu, node, actions, onClose }) {
     window.addEventListener('keydown', key, true); // 抢在画布的 WASD / E 前面
     return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', key, true); };
   }, [onClose]);
+  const [pg, setPg] = useState(0);
+  useEffect(() => setPg(0), [menu]); // 每次右键都是新的 menu 对象（同一处再右键也回「常用」）
+  // 👤 2026-10-17 菜单一开就能用键盘：光标先停在第一行（分页菜单 = 页签行的当前页），不用先按一下 WASD 才「进」菜单
+  useEffect(() => { const root = document.querySelector('.ctx:not(.submenu)'); if (root) kbStart(root, pg); }, [pg, menu]);
   const item = (label, fn, opts = {}) => (
     <div className={'mi' + (opts.danger ? ' danger' : '') + (opts.quiet ? ' quiet' : '')} onPointerDown={e => e.stopPropagation()} onClick={() => { onClose(); fn(); }}>
       <span>{label}</span>{opts.key && <kbd>{opts.key}</kbd>}
@@ -92,64 +108,69 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       {actions.canUp && item('↑ 返回上一层', actions.up, { key: 'Alt+W', quiet: true })}
     </div>
   );
+  // 👤 2026-10-17 分页：常用 / 外观 / 更多。菜单一开光标就在页签行（A / D 翻页，S 往下进项目；按钮行里 A / D 仍是左右挑）
+  const looks = !!(actions.sat || actions.color || actions.pattern);
+  const pages = [['常用', true], ['外观', looks], ['更多', true]].filter(p => p[1]).map(p => p[0]), page = pages[Math.min(pg, pages.length - 1)];
   return (
-    <div className="ctx" style={style}>
+    <div className="ctx paged" style={style}>
       <div className="mh">{node.label}</div>
-      {item('属性…', () => actions.props(node.id), { key: 'Shift+Tab' })}
-      {item('重命名', () => actions.rename(node.id), { key: 'R' })}
-      {actions.editBody && !node.ref && item('编辑正文', () => actions.editBody(node.id))}
-      {node.file && item('📎 打开引用的文件', () => actions.openProjectFile(node.file))}
-      {node.ref && item('↗ 跳到它指的节点', () => actions.gotoRef(node.id))}
-      {node.ui && item('▭ 复制 UI 布局', () => actions.copyUiLayout(node.id))}
-      {actions.aiImage && !node.ref && item('🎨 AI 配图…', () => actions.aiImage(node.id))}
-      <div className="mi row" onPointerDown={e => e.stopPropagation()}>
-        <span>状态</span>
-        {STATUS.map(([s, ic]) => <button key={s} className={node.status === s ? 'on' : ''} onClick={() => { actions.status(node.id, s); }}>{ic}</button>)}
-        <button title="清除状态（不标）" onClick={() => { actions.status(node.id, null); }}>—</button>
+      <div className="mi row pages" onPointerDown={e => e.stopPropagation()}>
+        {pages.map((p, i) => <a key={p} className={page === p ? 'on' : ''} onClick={() => setPg(i)}>{p}</a>)}
       </div>
-      {/* 👤 2026-10-16 饱和 / 不透 / 颜色 / 图案用得少 → 收进二级「外观 ▸」（D / 悬停打开） */}
-      {(actions.sat || actions.color || actions.pattern) && <div className="mi sub" onPointerDown={e => e.stopPropagation()}><span>外观 ▸</span>
-        <div className={'ctx submenu looks' + (menu.x > innerWidth - 640 ? ' flip' : '')}>
-      {actions.sat && <div className="mi row swatches sat" onPointerDown={e => e.stopPropagation()}><span>饱和</span><SatButtons base={node.baseColor} cur={node.satNow} onSat={p => actions.sat(node.id, p)} /></div>}
-      {actions.tint && <div className="mi row swatches tints" onPointerDown={e => e.stopPropagation()} title="卡片底色 / 框里面叠多少节点色；跟随 = 默认"><span>不透</span><TintButtons cur={node.tintNow} onTint={t => actions.tint(node.id, t)} /></div>}
-      {actions.sat && <div className="tintsep" />}
-      {actions.color && <div className="mi row swatches" onPointerDown={e => e.stopPropagation()}>
-        <span>颜色</span>
-        {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={String(node.colorSet || '').split('/')[0] === k ? 'on' : ''} style={{ background: c }} onClick={() => { actions.color(node.id, k); }} />)}
-        <button title="自动（按分组 / 名字配色，子节点跟着父节点）" className={!node.colorSet ? 'on auto' : 'auto'} onClick={() => { actions.color(node.id, null); }}>自动</button>
-      </div>}
-      {actions.pattern && <div className="mi row swatches pats" onPointerDown={e => e.stopPropagation()}>
-        <span>图案</span>
-        {Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (node.patternSet === k ? ' on' : !node.patternSet && node.pattern === k ? ' auto-on' : '')} style={{ '--c': node.color }} onClick={() => { actions.pattern(node.id, k); }} />)}
-        <button title="自动（按图案词表 / AI 归类）" className={!node.patternSet ? 'on auto' : 'auto'} onClick={() => { actions.pattern(node.id, null); }}>自动</button>
-        <button title="不要底纹" className={node.patternSet === '无' ? 'on auto' : 'auto'} onClick={() => { actions.pattern(node.id, '无'); }}>无</button>
-      </div>}
-        </div></div>}
-      <div className="msep" />
-      <div className="mi row2" onPointerDown={e => e.stopPropagation()}>
-        <a title="选一个别的节点，从它连到这个节点" onClick={() => { onClose(); actions.linkFrom(node.id); }}>← 从…连过来</a>
-        <a title="选一个别的节点，从这个节点连过去" onClick={() => { onClose(); actions.linkTo(node.id); }}>🔗 连线到…</a>
-      </div>
-      {actions.pinsMenu && (() => { // 📌 钉到钉子组：当前（高亮）组最好点，其余组和新组灰色小字（👤 2026-10-09）
-        const h = actions.pinsMenu(node.id), many = h.n > 1 ? `（${h.n} 个）` : '';
-        return <>
-          {h.cur ? item(`📌 钉到「${h.cur.name}」${many}`, () => h.pin(h.cur.id)) : item(`📌 钉到新组${many}`, () => h.pin('new'))}
-          {h.others.slice(0, 6).map(g => item(`↳ 钉到「${g.name}」`, () => h.pin(g.id), { quiet: true }))}
-          {h.cur && item('＋ 钉到新组', () => h.pin('new'), { quiet: true })}
-        </>;
-      })()}
-      {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'T' })}
-      {actions.convert && !node.ref && !node.file && <div className="mi sub" onPointerDown={e => e.stopPropagation()}><span>转为 ▸</span>
-        <div className={'ctx submenu' + (menu.x > innerWidth - 420 ? ' flip' : '')}>{/* 👤 2026-10-11 常建错类型：普通节点 ⇄ UI 框，只改 ui / w / h，名字、子级、正文都不动 */}
-          {node.ui ? item('▢ 普通节点', () => actions.convert(node.id, 'node')) : item('▭ UI 框', () => actions.convert(node.id, 'ui'))}
-        </div></div>}
-
-      <div className="msep" />
-      {actions.hasFile(node.id) && item('看 md 原文', () => actions.openMd(node.id))}
-      {actions.hasFile(node.id) && item('在资源管理器中显示', () => actions.reveal(node.id))}
-      {item('贴图…', () => actions.pasteHint(node.id), { key: 'Ctrl+V' })}
-      <div className="msep" />
-      {item('🗑️ 删除' + (node.children.length ? `（含 ${countAll(node)} 个子孙）` : ''), () => actions.remove(node.id), { danger: true, key: 'Del' })}
+      {page === '常用' && <>
+        {item('属性…', () => actions.props(node.id), { key: 'Shift+Tab' })}
+        {item('重命名', () => actions.rename(node.id), { key: 'R' })}
+        {actions.editBody && !node.ref && item('编辑正文', () => actions.editBody(node.id))}
+        {node.file && item('📎 打开引用的文件', () => actions.openProjectFile(node.file))}
+        {node.ref && item('↗ 跳到它指的节点', () => actions.gotoRef(node.id))}
+        <div className="mi row" onPointerDown={e => e.stopPropagation()}>
+          <span>状态</span>
+          {STATUS.map(([s, ic]) => <button key={s} className={node.status === s ? 'on' : ''} onClick={() => { actions.status(node.id, s); }}>{ic}</button>)}
+          <button title="清除状态（不标）" onClick={() => { actions.status(node.id, null); }}>—</button>
+        </div>
+        <div className="mi row2" onPointerDown={e => e.stopPropagation()}>
+          <a title="选一个别的节点，从它连到这个节点" onClick={() => { onClose(); actions.linkFrom(node.id); }}>← 从…连过来</a>
+          <a title="选一个别的节点，从这个节点连过去" onClick={() => { onClose(); actions.linkTo(node.id); }}>🔗 连线到…</a>
+        </div>
+        {actions.pinsMenu && (() => { // 📌 钉到钉子组：当前（高亮）组最好点，其余组和新组灰色小字（👤 2026-10-09）
+          const h = actions.pinsMenu(node.id), many = h.n > 1 ? `（${h.n} 个）` : '';
+          return <>
+            {h.cur ? item(`📌 钉到「${h.cur.name}」${many}`, () => h.pin(h.cur.id)) : item(`📌 钉到新组${many}`, () => h.pin('new'))}
+            {h.others.slice(0, 6).map(g => item(`↳ 钉到「${g.name}」`, () => h.pin(g.id), { quiet: true }))}
+            {h.cur && item('＋ 钉到新组', () => h.pin('new'), { quiet: true })}
+          </>;
+        })()}
+        {item('＋ 新建子节点', () => actions.addChild(node.id), { key: 'T' })}
+        <div className="msep" />
+        {item('🗑️ 删除' + (node.children.length ? `（含 ${countAll(node)} 个子孙）` : ''), () => actions.remove(node.id), { danger: true, key: 'Del' })}
+      </>}
+      {page === '外观' && <>
+        {actions.sat && <div className="mi row swatches sat" onPointerDown={e => e.stopPropagation()}><span>饱和</span><SatButtons base={node.baseColor} cur={node.satNow} onSat={p => actions.sat(node.id, p)} /></div>}
+        {actions.tint && <div className="mi row swatches tints" onPointerDown={e => e.stopPropagation()} title="卡片底色 / 框里面叠多少节点色；跟随 = 默认"><span>不透</span><TintButtons cur={node.tintNow} onTint={t => actions.tint(node.id, t)} /></div>}
+        {actions.sat && <div className="tintsep" />}
+        {actions.color && <div className="mi row swatches" onPointerDown={e => e.stopPropagation()}>
+          <span>颜色</span>
+          {Object.entries(PALETTE).map(([k, c]) => <button key={k} title={k} className={String(node.colorSet || '').split('/')[0] === k ? 'on' : ''} style={{ background: c }} onClick={() => { actions.color(node.id, k); }} />)}
+          <button title="自动（按分组 / 名字配色，子节点跟着父节点）" className={!node.colorSet ? 'on auto' : 'auto'} onClick={() => { actions.color(node.id, null); }}>自动</button>
+        </div>}
+        {actions.pattern && <div className="mi row swatches pats" onPointerDown={e => e.stopPropagation()}>
+          <span>图案</span>
+          {Object.entries(PATTERNS).map(([k, c]) => <button key={k} title={k + '：' + PATTERN_HINT[k]} className={'patsw pat-' + c + (node.patternSet === k ? ' on' : !node.patternSet && node.pattern === k ? ' auto-on' : '')} style={{ '--c': node.color }} onClick={() => { actions.pattern(node.id, k); }} />)}
+          <button title="自动（按图案词表 / AI 归类）" className={!node.patternSet ? 'on auto' : 'auto'} onClick={() => { actions.pattern(node.id, null); }}>自动</button>
+          <button title="不要底纹" className={node.patternSet === '无' ? 'on auto' : 'auto'} onClick={() => { actions.pattern(node.id, '无'); }}>无</button>
+        </div>}
+      </>}
+      {page === '更多' && <>
+        {node.ui && item('▭ 复制 UI 布局', () => actions.copyUiLayout(node.id))}
+        {actions.convert && !node.ref && !node.file && <div className="mi sub" onPointerDown={e => e.stopPropagation()}><span>转为 ▸</span>
+          <div className={'ctx submenu' + (menu.x > innerWidth - 420 ? ' flip' : '')}>{/* 👤 2026-10-11 常建错类型：普通节点 ⇄ UI 框，只改 ui / w / h，名字、子级、正文都不动 */}
+            {node.ui ? item('▢ 普通节点', () => actions.convert(node.id, 'node')) : item('▭ UI 框', () => actions.convert(node.id, 'ui'))}
+          </div></div>}
+        {actions.hasFile(node.id) && item('看 md 原文', () => actions.openMd(node.id))}
+        {actions.hasFile(node.id) && item('在资源管理器中显示', () => actions.reveal(node.id))}
+        {item('贴图…', () => actions.pasteHint(node.id), { key: 'Ctrl+V' })}
+        {actions.aiImage && !node.ref && item('🎨 AI 配图…', () => actions.aiImage(node.id))}
+      </>}
     </div>
   );
 }
