@@ -15,6 +15,9 @@ import { genImage } from '../core/imagegen.js';
 import { loadTodo, saveTodo, todoFile, TODO_HEAD } from '../core/todo.js';
 import { runAgent, applyPlan, loadChat, clearChat, setSummaryText, estimateContext, isLoose, loadSummary, compactChat, needCompact } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
+import { useProxy } from './proxy.js';
+const PROXY = useProxy(); // 有本机代理就让服务端的 fetch 走它（xAI 国内直连不通）；本机地址直连
+if (PROXY) console.log('[synapsis] 联网走代理', PROXY);
 const STASH = new Map(); // 工作区 → 界面暂存（见 /ui/stash）
 const SESSION_START = Date.now() - 2000; // 这次服务进程（= 托盘）启动的时刻（留 2 秒余量：.junk 里的时间戳只到秒）。.junk/ 里比这更早的 = 上次没正常退出留下的
 const SYN_HOME = resolve(fileURLToPath(new URL('.', import.meta.url)), '..'); // AI 设置是本机的：<Synapsis>/.synapsis/ai.json

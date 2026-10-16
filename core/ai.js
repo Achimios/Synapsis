@@ -80,7 +80,8 @@ async function onlineModels(cfg) {
       try {
         const r = await fetch(o.url + '/models', { headers: { authorization: 'Bearer ' + key }, signal: AbortSignal.timeout(5000) });
         if (!r.ok) throw new Error('HTTP ' + r.status);
-        onlineCache[p] = { t: Date.now(), list: (await r.json()).data.map(m => ({ id: p + ':' + m.id, name: m.name || m.id, embed: false, loaded: true, online: true, ctx: m.context_window || null, maxCtx: m.context_window || null })) };
+        // 聊天下拉只要对话模型（xAI 列表里混着图片 / 视频）
+        onlineCache[p] = { t: Date.now(), list: (await r.json()).data.filter(m => !/imagine|image|video|embed|tts|audio/i.test(m.id)).map(m => ({ id: p + ':' + m.id, name: m.name || m.id, embed: false, loaded: true, online: true, ctx: m.context_window || null, maxCtx: m.context_window || null })) };
       } catch { continue; }
     }
     out.push(...onlineCache[p].list);
