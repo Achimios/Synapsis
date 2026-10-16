@@ -13,7 +13,7 @@ const opts = (list = [], cur) => {
 const kfmt = n => n >= 1e6 ? Math.round(n / 1048576) + 'M' : n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(n);
 
 // >v<🤖AI指令-上下文-「🧠 已用 / 容量」：问过 = LM Studio 报的真实 token；没问 = 估算（≈）。超 80% 变黄、超 100% 变红（会被截断、忘掉前面）
-export function CtxMeter({ ctx, usage }) {
+export function CtxMeter({ ctx, usage, compact = false }) { // compact = 框窄：只留 🧠（颜色照样表示占用），数字进悬停提示
   if (!ctx) return null;
   const used = usage?.total_tokens || ctx.estimate?.total || 0, cap = ctx.ctx;
   const pct = cap ? used / cap : 0;
@@ -25,7 +25,8 @@ export function CtxMeter({ ctx, usage }) {
     ...(ctx.estimate ? Object.entries(ctx.estimate.parts).map(([k, v]) => `  ≈ ${k} ${v}`) : []),
     cap && cap < 16000 ? '嫌小：LM Studio 里卸载模型 → 加载时把 Context Length 调大（越大越吃显存）' : '',
   ].filter(Boolean).join('\n');
-  return <span className={'ctxmeter' + (pct > 1 ? ' over' : pct > 0.8 ? ' warn' : '')} title={tip}>🧠 {usage?.total_tokens ? '' : '≈'}{kfmt(used)} / {cap ? kfmt(cap) : '?'}</span>;
+  return <span className={'ctxmeter' + (pct > 1 ? ' over' : pct > 0.8 ? ' warn' : '')} title={(compact ? `🧠 ${usage?.total_tokens ? '' : '≈'}${kfmt(used)} / ${cap ? kfmt(cap) : '?'}
+` : '') + tip}>🧠{compact ? '' : ' ' + (usage?.total_tokens ? '' : '≈') + kfmt(used) + ' / ' + (cap ? kfmt(cap) : '?')}</span>;
 }
 
 // >v<🤖AI指令-用量-日志页顶上：今天 / 近 7 天 各用了多少 token，在线和本地分开（所有项目合计；指令框、配色、关联、词表……每次调对话模型都计）。悬停看按用途拆开
@@ -405,7 +406,8 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   }, []);
   const geo = useBoxGeometry();
   const [boxW, setBoxW] = useState(999), [moreOpen, setMoreOpen] = useState(null); // 框宽：< 640 压缩 / 清空记忆收进 ⋯，< 520 页签只留图标；moreOpen = ⋯ 菜单的屏幕位置
-  const narrow = boxW < 640, tiny = boxW < 520;
+  // 👤 2026-10-16 逐级收：< 760 摘要 / 压缩 / 清空只留 emoji；< 600 🧠 只留图标（数字进悬停）；< 520 页签只留图标；< 460 三个 emoji 收进 ⋯
+  const iconBtns = boxW < 760, meterIcon = boxW < 600, tiny = boxW < 520, narrow = boxW < 460;
   useEffect(() => { const el = geo.ref.current; if (!el || typeof ResizeObserver === 'undefined') return; const ro = new ResizeObserver(() => setBoxW(el.offsetWidth)); ro.observe(el); return () => ro.disconnect(); }, []);
   useEffect(() => { if (!moreOpen) return; const c = e => { if (!e.target.closest?.('.amore, .amoremenu')) setMoreOpen(null); }; window.addEventListener('pointerdown', c, true); return () => window.removeEventListener('pointerdown', c, true); }, [moreOpen]);
   const [log, setLog] = useState(null);
@@ -492,15 +494,15 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
           <div className="bar"><span className="grow" /><button onClick={() => { setSumModal(false); setSumEdit(null); }}>取消</button><button className="primary" disabled={sumEdit === mySum.text} onClick={saveSum}>保存（Ctrl+S）</button></div>
         </div></div>, document.body)}
       <div className="bar" onPointerDown={geo.drag} onDoubleClick={e => !e.target.closest('a, button, input, select, textarea, .ctxmeter') && geo.reset()} title="拖这条移动框；拖四边四角改大小；双击空白处回到默认位置">
-        <span className="atabs">{!narrow && <b>🤖 AI 指令</b>}
+        <span className="atabs">{!iconBtns && <b>🤖 AI 指令</b>}
         <a className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')} title="对话">💬<span className="tl"> 对话</span></a>
         <a className={tab === 'log' ? 'on' : ''} onClick={() => setTab('log')} title="日志">📜<span className="tl"> 日志</span></a>
         <a className={tab === 'words' ? 'on' : ''} onClick={() => setTab('words')} title="词表">🎨<span className="tl"> 词表</span></a>
         <a className={tab === 'todo' ? 'on' : ''} onClick={() => setTab('todo')} title="待办">📋<span className="tl"> 待办</span></a>
         <a className={tab === 'voice' ? 'on' : ''} onClick={() => setTab('voice')} title="语音">🔊<span className="tl"> 语音</span></a></span>
         <button className={'voicebtn' + (voiceOn ? ' on' : '')} title={voiceOn ? '📢 开着：AI 可以自己决定发一句语音（只有 ☁ 在线模型）。点一下关' : '📢 关着：AI 不发语音。点一下打开（只有 ☁ 在线模型；角色、后端在「🔊 语音」页）'} onClick={flipVoice}>{voiceOn ? '📢' : '🔇'}</button>
-        <CtxMeter ctx={ctx} usage={usage} />
-        {tab === 'chat' && (() => { const bs = [...(mySum?.upto ? [<button key="s" title="看 / 改压缩摘要（模型现在记得的旧对话）" onClick={() => { setSumEdit(mySum.text); setSumModal(true); }}>📝 摘要</button>] : []), <button key="c" title={'压缩短记忆：除了最近几轮，旧的对话让模型写成一段摘要（原文不删，只是不再发给模型）。自动压缩的参数在 ⋯ → 🤖 AI 设置'} disabled={compacting} onClick={compact}>{compacting ? '🗜 压缩中…' : '🗜 压缩'}</button>, <button key="x" title="清空短记忆（换个话题；摘要一起清）" onClick={() => api('/ai/chat', { method: 'DELETE' }).then(d => { takeChat(d); setPlan(null); setUsage(null); setNote(''); })}>🧹 清空记忆</button>]; // 👤 2026-10-16 框窄时收进 ⋯（以前会被挤没）
+        <CtxMeter ctx={ctx} usage={usage} compact={meterIcon} />
+        {tab === 'chat' && (() => { const bs = [...(mySum?.upto ? [<button key="s" title="看 / 改压缩摘要（模型现在记得的旧对话）" onClick={() => { setSumEdit(mySum.text); setSumModal(true); }}>{iconBtns && !narrow ? '📝' : '📝 摘要'}</button>] : []), <button key="c" title={'压缩短记忆：除了最近几轮，旧的对话让模型写成一段摘要（原文不删，只是不再发给模型）。自动压缩的参数在 ⋯ → 🤖 AI 设置'} disabled={compacting} onClick={compact}>{iconBtns && !narrow ? (compacting ? '🗜…' : '🗜') : compacting ? '🗜 压缩中…' : '🗜 压缩'}</button>, <button key="x" title="清空短记忆（换个话题；摘要一起清）" onClick={() => api('/ai/chat', { method: 'DELETE' }).then(d => { takeChat(d); setPlan(null); setUsage(null); setNote(''); })}>{iconBtns && !narrow ? '🧹' : '🧹 清空记忆'}</button>]; // 👤 2026-10-16 框窄时收进 ⋯（以前会被挤没）
           return narrow ? <span className="amore" key="m"><button className="morebtn" title="压缩 / 清空记忆" onClick={e => { if (moreOpen) return setMoreOpen(null); const r = e.currentTarget.getBoundingClientRect(), down = innerHeight - r.bottom > 110; setMoreOpen({ right: innerWidth - r.right, ...(down ? { top: r.bottom + 4 } : { bottom: innerHeight - r.top + 4 }) }); }}>⋯</button>
             {moreOpen && createPortal(<div className="amoremenu" style={moreOpen} onClick={() => setMoreOpen(null)}>{bs}</div>, document.body)}</span> : bs; })()}
         <button title="关闭（Esc / Shift+F）" onClick={onClose} style={{ marginLeft: 'auto' }}>✕</button>
