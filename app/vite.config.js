@@ -187,7 +187,10 @@ function workspaceApi() {
                 st.thinking = String(b.text || '').slice(0, 40); // 关掉框再打开时，界面看这个知道「还在想」
                 try {
                   const vo = b.voice ? loadVoice(SYN_HOME) : null; // 📢 开着才带语音说明；TTS 找不到（vo.ok = false）就不让模型说，回一句为什么
-                  const r = await runAgent(root, b, cfg, { home: SYN_HOME, voice: vo?.ok ? vo : null });
+                  // 中间几跳：说的话进 st.steps（界面每秒拉一次 /ui/stash 显示），语音当场念；progress = 正在搜 / 读什么
+                  st.steps = []; delete st.progress;
+                  const onStep = s => { st.steps.push({ say: s.say, ...(s.voice ? { voice: s.voice.text } : {}) }); if (vo?.ok && s.voice) speak(vo, s.voice, Date.now().toString(36)); };
+                  const r = await runAgent(root, b, cfg, { home: SYN_HOME, voice: vo?.ok ? vo : null, onStep, onProgress: p => { st.progress = p; } });
                   if (vo && !vo.ok) r.spoke = { ok: false, why: vo.error };
                   if (vo && r.voice) r.spoke = speak(vo, r.voice, Date.now().toString(36)); // 念出来（不等播完）
                   if (r.actions.length) st.plan = r; else delete st.plan;
@@ -195,7 +198,7 @@ function workspaceApi() {
                   if (!st.compacting && needCompact(root, isLoose(cfg), cfg)) { st.compacting = true; r.compacting = true; compactChat(root, isLoose(cfg), cfg).catch(() => {}).finally(() => { delete st.compacting; }); }
                   if (String(st['agent.text'] || '').trim() === String(b.text || '').trim()) delete st['agent.text']; // 发出去了 = 输入框该空了
                   return send(200, r);
-                } finally { delete st.thinking; }
+                } finally { delete st.thinking; delete st.steps; delete st.progress; }
               } // 待确认的动作服务端也记一份：AI 还在想时关掉框，回来照样能确认
               if (url.pathname === '/ai/voice') { // 🔊 语音页：人的三个选择（settings.yaml 的 voice 段）+ TTS 现读的角色表
                 if (req.method === 'PUT') { const b = await body(req); return send(200, saveVoiceCfg(SYN_HOME, b.set || {})); } // set = 人的三个选择 {tts, role, backend}

@@ -384,6 +384,8 @@ function groupLog(log) {
   }
   return out;
 }
+// 一轮里查看前顺带说的话（👤 2026-10-16「一段一段来」）：比最后的回答淡一点
+const Steps = ({ steps }) => steps?.length ? steps.map((s, j) => <div key={j} className="step">{s.voice && <div className="know">🔊 {s.voice}</div>}{s.say && <div className="a">🤖 {s.say}</div>}</div>) : null;
 export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, onClose, onWordsApplied, onZoom, preset = null, wordsScope = '', wordsLabel = '项目' }) {
   const [imgs, setImgs] = useState([]); // 这一句要附的图（dataURL）
   const addImgs = files => Promise.all(files.map(f => readImg(f).then(shrink))).then(us => setImgs(a => [...a, ...us].slice(0, 6)));
@@ -396,6 +398,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
   const [turns, setTurns] = useState([]);
   const [text, setText] = useStash('agent.text', '');
   const [busy, setBusy] = useState('');
+  const [live, setLive] = useState(null); // 等回复时：{user, steps, progress}（每秒从 /ui/stash 拉，见 send）
   useEffect(() => { if (preset) { setTab('chat'); setText(preset.text); } }, [preset?.n]); // 外面的按钮（大纲 ⇅ 自动排序）预先写好一句话，人改改再 Enter
   const [plan, setPlan] = useStash('plan', null); // {say, actions}；服务端在 AI 回话时也会记一份
   // 打开时 AI 还在想（上次没等它回就关了框）→ 等它想完，把结果接回来
@@ -403,8 +406,8 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
     let stop = false;
     const poll = () => api('/ui/stash').then(s => {
       if (stop) return;
-      if (s.thinking) { setBusy('⏳ 还在等回复：「' + s.thinking + '」…'); setTimeout(poll, 1000); }
-      else { setBusy(b => /^(🧠|⏳)/.test(b) ? '' : b); if (s.plan) setPlan(s.plan); if (!('agent.text' in s) && !preset) setText(''); api('/ai/chat').then(takeChat).catch(() => {}); }
+      if (s.thinking) { setBusy('⏳ 还在等回复：「' + s.thinking + '」…'); setLive({ user: s.thinking, steps: s.steps || [], progress: s.progress || '' }); setTimeout(poll, 1000); }
+      else { setLive(null); setBusy(b => /^(🧠|⏳)/.test(b) ? '' : b); if (s.plan) setPlan(s.plan); if (!('agent.text' in s) && !preset) setText(''); api('/ai/chat').then(takeChat).catch(() => {}); }
     }).catch(() => {});
     poll();
     return () => { stop = true; };
@@ -463,10 +466,13 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
     const t = text.trim(), im = imgs; if ((!t && !im.length) || (busy && !busy.startsWith('❌'))) return;
     CHAT_SCROLL.bottom = true; saveScroll(); // 自己发一句 = 回到底
     setBusy((ctx?.thinks ? '🧠 思考中…' : /^\w+:/.test(ctx?.model || '') ? '⏳ 等回复…' : '⏳ 等回复…（第一次要等模型加载）') + (im.length ? `　附 ${im.length} 张图` : '')); setPlan(null); setNote(''); // 👤 2026-10-16 只有真开了思考才说「思考中」
+    setLive({ user: t || '（看图）', steps: [], progress: '' });
+    const tick = setInterval(() => api('/ui/stash').then(s => { if (s.thinking) setLive(l => l && { ...l, steps: s.steps || [], progress: s.progress || '' }); }).catch(() => {}), 1000);
     api('/ai/agent', { method: 'POST', body: JSON.stringify({ scope, selected, text: t, images: im, boxes: boxes?.() || {}, voice: voiceOn }) })
+      .finally(() => { clearInterval(tick); setLive(null); })
       .then(d => {
         setText(''); setImgs([]); setBusy(''); setUsage(d.usage?.total_tokens ? d.usage : null); if (d.compacting) setCompacting(true);
-        setTurns(ts => [...ts, { t: new Date().toISOString(), user: t || '（看图）', ...(im.length ? { imgs: im } : {}), say: d.say, done: [], know: d.knowledge, memRead: d.memRead, looked: d.looked, ...(d.voice ? { voice: d.voice.text } : {}), ...(d.todo ? { todo: d.todo } : {}), ...(d.usage?.prompt_cache_hit_tokens != null && d.usage.prompt_tokens ? { cache: [d.usage.prompt_cache_hit_tokens, d.usage.prompt_tokens] } : {}) }]); if (d.spoke && !d.spoke.ok) setNote('🔊 没念出来：' + d.spoke.why); // imgs 在这里是图本身（这次会话里还能点开看），刷新后只剩张数
+        setTurns(ts => [...ts, { t: new Date().toISOString(), user: t || '（看图）', ...(im.length ? { imgs: im } : {}), ...(d.steps?.length ? { steps: d.steps.map(s => ({ say: s.say, ...(s.voice ? { voice: s.voice.text } : {}) })) } : {}), say: d.say, done: [], know: d.knowledge, memRead: d.memRead, looked: d.looked, ...(d.voice ? { voice: d.voice.text } : {}), ...(d.todo ? { todo: d.todo } : {}), ...(d.usage?.prompt_cache_hit_tokens != null && d.usage.prompt_tokens ? { cache: [d.usage.prompt_cache_hit_tokens, d.usage.prompt_tokens] } : {}) }]); if (d.spoke && !d.spoke.ok) setNote('🔊 没念出来：' + d.spoke.why); // imgs 在这里是图本身（这次会话里还能点开看），刷新后只剩张数
         const good = d.actions.filter(a => a.ok);
         if (d.actions.length) { setPlan(d); onPreview([...new Set(good.flatMap(a => a.ids || [a.id, a.from, a.to].filter(Boolean)))]); }
       })
@@ -517,6 +523,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
           {!turns.length && !plan && <div className="hint pad">在当前页交代要做的事，比如：<br />「把这几个左对齐」「按流程从左到右排开」「观测做完了」「在决策后面加一个执行」「个性调节决策」<br />它只能做：选中 / 对齐 / 排列 / 大纲排序 / 配色 / 状态 / 连线 / 删线 / 新建 / 改名 / 移进别的节点（不能删节点）。每一步都先给你看，Enter 才执行，Ctrl+Z 能撤销。<br />也可以问怎么用：「怎么连线」「有哪些快捷键」「怎么切白色主题」—— 它查快捷键表和 AI 接入手册回答。</div>}
           {turns.map((t, i) => <div key={i} className={'turn' + (mySum?.upto && t.t && t.t <= mySum.upto ? ' squashed' : '')}>
             <div className="u">🙂 {t.user}{Array.isArray(t.imgs) ? <span className="timgs">{t.imgs.map((u, j) => <img key={j} src={u} title="单击放大" onClick={() => onZoom?.(t.imgs, j)} />)}</span> : t.imgs ? <span className="hint">　🖼 附了 {t.imgs} 张图（没保存）</span> : null}</div>
+            <Steps steps={t.steps} />
             {t.voice && <div className="know">🔊 {t.voice}</div>}
             {t.say && <div className="a">{t.say.includes('\n') ? <><span>🤖</span><MdLite text={t.say} /></> : '🤖 ' + t.say}</div>}
             {t.know?.length > 0 && !t.done?.length && <div className="know" title={t.know.join('\n')}>📖 参考了：{[...new Set(t.know.map(k => k.split('·')[0]))].join('、')}（{t.know.length} 段）</div>}
@@ -531,6 +538,7 @@ export function AgentBox({ api, scope, selected, boxes, onApplied, onPreview, on
                 : <div className="sumeditor"><textarea value={sumEdit} onChange={e => setSumEdit(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.ctrlKey && e.key === 's') { e.preventDefault(); saveSum(); } }} spellCheck={false} />
                   <div className="row"><button onClick={saveSum}>保存（Ctrl+S）</button><button onClick={() => setSumEdit(null)}>取消</button></div></div>}</details>}
           </div>)}
+          {live && <div className="turn"><div className="u">🙂 {live.user}</div><Steps steps={live.steps} />{live.progress && <div className="know">🔎 {live.progress}…</div>}</div>}
           {plan && plan.actions.length > 0 && <div className="plan">
             <ul>{plan.actions.map((a, i) => <li key={i} className={a.ok ? 'ok' : 'no'}>{a.ok ? '✓ ' + a.desc : `✗ ${a.do || '?'}：${a.why}`}</li>)}</ul>
             {plan.actions.some(a => a.ok)

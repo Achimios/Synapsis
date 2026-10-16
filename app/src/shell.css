@@ -376,6 +376,7 @@ button.aibtn.off { opacity: .7; }
 .agentbox .turn { margin: 6px 0; }
 .agentbox .turn .u { color: var(--text); } .agentbox .turn .a { color: var(--dim); margin-top: 2px; white-space: pre-wrap; }
 .agentbox .turn .a .mdlite { white-space: normal; color: var(--text); margin-top: 2px; }
+.agentbox .turn .step { opacity: .75; } /* 查看前顺带说的话：比最后的回答淡 */
 .agentbox .turn .know { font-size: 11px; color: var(--dim); opacity: .7; margin-top: 2px; }
 .agentbox ul { list-style: none; margin: 4px 0; padding: 0 0 0 18px; }
 .agentbox .done li { color: var(--ok); }

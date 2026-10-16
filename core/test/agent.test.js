@@ -155,7 +155,7 @@ try {
   srv = createServer((req, res) => { let s = ''; req.on('data', c => s += c); req.on('end', () => {
     const j = JSON.parse(s); calls++; lastMsgs = j.messages;
     const last = j.messages.at(-1).content;
-    const content = j.messages[0].content.includes('使用说明助手') ? '- 按 Ctrl+Z 撤销\n- Ctrl+Y 重做' : j.messages[0].content.includes('记忆摘要') ? '- 摘要内容：人在整理页面' : calls === 1 ? '好的我来帮你' : '{"say":"选上了","actions":[{"do":"select","ids":["n1","n9"]},{"do":"delete","ids":["n1"]}]}';
+    const content = j.messages[0].content.includes('使用说明助手') ? '- 按 Ctrl+Z 撤销\n- Ctrl+Y 重做' : j.messages[0].content.includes('记忆摘要') ? '- 摘要内容：人在整理页面' : typeof last === 'string' && last.includes('去搜一下') ? (last.includes('【网上搜') ? '{"say":"查到了","actions":[]}' : '{"say":"我去必应看看","voice":{"text":"等我**一下**"},"look":[{"web":"京观"}]}') : calls === 1 ? '好的我来帮你' : '{"say":"选上了","actions":[{"do":"select","ids":["n1","n9"]},{"do":"delete","ids":["n1"]}]}';
     res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 700, completion_tokens: 30, total_tokens: 730 } }));
   }); });
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
@@ -207,6 +207,11 @@ try {
     ok(estimateContext(root, { loose: true }).parts.短记忆 < 1000, '估算也按「摘要 + 之后的原文」算');
     { const off = { ...ocfg, autoCompact: false, memLimit: 700 }; for (const k of ['四', '五']) await runAgent(root, { scope: '', selected: [], text: '第' + k + '句' + '很长'.repeat(300) }, off);
       const mt = memoryOf(root, true, off); ok(mt.turns.length >= 1 && mt.turns.length < memoryOf(root, true).turns.length && !mt.turns.some(t => t.user.startsWith('第三句')), '关了自动压缩：超上限就从最老的丢 ' + mt.turns.length); }
+    { // 👤 2026-10-16「一段一段来」：查看前顺带说的话 / 语音当场推出去（onStep），搜的时候报进度（onProgress），也存进对话记录
+      const got = [], prog = [], vo = { ok: true, roles: [], role: 'x' };
+      const r = await runAgent(root, { scope: '', selected: [], text: '去搜一下京观' }, ocfg, { voice: vo, webSearch: async () => [], onStep: s => got.push(s), onProgress: p => prog.push(p) });
+      ok(got.length === 1 && got[0].say === '我去必应看看' && got[0].voice?.text === '等我一下' && r.say === '查到了', '中间那跳的话和语音先推出去（语音去掉 Markdown），最后的回答照常 ' + JSON.stringify(got));
+      ok(prog[0] === '上网搜「京观」' && loadChat(root).at(-1).steps?.[0]?.say === '我去必应看看' && loadChat(root).at(-1).steps[0].voice === '等我一下', '进度报「上网搜」；中间的话存进对话记录（刷新后还在） ' + JSON.stringify(prog)); }
     ok(memCfg({ memLimitLocal: 5000 }, false).memLimit === 5000 && memCfg({}, true).memLimit === 64000 && memCfg({}, false).memKeep === 2, '在线 / 本地各一套参数');
     clearChat(root);
     ok(!memoryOf(root, true).summary, '清空记忆连摘要一起清');

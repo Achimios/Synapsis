@@ -893,10 +893,11 @@ for (const kind of ['reactflow']) {
   // AI 指令框（Ctrl+J）：说 → 预览（✓ 能做 / ✗ 不做）→ Enter 执行 → 坐标对齐、进撤销；日志页有记录
   await page.mouse.click(700, 760); await page.keyboard.press('Shift+F'); await sleep(500);
   ok(!!(await page.$('.agentbox textarea.ask')), 'Shift+F → AI 指令框');
-  const meter0 = await page.$eval('.agentbox .ctxmeter', e => e.textContent).catch(() => '');
+  // 👤 2026-10-16 🧠 只留图标，数字在悬停提示第一行
+  const meter0 = await page.$eval('.agentbox .ctxmeter', e => e.title.split('\n')[0]).catch(() => '');
   ok(/^🧠 ≈\S+ \/ 8\.2k$/.test(meter0), '上下文：没问之前 = 估算 / 加载时设的容量 ' + meter0);
   await page.keyboard.type('把惊慌失措和传感器左对齐'); await page.keyboard.press('Enter'); await sleep(1500);
-  ok((await page.$eval('.agentbox .ctxmeter', e => e.textContent)) === '🧠 940 / 8.2k', '上下文：问过 = LM Studio 报的真实用量');
+  ok((await page.$eval('.agentbox .ctxmeter', e => e.title.split('\n')[0])) === '🧠 940 / 8.2k', '上下文：问过 = LM Studio 报的真实用量');
   const plan = await page.$$eval('.agentbox .plan li', ls => ls.map(l => l.className + ':' + l.textContent));
   ok(plan.length === 2 && /^ok:✓ 对齐（左边）/.test(plan[0]) && /^no:✗ delete/.test(plan[1]), '预览：对齐 ✓，delete ✗（不执行） ' + plan);
   await page.keyboard.press('Enter'); await sleep(2000);
