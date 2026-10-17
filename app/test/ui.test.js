@@ -1265,7 +1265,7 @@ for (const kind of ['reactflow']) {
   // 👤 2026-10-16 右键「编辑正文」：卡片里出编辑框、光标在里面（WASD 不动画布），Esc 存好、正文展开着
   await page.click('.card .lab:text-is("甲")', { button: 'right' }); await sleep(300);
   await page.click('.ctx .mi:has-text("编辑正文")'); await sleep(400);
-  ok(await page.evaluate(() => document.activeElement?.classList.contains('cardedit')), '编辑正文 → 光标在卡片里的编辑框');
+  ok(await page.evaluate(() => !!document.activeElement?.closest('.cardedit')), '编辑正文 → 光标在卡片里的编辑框');
   await page.keyboard.type('卡里写 **粗** wasd'); await page.keyboard.press('Escape'); await sleep(1200);
   ok(/卡里写 \*\*粗\*\* wasd/.test(readFileSync(join(ws, '__synapsis', '甲.md'), 'utf8')) && !(await page.$('.cardedit')) && !!(await page.$('.card:has(.lab:text-is("甲")) .cardtext b')), 'Esc → 正文存进文件，编辑框收起，卡片里照样展开（渲染成粗体）');
   // 新建 UI 框
@@ -1757,6 +1757,8 @@ for (const kind of ['reactflow']) {
   await page.keyboard.press('Control+e'); await sleep(500);
   const t1 = await top();
   ok(await page.$('.mdbody.src textarea.body') && (await page.$eval('.mdbody pre.fm', e => e.textContent).catch(() => '')).includes('备注'), 'Ctrl+E → 源码：正文框 + 灰的 frontmatter');
+  ok(await page.$('.mdbody .mirror .b') && (await page.$$eval('.mdbody .mirror .mk', es => es.map(e => e.textContent))).includes('**') && await page.$('.mdbody .mirror .h'), '源码带高亮：** 和 # 灰着，粗体 / 标题上色（方案 C）');
+  ok(await page.evaluate(() => { const t = document.querySelector('.mdbody textarea'), m = document.querySelector('.mdbody .mirror'); return Math.abs(t.scrollHeight - m.offsetHeight) <= 2 && getComputedStyle(t).color === 'rgba(0, 0, 0, 0)'; }), '正文框和背后的镜像一样高（排版一致，光标对得上），框里的字是透明的');
   ok(t0 === L30 && Math.abs(t1 - L30) <= 1, `切到源码后看到的第一行还是第 30 行那里（预览 ${t0} → 源码 ${t1}，应为 ${L30}）`);
   ok(await page.evaluate(() => document.activeElement?.matches('.mdbody textarea')), '进源码 = 光标已经在正文框里，能直接打字');
   await page.keyboard.type('XYZ'); await sleep(100);

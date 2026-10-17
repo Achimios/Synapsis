@@ -1,6 +1,7 @@
 // 右键菜单、属性面板、文件树（外部区）、文件预览。外壳把状态和动作传进来，这里只管显示。
 import { useStash } from './stash.js';
 import { MdLite } from './mdlite.jsx';
+import { SrcArea } from './mdsrc.jsx';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, Children } from 'react';
 
 import { PALETTE, parseColor, satHex } from './colors.js';
@@ -273,19 +274,16 @@ export function MdBody({ id, body, setBody, onSave, raw, editable, mode, onMode,
     const start = lines.slice(0, k).join('\n').length + (k ? 1 : 0), txt = s.toString().split('\n')[0], j = Math.max(0, lines[k].indexOf(txt.slice(0, 12)));
     e.preventDefault(); onSelMenu(e, { from: 'body', file, text: body, start: start + j, end: start + j + Math.min(txt.length, lines[k].length - j) });
   };
-  const blines = String(body).split('\n'), fl = fm ? fm.split('\n') : [];
+  const fl = fm ? fm.split('\n') : [];
   return <div className={'mdbody ' + mode} ref={box} onScroll={() => { if (document.activeElement !== ta.current) anchor.current = topLine(box.current); }}>
     {mode === 'prev' ? <div className="mdprev" title={editable ? '双击进源码（光标落在那一行）· Ctrl+E 切换' : ''} onContextMenu={prevMenu}
         onDoubleClick={e => { if (!editable) return; const el = e.target.closest('[data-ln]'); remember(); caret.current = el ? +el.dataset.ln : off; if (el) anchor.current = { line: +el.dataset.ln, dy: el.getBoundingClientRect().top - box.current.getBoundingClientRect().top }; onMode('src'); }}>
         {body.trim() ? <MdLite text={body} ln={off} /> : <div className="hint">{editable ? '（空）双击或 Ctrl+E 开始写' : '（空）'}</div>}</div>
       : <>
         {fl.length > 0 && <pre className="fm" title="frontmatter（只读：状态、颜色、属性在上面改）">{fl.map((l, i) => <span key={i} data-ln={i + 1} className={hl?.line === i + 1 ? 'ln hl' : 'ln'}>{l}{'\n'}</span>)}</pre>}
-        <div className="srcwrap">
-          <div className="mirror" aria-hidden="true">{blines.map((l, i) => <span key={i} data-ln={off + i} className={hl?.line === off + i ? 'ln hl' : 'ln'}>{l || '​'}{i < blines.length - 1 ? '\n' : '​'}</span>)}</div>
-          <textarea ref={ta} className="body" value={body} readOnly={!editable} spellCheck={false} placeholder={editable ? '想法、职责、验收方式……（存进这个节点的 .md）' : ''}
-            onChange={e => setBody(e.target.value)} onBlur={onSave} onKeyUp={remember} onClick={remember}
-            onContextMenu={e => { const t = e.target; if (!onSelMenu || !file || t.selectionStart === t.selectionEnd) return; e.preventDefault(); onSelMenu(e, { from: 'body', file, text: t.value, start: t.selectionStart, end: t.selectionEnd }); }} />
-        </div></>}
+        <SrcArea taRef={ta} taClass="body" ln={off} hl={hl?.line ?? null} value={body} readOnly={!editable} placeholder={editable ? '想法、职责、验收方式……（存进这个节点的 .md）' : ''}
+          onChange={e => setBody(e.target.value)} onBlur={onSave} onKeyUp={remember} onClick={remember}
+          onContextMenu={e => { const t = e.target; if (!onSelMenu || !file || t.selectionStart === t.selectionEnd) return; e.preventDefault(); onSelMenu(e, { from: 'body', file, text: t.value, start: t.selectionStart, end: t.selectionEnd }); }} /></>}
   </div>;
 }
 

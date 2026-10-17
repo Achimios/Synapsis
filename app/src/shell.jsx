@@ -15,6 +15,7 @@ import { AiPanel, RelatedDock, AgentBox } from './ai.jsx';
 import { PinDock } from './pindock.jsx';
 import { emptyPins, addGroup, addNodes, addLines, updateItem, lineAt, makeLinePin, locateLine } from './pins.js';
 import { MdLite } from './mdlite.jsx';
+import { SrcArea } from './mdsrc.jsx';
 import { SAMPLE } from './sample.js';
 import './shell.css';
 
@@ -1422,13 +1423,12 @@ function RenameInput({ id, label }) {
     onBlur={e => { if (!done.current) cardActions.commitRename(id, e.target.value); }} />;
 }
 // 卡片里改正文：高度跟着字长（手动大小的卡就在卡里滚）；Esc / 失焦 = 存
-function BodyEdit({ id, body }) {
-  const ref = useRef(null), done = useRef(false);
-  const fit = () => { const t = ref.current; if (t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 2 + 'px'; } };
-  useEffect(() => { const t = ref.current; if (!t) return; fit(); t.focus(); t.setSelectionRange(t.value.length, t.value.length); }, []);
+function BodyEdit({ id, body }) { // 👤 2026-10-17 和右栏源码同一个组件（带高亮的源码：md 符号灰着、粗体标题上色），框跟着内容长高
+  const ref = useRef(null), done = useRef(false), [v, setV] = useState(body || '');
+  useEffect(() => { const t = ref.current; if (!t) return; t.focus(); t.setSelectionRange(t.value.length, t.value.length); }, []);
   const end = () => { if (done.current) return; done.current = true; cardActions.endBody(id, ref.current.value); };
-  return <textarea ref={ref} className="cardedit nodrag nowheel" defaultValue={body} placeholder="正文（md）…  Esc 存好退出" spellCheck={false}
-    onInput={fit} onBlur={end} onPointerDown={stop} onMouseDown={stop} onDoubleClick={stop}
+  return <SrcArea taRef={ref} className="cardedit nodrag nowheel" value={v} onChange={e => setV(e.target.value)} placeholder="正文（md）…  Esc 存好退出"
+    onBlur={end} onPointerDown={stop} onMouseDown={stop} onDoubleClick={stop}
     onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); end(); } }} />;
 }
 export function NodeCard({ node, img, dim, isSel }) {
