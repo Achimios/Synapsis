@@ -303,6 +303,8 @@ for (const kind of ['reactflow']) {
   ok((await page.$eval('.ctx .pages a.on', a => a.textContent).catch(() => '')) === '外观' && await page.$('.ctx .swatches') && (await page.$eval('.ctx .pages a.kb', a => a.textContent).catch(() => '')) === '外观', 'D → 翻到「外观」页（颜色、图案直接在这页），光标还在页签行');
   await page.keyboard.press('s'); await sleep(150);
   ok(await page.$('.ctx .swatches .kb, .ctx .mi.swatches.kb'), 'S → 进到外观页第一行');
+  await page.keyboard.press('w'); await page.keyboard.press('a'); await page.keyboard.press('a'); await sleep(200);
+  ok((await page.$eval('.ctx .pages a.on', a => a.textContent).catch(() => '')) === '更多', '页签行在最左边再按 A → 轮回到最右边「更多」');
   await page.keyboard.press('Escape'); await sleep(200);
   await rclick('行动'); await page.click('.ctx .mi:has-text("属性")'); await sleep(400);
   ok((await page.$eval('.side h3 input', e => e.value)) === '行动', '右键 属性 → 面板');
@@ -409,6 +411,38 @@ for (const kind of ['reactflow']) {
   await page.mouse.up(); await sleep(1200);
   ok((await (await page.$('.card.hasimg')).boundingBox()).width > w0 + 60, '拖图片右下角 → 卡片变宽');
   ok(/picw: \d+/.test(readFileSync(join(ws, '__synapsis', '游戏AI', '决策', '_node.md'), 'utf8')), '宽度写进 _node.md 的 picw');
+  // 👤 2026-10-17 有图的卡改过宽度：标题旁出现 ⇲（点 = 回默认宽度）；改宽度能 Ctrl+Z
+  ok(!!(await page.$('.card.hasimg .sizebadge')), '改过图片宽度 → 标题旁出现 ⇲');
+  await page.mouse.click(1000, 780); await sleep(200); await page.keyboard.press('Control+z'); await sleep(1500);
+  ok(!/picw:/.test(readFileSync(join(ws, '__synapsis', '游戏AI', '决策', '_node.md'), 'utf8')), 'Ctrl+Z → 撤回图片宽度（picw 没了）');
+  await page.keyboard.press('Control+y'); await sleep(1500);
+  ok(/picw: \d+/.test(readFileSync(join(ws, '__synapsis', '游戏AI', '决策', '_node.md'), 'utf8')), 'Ctrl+Y → 宽度回来');
+  await page.click('.card.hasimg .sizebadge'); await sleep(1500);
+  ok(!/picw:/.test(readFileSync(join(ws, '__synapsis', '游戏AI', '决策', '_node.md'), 'utf8')) && !(await page.$('.card.hasimg .sizebadge')), '点 ⇲ → 回到默认宽度，⇲ 消失');
+  // 👤 2026-10-17 5 = 图片（同 1 2 3 4）：选中了切这张卡自己的；没选中 = 本页预览
+  { const dec = '.react-flow__node[data-id="游戏AI/决策"]';
+    for (let t = 0; t < 3 && !(await page.$(dec + ' .card.sel')); t++) { await page.click(dec + ' .lab'); await sleep(250); } // 点到选中为止（再点已选中的卡会取消选中）
+    await page.keyboard.press('5'); await sleep(400);
+    ok(!(await page.$(dec + ' .pics img')), '选中有图的卡按 5 → 收起它的图 ');
+    await page.keyboard.press('5'); await sleep(400);
+    ok(!!(await page.$(dec + ' .pics img')), '再按 5 → 显示回来');
+    await page.keyboard.press('Escape'); await sleep(150); }
+  // 👤 2026-10-17 右键「贴图 ▸」：从文件添加（弹文件选择框）/ 已有的图 替换、删（Ctrl+Z 能撤）
+  { const dec = '.react-flow__node[data-id="游戏AI/决策"]', dir = join(ws, '__synapsis', '游戏AI', '决策', '_pics_决策');
+    const pngFile = join(ws, '新图.png'); writeFileSync(pngFile, Buffer.from(PNG.split(',')[1], 'base64'));
+    const n0 = readdirSync(dir).length;
+    const openPicMenu = async () => { await page.click(dec + ' .lab', { button: 'right' }); await sleep(250); await page.click('.ctx .pages a:has-text("更多")'); await sleep(150); await page.hover('.ctx .mi.sub:has-text("贴图")'); await sleep(250); };
+    await openPicMenu();
+    ok((await page.$$('.ctx .picrow')).length === n0, '「贴图 ▸」里一张图一行（' + n0 + '）');
+    const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('.ctx .submenu .mi:has-text("从文件添加")')]);
+    await fc.setFiles(pngFile); await sleep(1800);
+    ok(readdirSync(dir).length === n0 + 1, '「从文件添加…」→ 弹文件选择框，选了 → 进这张卡的图片文件夹');
+    await openPicMenu();
+    await page.click('.ctx .picrow >> nth=0 >> button:has-text("🗑")'); await sleep(1500);
+    ok(readdirSync(dir).length === n0, '🗑 → 删掉一张');
+    await page.mouse.click(1000, 780); await sleep(200); await page.keyboard.press('Control+z'); await sleep(1500);
+    ok(readdirSync(dir).length === n0 + 1, 'Ctrl+Z → 删掉的图回来');
+    rmSync(pngFile); }
   // 图片拖到空白处 → 散图（👤：不必变成节点），存进这一页的 _pics/，坐标在落点
   const nBefore = (await page.$$('.card')).length;
   await page.evaluate(png => {
@@ -467,13 +501,14 @@ for (const kind of ['reactflow']) {
     // 右键「AI 配图…」：空白处 / 卡片上都有，点了 = 打开 AI 框写好半句话（不调接口）
     await page.mouse.click(mx, my, { button: 'right' }); await sleep(300);
     ok(await page.$('.ctx .mi:has-text("AI 配图")'), '空白处右键有「AI 配图…」');
+    ok(await page.$('.ctx .mi:has-text("贴图…（散图）")'), '空白处右键有「贴图…」（弹文件选择框，散图落在右键点的位置）');
     await page.click('.ctx .mi:has-text("AI 配图")'); await sleep(600);
     ok(/在这里画一张/.test(await page.$eval('.agentbox textarea', t => t.value).catch(() => '')), '点了 → AI 框打开，写好「在这里画一张…」');
     await page.keyboard.press('Escape'); await sleep(300);
     await page.click('.react-flow__node[data-id="游戏AI/感知"] .lab', { button: 'right' }); await sleep(300);
     await page.click('.ctx .pages a:has-text("更多")'); await sleep(200);
     ok(await page.$('.ctx .mi:has-text("AI 配图")'), '卡片右键「更多」页里有「AI 配图…」');
-    ok(await page.evaluate(() => { const ms = [...document.querySelectorAll('.ctx .mi')].map(m => m.textContent); return ms.findIndex(t => t.includes('AI 配图')) === ms.findIndex(t => t.includes('贴图…')) + 1; }), '「AI 配图…」紧挨在「贴图…」下面');
+    ok(await page.evaluate(() => { const ms = [...document.querySelectorAll('.ctx:not(.submenu) > .mi')].map(m => m.querySelector(':scope > span')?.textContent || m.textContent); return ms.findIndex(t => t.includes('AI 配图')) === ms.findIndex(t => t.includes('贴图')) + 1; }), '「AI 配图…」紧挨在「贴图…」下面');
     await page.keyboard.press('Escape'); await sleep(200); }
   // 左右栏拖宽（👤 2026-10-08）
   const sideW = () => page.$eval('aside.side', a => a.offsetWidth);
@@ -1728,6 +1763,34 @@ for (const kind of ['reactflow']) {
   await page.mouse.click(700, 800); await page.keyboard.press('Backquote'); await sleep(400);
   ok(!(await page.$('.pinbox')), '反引号 → 收起');
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
+// —— 👤 2026-10-17 临时展开（预览）不挪别的卡：真展开的框被预览盖掉再回来，也不算「刚展开」——
+{
+  console.log('== 预览不挪卡');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-seemove-ui-')); noAi(ws);
+  saveOutline(ws, '甲\n  甲一\n  甲二\n乙\n丙\n  丙一\n  丙二');
+  writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 甲: { x: 0, y: 0 }, 乙: { x: 90, y: 20 }, 丙: { x: 0, y: 400 } }));
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
+  const lay = () => JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'));
+  // 真展开 甲 的子图（⊞）→ 乙 被挤开（这是对的）
+  await page.click('.react-flow__node[data-id="甲"] .kids.fr'); await sleep(1500);
+  const after = lay().乙, pos0 = await page.$eval('.react-flow__node[data-id="乙"]', e => e.style.transform);
+  ok(after.x > 90, '真展开子图 → 压住的 乙 挪开（' + JSON.stringify(after) + '）');
+  await page.mouse.click(1100, 780); await sleep(200); // 不选中
+  // 预览 2（子级）盖掉 甲 的子图，再关掉 → 子图回来，但不算刚展开
+  await page.keyboard.press('2'); await sleep(700); await page.keyboard.press('2'); await sleep(1200);
+  ok(JSON.stringify(lay().乙) === JSON.stringify(after) && await page.$eval('.react-flow__node[data-id="乙"]', e => e.style.transform) === pos0, '预览「子级」开了又关 → 乙 不动');
+  // 预览 1（子图）：丙 临时展开成框，不挤别的卡
+  const c0 = JSON.stringify(lay());
+  await page.keyboard.press('1'); await sleep(1200);
+  ok(JSON.stringify(lay()) === c0, '预览「子图」→ 临时展开的框不挪任何卡');
+  await page.keyboard.press('1'); await sleep(800);
+  ok(JSON.stringify(lay()) === c0, '关掉预览「子图」→ 还是不动');
+  ok(!errs.length, '无页面错误 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });
 }

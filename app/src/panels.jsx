@@ -43,7 +43,7 @@ function menuNav(e, onClose) {
   if (!cur) { st.row = 0; mark(); return true; }
   const cs = ctrls(cur);
   if ((K === 'left' || K === 'right') && cur.classList.contains('pages')) { // 页签行：A / D = 翻页（点相邻那个页签；翻完光标还在页签行）
-    const i = cs.findIndex(c => c.classList.contains('on')), j = Math.max(0, Math.min(cs.length - 1, i + (K === 'right' ? 1 : -1)));
+    const i = cs.findIndex(c => c.classList.contains('on')), j = (i + (K === 'right' ? 1 : -1) + cs.length) % cs.length; // 👤 2026-10-17 首尾轮回
     if (j !== i) cs[j].click();
     return true;
   }
@@ -105,6 +105,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       {item('＋ 在这里新建节点', actions.addHere)}
       {actions.addUiHere && item('▭ 新建 UI 框', actions.addUiHere)}
       {actions.pickFile && item('📎 引入…', actions.pickFile)}
+      {actions.pickImagesHere && item('🖼 贴图…（散图）', actions.pickImagesHere)}
       {actions.aiImageHere && item('🎨 AI 配图…', actions.aiImageHere)}
       {actions.canUp && item('↑ 返回上一层', actions.up, { key: 'Alt+W', quiet: true })}
     </div>
@@ -169,7 +170,16 @@ export function ContextMenu({ menu, node, actions, onClose }) {
           </div></div>}
         {actions.hasFile(node.id) && item('看 md 原文', () => actions.openMd(node.id))}
         {actions.hasFile(node.id) && item('在资源管理器中显示', () => actions.reveal(node.id))}
-        {item('贴图…', () => actions.pasteHint(node.id), { key: 'Ctrl+V' })}
+        {/* 👤 2026-10-17 贴图 ▸：从文件添加（弹文件选择框）；已有的图逐张 替换 / 删掉（Ctrl+Z 能撤） */}
+        <div className="mi sub" onPointerDown={e => e.stopPropagation()}><span>🖼 贴图{node.pics?.length ? `（${node.pics.length}）` : ''} ▸</span>
+          <div className={'ctx submenu picsub' + (menu.x > innerWidth - 480 ? ' flip' : '')}>
+            {item('＋ 从文件添加…', () => actions.pickImages(node.id), { key: 'Ctrl+V' })}
+            {(node.pics || []).map((u, i) => <div key={u} className="mi row picrow" onPointerDown={e => e.stopPropagation()}>
+              <img src={u} alt="" /><span>第 {i + 1} 张</span>
+              {actions.replacePic && <button title="换成别的图（从文件选）" onClick={() => { onClose(); actions.replacePic(node.id, u); }}>替换…</button>}
+              {actions.removePic && <button title="删掉这张（进 .junk/，Ctrl+Z 能撤）" onClick={() => { onClose(); actions.removePic(node.id, u); }}>🗑</button>}
+            </div>)}
+          </div></div>
         {actions.aiImage && !node.ref && item('🎨 AI 配图…', () => actions.aiImage(node.id))}
       </>}
     </div>

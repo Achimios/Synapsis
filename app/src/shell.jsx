@@ -173,7 +173,7 @@ export function Shell({ name, Canvas }) {
   const eff = (m, own, id) => pre(m, id) ? true : own; // 没开 = 用节点自己的
   const uiId = id => isUi(wsData?.nodes[id]?.meta); // 👤 2026-10-10 UI 框不跟「预览展开」的全局三态，只认自己的 ▸ / ⊞
   // 👤 2026-10-11 预览「子级」临时盖过节点自己真展开的子图（不然真成框的节点在预览里看不到子级列表）；预览「子图」同时开着时子图优先；UI 框一样（👤：要联动，UI 框也得能看子级）
-  const expE = id => eff(sm.kids, !!expanded[id], id), frmE = id => pre(sm.frame, id) || (!!framed[id] && !pre(sm.kids, id)), txtE = id => eff(sm.text, !!textOpen[id], id), prpE = id => eff(sm.props, !propsShut[id], id);
+  const expE = id => eff(sm.kids, !!expanded[id], id), frmE = id => pre(sm.frame, id) || (!!framed[id] && !pre(sm.kids, id)), txtE = id => eff(sm.text, !!textOpen[id], id), prpE = id => eff(sm.props, !propsShut[id], id), picE = id => eff(sm.pics, !picFold[id], id); // 👤 2026-10-17 图片 = 第 5 种展开（5 / Shift+5）
   // 普通卡的手动大小（_layout.json 的 w / h）：只在大小变了时才让 view 重算（拖动坐标不触发）
   const sizeKey = useMemo(() => JSON.stringify(Object.entries(positions).filter(([k, v]) => !k.startsWith('@') && v?.w && v?.h).map(([k, v]) => [k, v.w, v.h])), [positions]);
   const sizes = useMemo(() => new Map(JSON.parse(sizeKey).map(([k, w, h]) => [k, { w, h }])), [sizeKey]);
@@ -205,10 +205,10 @@ export function Shell({ name, Canvas }) {
         props: prpE(n.id) ? cardProps(wsData?.nodes[n.id]?.meta) : [], propN: cardProps(wsData?.nodes[n.id]?.meta).length,
         vec: getMeta(n.id)?.vec ? parseVec(getMeta(n.id).vec) : null, vecAxes: pAxes,
         spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
-        picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !!picFold[n.id], body: wsData?.nodes[n.id]?.body || '', file: wsData?.nodes[n.id]?.meta?.file || null, sw: sizes.get(n.id)?.w || 0, sh: sizes.get(n.id)?.h || 0, ui: isUi(wsData?.nodes[n.id]?.meta), tint: +(wsData?.nodes[n.id]?.meta?.tint) || 0, uiW: uiSize(wsData?.nodes[n.id]?.meta).w, uiH: uiSize(wsData?.nodes[n.id]?.meta).h, ref: wsData?.nodes[n.id]?.meta?.ref || null, refMissing: !!wsData?.nodes[n.id]?.meta?.ref && !graph.nodes.has(String(wsData.nodes[n.id].meta.ref)), textOpen: txtE(n.id),
+        picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !picE(n.id), body: wsData?.nodes[n.id]?.body || '', file: wsData?.nodes[n.id]?.meta?.file || null, sw: sizes.get(n.id)?.w || 0, sh: sizes.get(n.id)?.h || 0, ui: isUi(wsData?.nodes[n.id]?.meta), tint: +(wsData?.nodes[n.id]?.meta?.tint) || 0, uiW: uiSize(wsData?.nodes[n.id]?.meta).w, uiH: uiSize(wsData?.nodes[n.id]?.meta).h, ref: wsData?.nodes[n.id]?.meta?.ref || null, refMissing: !!wsData?.nodes[n.id]?.meta?.ref && !graph.nodes.has(String(wsData.nodes[n.id].meta.ref)), textOpen: txtE(n.id),
         open: expE(n.id) && n.children.length > 0 && !v.parentOf.has(n.id) && !(frmE(n.id) && !space), renaming: canvasRename === n.id, editing: bodyEdit === n.id,
         framed: !space && frmE(n.id) && n.children.length > 0, seeDeep: sm.frame === 'deep', // 本页开着 Shift+1 递进预览（画布据此让 UI 框里的子图超出、不裁）
-        tempFrame: !space && frmE(n.id) && !framed[n.id] && n.children.length > 0, // 只是「看」临时展开的子图：不挪别的卡，也不存坐标
+        tempFrame: !space && frmE(n.id) && !framed[n.id] && n.children.length > 0, realFramed: !!framed[n.id] && n.children.length > 0, // realFramed：节点自己真展开了（预览暂时盖掉时也是真） // 只是「看」临时展开的子图：不挪别的卡，也不存坐标
         frame: v.parentOf.get(n.id) ?? null,
         kids: kidRows(n.children, 0),
       })),
@@ -603,7 +603,7 @@ export function Shell({ name, Canvas }) {
     openProjectFile: p => openFile(p), pickFile: () => setFinder({ mode: 'import' }), gotoRef: id => { const t = String(wsData?.nodes[id]?.meta?.ref || ''); if (graph.nodes.has(t)) { go(graph.nodes.get(t).parent); setSelected(t); } },
     expAll: () => Object.entries(EXP).map(([k, E]) => ({ k, name: E.name, any: expAnyOpen(k), none: !expIds(k).length })),
     expChange: k => expChange(k),
-    expToggle: (id, k) => { const flip = x => { const y = { ...x }; if (y[id]) delete y[id]; else y[id] = true; return y; }; ({ kids: setExpanded, props: setPropsShut, text: setTextOpen, frame: setFramed })[k](flip); },
+    expToggle: (id, k) => { const flip = x => { const y = { ...x }; if (y[id]) delete y[id]; else y[id] = true; return y; }; ({ kids: setExpanded, props: setPropsShut, text: setTextOpen, frame: setFramed, pics: setPicFold })[k](flip); },
     hasFile: id => !!nodeFile(id),
     openMd: id => { setSelected(id); setPropsOpen(true); setBodyMode('src'); },
     reveal: id => reveal(nodeFile(id), 'select'),
@@ -620,6 +620,13 @@ export function Shell({ name, Canvas }) {
     edgeKind: (from, to) => { const e = (wsData?.edges || []).find(x => x.from === from && x.to === to); if (e) cycleKind(from, to, e.label || '', e.kind || ''); },
     canEdgeKind: mode === 'ws',
     pasteHint: id => { setSelected(id); setSaveState('选中了「' + graph.nodes.get(id).label + '」：现在 Ctrl+V 贴图'); },
+    // 👤 2026-10-17 右键「贴图」= 弹文件选择框（卡片上 = 图进这张卡；空白处 = 散图落在右键点的位置）；卡片上还能替换 / 删掉已有的图
+    pickImages: id => { setSelected(id); pickFiles(srcs => addImages(id, srcs)); },
+    pickImagesHere: () => { const at = menu && cardActions.toFlow ? cardActions.toFlow({ x: menu.x, y: menu.y }) : null; pickFiles(srcs => addImages(null, srcs, at)); },
+    ...(mode === 'ws' ? {
+      removePic: (id, url) => removeCardPics(id, [url]),
+      replacePic: (id, url) => pickFiles(async srcs => { await addImages(id, srcs.slice(0, 1)); await removeCardPics(id, [url], '替换'); }),
+    } : {}),
     up: () => up(false), canUp: realScope !== ROOT,
     // 只有 👤 在这里点了才写 color:；「自动」= 删掉 color:，回到按分组 / 关键词自动配色
     color: mode === 'ws' ? (id, c) => saveMeta(id, { color: c }) : null,
@@ -784,8 +791,8 @@ export function Shell({ name, Canvas }) {
     return api('/node', { method: 'PATCH', body: JSON.stringify({ id, body }) }).then(d => { setWsData(d); setSaveState('正文已保存 ' + new Date().toLocaleTimeString() + '（Ctrl+Z 撤销）'); }).catch(e => setSaveState('❌ 正文保存失败：' + e.message));
   };
   // 展开竖栏「改」：四份展开状态整份存进撤销栈（几十个 true，很小）；撤销 / 重做 = 整份写回
-  const vsRef = useRef({}); vsRef.current = { expanded, framed, textOpen, propsShut };
-  const restoreVS = s => { setExpanded(s.expanded || {}); setFramed(s.framed || {}); setTextOpen(s.textOpen || {}); setPropsShut(s.propsShut || {}); };
+  const vsRef = useRef({}); vsRef.current = { expanded, framed, textOpen, propsShut, picFold };
+  const restoreVS = s => { setExpanded(s.expanded || {}); setFramed(s.framed || {}); setTextOpen(s.textOpen || {}); setPropsShut(s.propsShut || {}); if (s.picFold) setPicFold(s.picFold); };
   // 图片进撤销：{op:'pics', paths, pairs, layout, del}。贴进来的（del 假）撤销 = 挪进 .junk/、重做 = 搬回；删掉的（del 真）反过来
   const applyPics = async (e, which) => {
     if ((which === 'undo') !== !!e.del) { // pairs 第三项 = 删之前的坐标（散图被自动摆过、拖过都以这时的为准）
@@ -815,6 +822,7 @@ export function Shell({ name, Canvas }) {
     kids: { name: '子级', field: 'expanded', ok: n => n.children.length > 0, own: id => !!expanded[id], tip: '卡片里列出子节点' },
     props: { name: '属性', field: 'propsShut', inv: true, ok: n => cardProps(wsData?.nodes[n.id]?.meta).length > 0, own: id => !propsShut[id], tip: '卡片上人加的属性' },
     text: { name: '正文', field: 'textOpen', ok: n => !!wsData?.nodes[n.id]?.body?.trim(), own: id => !!textOpen[id], tip: '卡片里渲染 md 正文' },
+    pics: { name: '图片', field: 'picFold', inv: true, ok: n => (images[n.id]?.length || 0) > 0, own: id => !picFold[id], tip: '卡片上的图片（🖼 单张收起 / 显示）' },
   };
   const [settingsOpen, setSettingsOpen] = useState(false); // 左上角 ⚙
   // 👤 2026-10-16 左栏 / 右栏各自 Ctrl+滚轮缩放（鼠标在栏里任何地方，含空白处、正文框上；不按 Ctrl 照常滚）。只缩放标题栏以下，记在本机
@@ -890,7 +898,7 @@ export function Shell({ name, Canvas }) {
       setSelected(from); setSaveState('已把文件「' + rel + '」引成节点并连线（Ctrl+Z 撤销，两步）');
     } catch (e) { setSaveState('❌ 连到文件失败：' + e.message); }
   };
-  const EXP_KEY = { frame: '1', kids: '2', props: '3', text: '4' };
+  const EXP_KEY = { frame: '1', kids: '2', props: '3', text: '4', pics: '5' };
   const [expMore, setExpMore] = useState(false); // 竖栏最上面的 ⋯ 菜单（「改」放这里，用得少）
   useEffect(() => { if (!expMore) return; const c = e => { if (!e.target.closest?.('.expmore, .expmenu')) setExpMore(false); }; window.addEventListener('pointerdown', c, true); return () => window.removeEventListener('pointerdown', c, true); }, [expMore]);
   // 真的展开本页：UI 框自己和它里面所有层的子孙都不动（UI 框自己单独展开）。沿父级往上查到本页为止，钻进 UI 框那页时里面的照常
@@ -948,9 +956,9 @@ export function Shell({ name, Canvas }) {
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyW') { e.preventDefault(); e.stopPropagation(); up(); } // 👤 2026-10-10 Alt+W/A/D = 上一层 / 后退 / 前进（单手）
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyA') { e.preventDefault(); e.stopPropagation(); back(); }
       else if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyD') { e.preventDefault(); e.stopPropagation(); fwd(); }
-      else if (/^Digit[1-4]$/.test(e.code) && !e.ctrlKey && !e.altKey && !e.metaKey && !e.repeat) { // 样例模式也能用（空格 / F 去掉后靠它）。👤 2026-10-10 1 2 3 4 = 子图 / 子级 / 属性 / 正文：选中了就切这张卡自己的，没选中 = 本页预览展开（只本页）；Shift+数字 = 预览展开并递进到子孙
+      else if (/^Digit[1-5]$/.test(e.code) && !e.ctrlKey && !e.altKey && !e.metaKey && !e.repeat) { // 样例模式也能用（空格 / F 去掉后靠它）。👤 2026-10-10 1 2 3 4 = 子图 / 子级 / 属性 / 正文：选中了就切这张卡自己的，没选中 = 本页预览展开（只本页）；Shift+数字 = 预览展开并递进到子孙
         e.preventDefault(); e.stopPropagation();
-        const k = ['frame', 'kids', 'props', 'text'][+e.code.slice(5) - 1];
+        const k = ['frame', 'kids', 'props', 'text', 'pics'][+e.code.slice(5) - 1];
         if (e.shiftKey) expSee(k, true);
         else if (sel && !sel.startsWith('@')) { const n = graph.nodes.get(sel); if (n && EXP[k].ok({ id: sel, children: n.children })) menuActions.expToggle(sel, k); }
         else expSee(k);
@@ -980,6 +988,22 @@ export function Shell({ name, Canvas }) {
 
   // >v<🖼️图片-进图-粘贴 / 拖文件 / 从浏览器拖网页图：落在卡片上 = 进那个节点；落在空白处或没选中 = 在当前页新建一个节点装它（PureRef 习惯）
   const readFile = f => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(f); });
+  // 弹系统的文件选择框选图（可多选）→ cb([{dataUrl}])
+  const pickFiles = cb => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true; inp.style.display = 'none';
+    inp.onchange = () => { const fs = [...(inp.files || [])]; inp.remove(); if (fs.length) Promise.all(fs.map(readFile)).then(us => cb(us.map(dataUrl => ({ dataUrl })))); };
+    inp.oncancel = () => inp.remove();
+    document.body.appendChild(inp); inp.click();
+  };
+  // 删卡片上的图（进 .junk/，Ctrl+Z 能撤）
+  const removeCardPics = async (id, urls, why = '删') => {
+    const paths = urls.map(u => new URL(u, location.href).searchParams.get('p')).filter(Boolean); if (!paths.length) return;
+    try {
+      const r = await api('/pic-remove', { method: 'POST', body: JSON.stringify({ paths }) });
+      pushOp({ op: 'pics', del: true, paths, pairs: r.pairs, desc: `${why}了「${graph.nodes.get(id)?.label || id}」的 ${paths.length} 张图` });
+      setWsData(await api('/ws')); setSaveState(`已${why}「${graph.nodes.get(id)?.label || id}」的图（Ctrl+Z 撤销）`);
+    } catch (e) { setSaveState('❌ 删图失败：' + e.message); }
+  };
   const addImages = async (target, srcs, at, baseName) => {
     if (!srcs.length) return;
     try {
@@ -1169,9 +1193,10 @@ export function Shell({ name, Canvas }) {
   cardActions.endBody = (id, body) => { setBodyEdit(b => b === id ? null : b); saveBody(id, body); };
   cardActions.toggleText = id => setTextOpen(f => { const g = { ...f }; if (g[id]) delete g[id]; else g[id] = true; return g; });
   cardActions.resizePics = (id, w) => {
-    w = Math.round(Math.max(80, Math.min(1600, w)));
-    if (mode === 'ws') api('/node', { method: 'PATCH', body: JSON.stringify({ id, meta: { picw: String(w) } }) }).then(setWsData).catch(e => setSaveState('❌ ' + e.message));
-    else setLocalPicw(m => ({ ...m, [id]: w }));
+    if (w != null) w = Math.round(Math.max(80, Math.min(1600, w)));
+    // 👤 2026-10-17 改图片宽度也进 Ctrl+Z（走 saveMeta）；w = null = 回到默认宽度（删掉 picw）
+    if (mode === 'ws') saveMeta(id, { picw: w == null ? null : String(w) });
+    else setLocalPicw(m => { const g = { ...m }; if (w == null) delete g[id]; else g[id] = w; return g; });
   };
   const withPics = [...view.nodes.filter(n => images[n.id]?.length), ...loosePics];
   const allPicsFolded = withPics.length > 0 && withPics.every(n => picFold[n.id]);
@@ -1347,7 +1372,7 @@ export function Shell({ name, Canvas }) {
       {scaffold && <ScaffoldModal data={scaffold} onClose={() => setScaffold(null)}
         onCreate={(syn, files, mount) => api('/scaffold', { method: 'POST', body: JSON.stringify({ syn, files, mount }) }).then(async d => { setScaffold(null); setTree(null); setWsData(await api('/ws')); setSaveState(d.made.length ? '已创建 ' + d.made.join('、') : '没有新建（都已存在）'); }).catch(e => setSaveState('❌ ' + e.message))} />}
       {fileView && <FilePanel file={fileView.text !== undefined || fileView.error || fileView.note ? fileView : null} onClose={() => setFileView(null)} hl={fileHl && fileHl.file === fileView.path ? fileHl : null} onSelMenu={mode === 'ws' ? (e, s) => setMenu({ x: e.clientX, y: e.clientY, sel: s }) : null} />}
-      {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), color: colors.get(menu.id), baseColor: graph.nodes.has(menu.id) ? baseColor(graph, menu.id, getMeta(menu.id), cTables, semCols) : null, satNow: satOf(getMeta(menu.id)), tintNow: +getMeta(menu.id)?.tint || 0, colorSet: getMeta(menu.id)?.color || null, patternSet: getMeta(menu.id)?.pattern || null, pattern: patterns.get(menu.id) || null, open: !!expanded[menu.id], file: wsData?.nodes[menu.id]?.meta?.file || null, ref: wsData?.nodes[menu.id]?.meta?.ref || null, ui: isUi(wsData?.nodes[menu.id]?.meta), descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
+      {menu && <ContextMenu menu={menu} node={menu.id ? { ...graph.nodes.get(menu.id), pics: images[menu.id] || [], color: colors.get(menu.id), baseColor: graph.nodes.has(menu.id) ? baseColor(graph, menu.id, getMeta(menu.id), cTables, semCols) : null, satNow: satOf(getMeta(menu.id)), tintNow: +getMeta(menu.id)?.tint || 0, colorSet: getMeta(menu.id)?.color || null, patternSet: getMeta(menu.id)?.pattern || null, pattern: patterns.get(menu.id) || null, open: !!expanded[menu.id], file: wsData?.nodes[menu.id]?.meta?.file || null, ref: wsData?.nodes[menu.id]?.meta?.ref || null, ui: isUi(wsData?.nodes[menu.id]?.meta), descendants: (() => { let k = 0; const c = x => { for (const y of graph.nodes.get(x).children) { k++; c(y); } }; c(menu.id); return k; })() } : null}
         actions={{ ...menuActions, allOpen }} onClose={() => setMenu(null)} />}
       {exportText !== null && (
         <div className="modal" onClick={() => setExportText(null)}>
@@ -1462,6 +1487,8 @@ export function NodeCard({ node, img, dim, isSel }) {
           onClick={e => { e.stopPropagation(); cardActions.foldPics(node.id); }}>🖼{img.length > 1 ? img.length : ''}</span>}
         {node.body?.trim() && <span className={'textbadge' + (node.textOpen ? ' on' : '')} title={node.textOpen ? '收起正文' : '在卡片里展开正文（md）'} onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.toggleText(node.id); }}>📄</span>}
+        {!sized && showPics && node.picw > 0 && <span className="sizebadge" title={'图片宽度 ' + Math.round(node.picw) + '：点一下回到默认宽度（Ctrl+Z 能撤）'} onPointerDown={stop} onMouseDown={stop}
+          onClick={e => { e.stopPropagation(); cardActions.resizePics(node.id, null); }}>⇲</span>}
         {sized && <span className="sizebadge" title={'手动大小 ' + Math.round(node.sw) + '×' + Math.round(node.sh) + '：点一下回到自动（跟着内容变）'} onPointerDown={stop} onMouseDown={stop}
           onClick={e => { e.stopPropagation(); cardActions.resizeCard(node.id, null); }}>⇲</span>}
         {node.propN > 0 && <span className={'propbadge' + (node.props?.length ? ' on' : '')} title={node.props?.length ? '收起卡片上的属性' : '展开属性（' + node.propN + ' 条）'} onPointerDown={stop} onMouseDown={stop}

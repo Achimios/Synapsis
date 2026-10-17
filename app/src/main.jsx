@@ -429,11 +429,15 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   const seenFrames = useRef(null);
   useEffect(() => {
     // 「看」临时展开的子图（data.node.tempFrame）不算：不挪周边卡片、不存坐标；等它变成真展开（「改」）时才当作刚展开
+    // 👤 2026-10-17「临时展开还是会移动其他节点」：真展开的框被预览（如 2 子级）暂时盖掉、关预览后重新出现 —— 以前当成「刚展开」把周边挤开。
+    //   现在按节点自己的真展开状态（realFramed，预览盖着时也是真）记：只有从「没真展开」变成「真展开」那一下才挤；换页回来的也不算
+    const real = new Set(shown.filter(n => n.data?.node?.realFramed && !n.parentId).map(n => n.id));
     const frames = shown.filter(n => n.type === 'frame' && !n.parentId && !n.data?.node?.tempFrame);
-    if (seenFrames.current === null) { seenFrames.current = new Set(frames.map(f => f.id)); return; }
+    const page = view.nodes.filter(n => !n.frame).map(n => n.id).sort().join('|').slice(0, 2000); // 换页 = 这一页最外层的节点换了一批（框里展开出来的子节点不算）
+    if (seenFrames.current === null || seenFrames.current.page !== page) { seenFrames.current = Object.assign(new Set(real), { page }); return; }
     const kidsReady = f => shown.filter(n => n.parentId === f.id).every(n => n.measured?.width);
-    const fresh = frames.filter(f => !seenFrames.current.has(f.id) && kidsReady(f));
-    seenFrames.current = new Set([...[...seenFrames.current].filter(id => frames.some(f => f.id === id)), ...fresh.map(f => f.id)]);
+    const fresh = frames.filter(f => real.has(f.id) && !seenFrames.current.has(f.id) && kidsReady(f));
+    seenFrames.current = Object.assign(new Set([...[...seenFrames.current].filter(id => real.has(id)), ...fresh.map(f => f.id)]), { page });
     const ch = {};
     for (const f of fresh) {
       const fx = f.position.x, fy = f.position.y, fr = fx + f.style.width, fb = fy + f.style.height;

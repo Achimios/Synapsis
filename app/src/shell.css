@@ -794,3 +794,8 @@ aside.outline > :not(.bar) { zoom: var(--zl, 1); } aside.side > :not(.bar) { zoo
 .agentbox .plan li .imgedit .seg a { padding: 0 6px; }
 .imgdefaults { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; border-top: 1px dashed var(--line); padding-top: 6px; margin-top: 4px; }
 .imgdefaults label { display: inline-flex !important; gap: 4px; align-items: center; }
+/* 👤 2026-10-17 右键「贴图 ▸」：已有的图一张一行（缩略图 + 替换 / 删） */
+.ctx .submenu.picsub { min-width: 220px; }
+.ctx .mi.row.picrow { display: flex; align-items: center; gap: 6px; }
+.ctx .mi.row.picrow img { width: 36px; height: 36px; object-fit: cover; border-radius: 3px; background: #111; flex: none; }
+.ctx .mi.row.picrow span { flex: 1; }
