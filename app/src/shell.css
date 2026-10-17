@@ -228,7 +228,8 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .mdedit .cm-cursor { border-left-color: var(--text); }
 .mdedit .cm-selectionBackground, .mdedit .cm-focused .cm-selectionBackground, .mdedit .cm-content ::selection { background: rgba(77,155,255,.35) !important; }
 .mdedit .cm-placeholder { color: var(--dim); }
-.mdedit .cm-h { color: color-mix(in srgb, var(--accent) 55%, var(--strong)); font-weight: 700; }
+.mdedit .cm-h { color: color-mix(in srgb, var(--accent) 28%, var(--strong)); font-weight: 700; } /* 四级以下 */
+.mdedit .cm-h1 { color: color-mix(in srgb, var(--accent) 90%, var(--strong)); } .mdedit .cm-h2 { color: color-mix(in srgb, var(--accent) 68%, var(--strong)); } .mdedit .cm-h3 { color: color-mix(in srgb, var(--accent) 46%, var(--strong)); } /* 👤 2026-10-17 标题四级饱和度：一级最浓，往下淡 */
 .mdedit .cm-h1 { font-size: 1.3em; } .mdedit .cm-h2 { font-size: 1.18em; } .mdedit .cm-h3 { font-size: 1.08em; } /* 👤「差别不要太大」 */
 .mdedit .cm-strong { font-weight: 700; color: var(--strong); }
 .mdedit .cm-em { font-style: italic; }
