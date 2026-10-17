@@ -15,7 +15,7 @@ import { AiPanel, RelatedDock, AgentBox } from './ai.jsx';
 import { PinDock } from './pindock.jsx';
 import { emptyPins, addGroup, addNodes, addLines, updateItem, lineAt, makeLinePin, locateLine } from './pins.js';
 import { MdLite } from './mdlite.jsx';
-import { SrcArea } from './mdsrc.jsx';
+import { MdEditor } from './mdedit.jsx';
 import { SAMPLE } from './sample.js';
 import './shell.css';
 
@@ -484,7 +484,7 @@ export function Shell({ name, Canvas }) {
   // >v<🎨画布-右键菜单-动作：删除（工作区里 = 移进 .junk/）、改状态、改名、属性
   const [menu, setMenu] = useState(null);       // {x, y, id|null}
   // >v<🎨画布-属性面板-默认开着（👤：点了节点总要看概览）；「概览 / 原文」两页，看原文不再顶掉属性
-  const [bodyMode, setBodyMode] = useStash('body.mode', 'prev'); // 右栏正文：prev 预览 | src 源码（Ctrl+E；👤 2026-10-17 顶替「原文」页签）
+  const [bodyMode, setBodyMode] = useStash('body.mode', 'live'); // 右栏正文：live 实时预览 | src 全部源码（Ctrl+E；👤 2026-10-17 顶替「原文」页签；旧的 prev 当 live）
   const [rawText, setRawText] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
   // >v<🔎搜索-接入-Ctrl+F 跳过去（换页 + 选中 + 居中）；L / 右键「连线到…」= 选目标连线（可以连到别的页，那头会变成传送门）
@@ -916,10 +916,10 @@ export function Shell({ name, Canvas }) {
       if (e.ctrlKey && !e.altKey && !e.shiftKey && e.code === 'KeyH' && mode === 'ws') { e.preventDefault(); e.stopPropagation(); if (repl) setRepl(null); else { const m = cardActions.getMulti?.() || []; setRepl({ find: '', to: '', ids: m.length > 1 ? m : null, idx: 0, note: '' }); } return; } // 👤 2026-10-10 Ctrl+H = 替换节点名
       if (e.ctrlKey && !e.altKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); e.stopPropagation(); if (e.target === taRef.current || e.target === findRef.current) { findRef.current?.focus(); findRef.current?.select(); return; } setFinder({ mode: 'go' }); return; } // 在输入框里也能用；在「文本」页 = 文本查找
       const inText = e.target.closest && e.target.closest('textarea, input, [contenteditable="true"]');
-      // 👤 2026-10-17 Ctrl+E = 右栏正文 预览 ⇄ 源码（在正文框里也能用；别的输入框里不管）；右栏关着 = 打开并进源码
+      // 👤 2026-10-17 Ctrl+E = 右栏正文 实时预览 ⇄ 全部源码（在正文里也能用；别的输入框里不管）；右栏关着 = 先打开
       if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && e.code === 'KeyE' && (!inText || e.target.closest('.mdbody'))) {
         e.preventDefault(); e.stopPropagation();
-        if (!propsOpen) { setPropsOpen(true); setBodyMode('src'); } else setBodyMode(m => m === 'src' ? 'prev' : 'src');
+        if (!propsOpen) setPropsOpen(true); else setBodyMode(m => m === 'src' ? 'live' : 'src');
         return;
       }
       if (inText) return;
@@ -1423,13 +1423,13 @@ function RenameInput({ id, label }) {
     onBlur={e => { if (!done.current) cardActions.commitRename(id, e.target.value); }} />;
 }
 // 卡片里改正文：高度跟着字长（手动大小的卡就在卡里滚）；Esc / 失焦 = 存
-function BodyEdit({ id, body }) { // 👤 2026-10-17 和右栏源码同一个组件（带高亮的源码：md 符号灰着、粗体标题上色），框跟着内容长高
-  const ref = useRef(null), done = useRef(false), [v, setV] = useState(body || '');
-  useEffect(() => { const t = ref.current; if (!t) return; t.focus(); t.setSelectionRange(t.value.length, t.value.length); }, []);
-  const end = () => { if (done.current) return; done.current = true; cardActions.endBody(id, ref.current.value); };
-  return <SrcArea taRef={ref} className="cardedit nodrag nowheel" value={v} onChange={e => setV(e.target.value)} placeholder="正文（md）…  Esc 存好退出"
-    onBlur={end} onPointerDown={stop} onMouseDown={stop} onDoubleClick={stop}
-    onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); end(); } }} />;
+function BodyEdit({ id, body }) { // 👤 2026-10-17 和右栏正文同一个编辑器（实时预览：光标进到哪段才露出符号，真粗体、标题稍大），框跟着内容长高
+  const ref = useRef(null), done = useRef(false);
+  const end = () => { if (done.current) return; done.current = true; cardActions.endBody(id, ref.current ? ref.current.state.doc.toString() : body); };
+  return <div className="cardedit nodrag nowheel" onPointerDown={stop} onMouseDown={stop} onDoubleClick={stop}
+    onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); end(); } }}>
+    <MdEditor viewRef={ref} value={body || ''} autoFocus placeholder="正文（md）…  Esc 存好退出" onBlur={end} />
+  </div>;
 }
 export function NodeCard({ node, img, dim, isSel }) {
   const pics = img?.length > 0, showPics = pics && !node.foldPics;

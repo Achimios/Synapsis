@@ -316,8 +316,7 @@ for (const kind of ['reactflow']) {
   await page.fill('.side h3 input', '行动'); await page.keyboard.press('Enter'); await sleep(1800);
   ok(existsSync(join(ws, '__synapsis', '游戏AI', '行动', '_node.md')), '改回原名');
   ok((await page.$$eval('.side .edges li', ls => ls.length)) > 0, '属性面板列出入/出边');
-  await page.click('.modesw a:has-text("源码")'); await sleep(300);
-  await page.fill('textarea.body', '行动层：从战术目标展开成动作序列。');
+  await page.fill('.side .cm-content', '行动层：从战术目标展开成动作序列。'); // 👤 2026-10-17 正文是实时预览编辑器（CodeMirror）
   await page.mouse.click(1000, 780); await sleep(1200);
   ok(nodeFile('游戏AI/行动/_node.md').includes('从战术目标展开成动作序列'), '属性面板改正文 → 写进文件');
   await rclick('新节点'); await page.click('.ctx .mi.danger'); await sleep(1500);
@@ -1017,8 +1016,7 @@ for (const kind of ['reactflow']) {
   ok(!/射程/.test(gmd()) && /血量: 120/.test(gmd()), 'Ctrl+Z → 撤掉刚加的属性（之前的还在）');
   await page.keyboard.press('Control+y'); await sleep(1200);
   ok(/射程: 30/.test(gmd()), 'Ctrl+Y → 属性回来');
-  if (!(await page.$('.side textarea.body'))) { await page.click('.modesw a:has-text("源码")'); await sleep(300); } // 👤 2026-10-17 正文默认是预览
-  await page.fill('.side textarea.body', '咕噜人的正文'); await page.click('.side h3'); await sleep(1200);
+  await page.fill('.side .cm-content', '咕噜人的正文'); await page.click('.side h3'); await sleep(1200);
   ok(/咕噜人的正文/.test(gmd()), '正文失焦保存');
   await page.mouse.click(700, 760); await sleep(200); await page.keyboard.press('Control+z'); await sleep(1200);
   ok(!/咕噜人的正文/.test(gmd()), 'Ctrl+Z → 正文撤回去');
@@ -1746,29 +1744,37 @@ for (const kind of ['reactflow']) {
   const errs = []; page.on('pageerror', e => errs.push(e.message));
   await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
   await page.click('.react-flow__node[data-id="甲"] .lab'); await sleep(600);
-  if (await page.$('.modesw a.on:has-text("源码")')) { await page.click('.modesw a:has-text("预览")'); await sleep(400); }
-  ok(await page.$('.mdbody.prev .mdprev b') && await page.$('.mdbody.prev .mdprev i') && await page.$('.mdbody.prev .mdprev s') && !(await page.$('.mdbody pre.fm')), '预览：粗体 / 斜体 / 删除线渲染出来，不显示 frontmatter');
-  const top = () => page.evaluate(() => { const b = document.querySelector('.mdbody'), t = b.getBoundingClientRect().top; for (const el of b.querySelectorAll('[data-ln]')) { const r = el.getBoundingClientRect(); if (r.bottom > t + 2 && r.height) return +el.dataset.ln; } return 0; });
+  if (await page.$('.modesw a.on:has-text("源码")')) { await page.click('.modesw a:has-text("实时预览")'); await sleep(400); }
+  const lineText = L => page.$eval(`.mdbody .cm-line[data-ln="${L}"]`, e => e.textContent).catch(() => '');
   const lineOf = s => readFileSync(mdFile, 'utf8').split('\n').findIndex(l => l.startsWith(s)) + 1;
+  const LB = lineOf('有 **粗体**'), LH = lineOf('# 标题');
+  ok(await page.$('.mdbody.live .cm-strong') && await page.$('.mdbody .cm-em') && await page.$('.mdbody .cm-strike') && await page.$(`.mdbody .cm-line.cm-h1[data-ln="${LH}"]`) && !(await page.$('.mdbody pre.fm')), '实时预览：粗体 / 斜体 / 删除线 / 标题渲染出来，不显示 frontmatter');
+  ok(!(await lineText(LB)).includes('**') && !(await lineText(LH)).includes('#'), '没在编辑那一段：** 和 # 都藏着 「' + await lineText(LB) + '」');
+  ok(await page.$eval('.mdbody .cm-strong', e => +getComputedStyle(e).fontWeight >= 600) && await page.$eval('.mdbody .cm-h1', e => parseFloat(getComputedStyle(e).fontSize)) > await page.$eval(`.mdbody .cm-line[data-ln="${LB}"]`, e => parseFloat(getComputedStyle(e).fontSize)), '真粗体；一级标题字号比正文大');
+  await page.click('.mdbody .cm-strong'); await sleep(200);
+  ok((await lineText(LB)).includes('**粗体**') && !(await lineText(LB)).includes('~~'), '光标进到粗体里 → 只有这一段的 ** 露出来（同一行的 ~~ 还藏着）「' + await lineText(LB) + '」');
+  await page.click(`.mdbody .cm-line[data-ln="${LH}"]`); await sleep(200);
+  ok((await lineText(LH)).startsWith('# ') && !(await lineText(LB)).includes('**'), '光标到标题行 → # 露出来，离开的粗体又藏回去');
+  // Ctrl+B / Ctrl+I / Ctrl+K；Enter 不接列表；列表行 Tab 缩进
+  await page.keyboard.press('End'); await page.keyboard.press('Enter'); await page.keyboard.type('加粗我'); await page.keyboard.press('Shift+Home'); await page.keyboard.press('Control+b'); await sleep(100);
+  await page.keyboard.press('End'); await page.keyboard.press('Enter'); await page.keyboard.type('- 一项'); await page.keyboard.press('Enter'); await sleep(100);
+  ok(!/^- $/m.test(await page.evaluate(() => document.querySelector('.mdbody .cm-content').innerText)), 'Enter 只换行，不自动接下一项「- 」');
+  await page.keyboard.type('- 二项'); await page.keyboard.press('Tab'); await sleep(100);
+  await page.evaluate(() => document.activeElement?.blur?.()); await sleep(1500);
+  { const t = readFileSync(mdFile, 'utf8'); ok(t.includes('**加粗我**') && /\n {2,}- 二项/.test(t) && t.includes('\n- 一项\n'), 'Ctrl+B 包上 **；列表行 Tab 缩进；失焦存进文件 ' + JSON.stringify(t.split('\n').slice(LH - 1, LH + 5))); }
+  const top = () => page.evaluate(() => { const b = document.querySelector('.mdbody'), t = b.getBoundingClientRect().top; for (const el of b.querySelectorAll('[data-ln]')) { const r = el.getBoundingClientRect(); if (r.bottom > t + 2 && r.height) return +el.dataset.ln; } return 0; });
   const L30 = lineOf('第30行');
-  await page.evaluate(L => { const b = document.querySelector('.mdbody'), el = b.querySelector(`[data-ln="${L}"]`); b.scrollTop += el.getBoundingClientRect().top - b.getBoundingClientRect().top; b.dispatchEvent(new Event('scroll')); }, L30); await sleep(200);
+  await page.evaluate(L => { const b = document.querySelector('.mdbody'), el = b.querySelector(`[data-ln="${L}"]`); b.scrollTop += el.getBoundingClientRect().top - b.getBoundingClientRect().top; b.dispatchEvent(new Event('scroll')); }, L30); await sleep(300);
   const t0 = await top();
-  await page.evaluate(() => document.activeElement?.blur?.()); await sleep(100); // 焦点不在输入框
   await page.keyboard.press('Control+e'); await sleep(500);
   const t1 = await top();
-  ok(await page.$('.mdbody.src textarea.body') && (await page.$eval('.mdbody pre.fm', e => e.textContent).catch(() => '')).includes('备注'), 'Ctrl+E → 源码：正文框 + 灰的 frontmatter');
-  ok(await page.$('.mdbody .mirror .b') && (await page.$$eval('.mdbody .mirror .mk', es => es.map(e => e.textContent))).includes('**') && await page.$('.mdbody .mirror .h'), '源码带高亮：** 和 # 灰着，粗体 / 标题上色（方案 C）');
-  ok(await page.evaluate(() => { const t = document.querySelector('.mdbody textarea'), m = document.querySelector('.mdbody .mirror'); return Math.abs(t.scrollHeight - m.offsetHeight) <= 2 && getComputedStyle(t).color === 'rgba(0, 0, 0, 0)'; }), '正文框和背后的镜像一样高（排版一致，光标对得上），框里的字是透明的');
-  ok(t0 === L30 && Math.abs(t1 - L30) <= 1, `切到源码后看到的第一行还是第 30 行那里（预览 ${t0} → 源码 ${t1}，应为 ${L30}）`);
-  ok(await page.evaluate(() => document.activeElement?.matches('.mdbody textarea')), '进源码 = 光标已经在正文框里，能直接打字');
-  await page.keyboard.type('XYZ'); await sleep(100);
-  await page.keyboard.press('Control+e'); await sleep(1500);
-  ok(await page.$('.mdbody.prev') && readFileSync(mdFile, 'utf8').split('\n')[L30 - 1].startsWith('XYZ第30行'), '打了字再 Ctrl+E 回预览 → 存了，字在第 30 行开头（光标落在对齐的那一行）');
-  const t2 = await top();
-  ok(Math.abs(t2 - L30) <= 1, `回到预览：第一行还在第 30 行那里（${t2}）`);
-  const L40 = lineOf('第40行');
-  await page.dblclick(`.mdprev [data-ln="${L40}"]`); await sleep(500);
-  ok(await page.evaluate(L => { const t = document.querySelector('.mdbody textarea'); return document.activeElement === t && t.value.slice(0, t.selectionStart).split('\n').length === L; }, L40 - lineOf('# 标题') + 1), '预览里双击第 40 行 → 进源码，光标就在那一行');
+  ok(await page.$('.mdbody.src .cm-editor') && (await page.$eval('.mdbody pre.fm', e => e.textContent).catch(() => '')).includes('备注'), 'Ctrl+E → 全部源码：上面出现灰的 frontmatter');
+  ok(Math.abs(t0 - L30) <= 1 && Math.abs(t1 - L30) <= 1, `切到源码后看到的第一行还是第 30 行那里（${t0} → ${t1}，应为 ${L30}）`);
+  await page.keyboard.press('Control+e'); await sleep(500);
+  ok(await page.$('.mdbody.live') && Math.abs(await top() - L30) <= 1, '再 Ctrl+E 回实时预览，还停在那一行');
+  await page.keyboard.press('Control+e'); await page.evaluate(() => { document.querySelector('.mdbody').scrollTop = 0; }); await sleep(400);
+  { const LB2 = lineOf('有 **粗体**'), tx = await lineText(LB2); ok(tx.includes('**粗体**') && tx.includes('~~') && tx.includes('`'), '全部源码：没在编辑的行也是符号全显示「' + tx + '」'); }
+  await page.keyboard.press('Control+e'); await sleep(300);
   ok(!(await page.$('.side .tabs a:has-text("原文")')), '右栏没有「原文」页签了');
   ok(!errs.length, '无页面错误 ' + errs.join(' | '));
   await page.close();
@@ -1798,24 +1804,23 @@ for (const kind of ['reactflow']) {
     const c = await page.evaluate(() => { const r = getSelection().getRangeAt(0).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
     await page.mouse.click(c[0], c[1], { button: 'right' }); await sleep(400);
   };
-  // 1) 正文预览里选中 → 右键 → 钉到新组（👤 2026-10-17 原文页签去掉了，预览块带 data-ln = 文件行号）
+  // 1) 正文（实时预览编辑器）里选中 → 右键 → 钉到新组（👤 2026-10-17 原文页签去掉了；每行带 data-ln = 文件行号）
   await page.mouse.click(...mid(await (await lab('甲')).boundingBox())); await sleep(400);
-  await page.click('.modesw a:has-text("预览")'); await sleep(900);
+  if (await page.$('.modesw a.on:has-text("源码")')) await page.click('.modesw a:has-text("实时预览")'); await sleep(900);
   const L2 = lineOf('第二行');
-  await selectRaw('.mdprev', L2, 3, 15);
+  await selectRaw('.mdbody .cm-content', L2, 3, 15);
   ok((await page.$eval('.ctx .mh', e => e.textContent).catch(() => '')) === '选中的文字', '正文预览里选中一段文字，右键 → 出现「选中的文字」菜单（不是浏览器自己的）');
   await page.click('.ctx .mi:has-text("钉到新组")'); await sleep(900);
   let it = items()[0];
   ok(it?.kind === 'line' && it.file === '__synapsis/甲.md' && it.node === '甲' && it.line === L2 && it.text.startsWith('第二行') && it.seg === 0, '钉到新组 → 行钉子：文件 / 节点 / 行号 / 整行文字 / 段号 ' + JSON.stringify(it));
   // 2) 正文框里选中 → 右键 → 钉到当前组：行号要加上 frontmatter 的行数
   await page.click('.modesw a:has-text("源码")'); await sleep(500);
-  await page.evaluate(() => { const ta = document.querySelector('textarea.body'); ta.focus(); const i = ta.value.indexOf('结尾一行'); ta.setSelectionRange(i, i + 4); const r = ta.getBoundingClientRect(); ta.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.x + 30, clientY: r.y + 30 })); });
-  await sleep(400);
+  await selectRaw('.mdbody .cm-content', lineOf('结尾一行'), 0, 4);
   ok((await page.$eval('.ctx .mh', e => e.textContent).catch(() => '')) === '选中的文字', '正文框里选中文字右键 → 同一个菜单');
   await page.click('.ctx .mi:has-text("钉到「组 1」")'); await sleep(900);
   ok(items().length === 2 && items()[1].line === lineOf('结尾一行') && items()[1].line > 3, '正文框里的钉子：行号是真文件里的行号（带上 frontmatter） ' + items()[1]?.line + ' vs ' + lineOf('结尾一行'));
   // 没选中文字时右键 = 浏览器自己的菜单（我们不抢）
-  await page.evaluate(() => { const ta = document.querySelector('textarea.body'); ta.setSelectionRange(2, 2); window.__ctxPrevented = null; ta.addEventListener('contextmenu', e => { window.__ctxPrevented = e.defaultPrevented; }, { once: false }); const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); ta.dispatchEvent(ev); window.__ctxPrevented = ev.defaultPrevented; });
+  await page.click(`.mdbody .cm-line[data-ln="${lineOf('结尾一行')}"]`); await sleep(200); await page.evaluate(() => { const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); document.querySelector('.mdbody .cm-content').dispatchEvent(ev); window.__ctxPrevented = ev.defaultPrevented; });
   ok(await page.evaluate(() => window.__ctxPrevented) === false && !(await page.$('.ctx')), '没选中文字 → 不拦右键');
   // 3) 文件在外面被改：上面插了两行 → 双击钉子，高亮到新位置，钉子里的行号更新
   writeFileSync(mdFile, readFileSync(mdFile, 'utf8').replace('开头一行', '新加的一行\n又一行\n开头一行'));
@@ -1954,9 +1959,9 @@ for (const kind of ['reactflow']) {
   await page.click('aside.outline .colsbtn'); await page.click('aside.outline .colsbtn'); await sleep(300); // 回一列
   await page.keyboard.press('Control+Tab'); await sleep(200); await page.keyboard.press('Control+Tab'); await sleep(200);
   ok(await zone() === 'right', '再轮两下 → 右栏');
-  for (let i = 0; i < 15 && !(await page.$('aside.side textarea.zkb, aside.side .mdprev.zkb')); i++) { await page.keyboard.press('s'); await sleep(60); }
+  for (let i = 0; i < 15 && !(await page.$('aside.side textarea.zkb, aside.side .cm-content.zkb')); i++) { await page.keyboard.press('s'); await sleep(60); }
   await page.keyboard.press('e'); await sleep(200);
-  ok(await page.evaluate(() => document.activeElement?.matches('aside.side textarea')), '右栏 S 走到正文、E 光标进去（预览时 = 进源码）');
+  ok(await page.evaluate(() => document.activeElement?.matches('aside.side textarea, aside.side .cm-content')), '右栏 S 走到正文、E 光标进去（预览时 = 进源码）');
   await page.keyboard.press('Escape'); await sleep(200);
   ok(await page.evaluate(() => document.activeElement === document.body) && await zone() === 'right', '正文里 Esc = 退出来，还在右栏');
   await page.click('.bar.tabs a:text-is("文本")'); await sleep(300);

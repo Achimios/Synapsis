@@ -1,6 +1,6 @@
 // >v<⌨快捷键-生效区（👤 2026-10-16）：Ctrl+Tab / Ctrl+Shift+Tab 让 WASD 在 左栏 → 画布 → 右栏 之间轮转（只轮开着的栏）。
 //   左栏：大纲 = 光标按屏幕位置走（见 okey），E 选中；文件 =W/S 上下、D 打开文件夹、A 收起、E 打开。「文本」页不给（误按就改了文字），轮转跳过它。
-//   右栏：W/S 上下一行，一排按钮里 A/D 左右，E = 点按钮 / 进输入框（正文预览 = 进源码）；在输入框 / 正文里 Esc = 退出来（回到 WASD）。
+//   右栏：W/S 上下一行，一排按钮里 A/D 左右，E = 点按钮 / 进输入框（正文 = 光标进编辑器）；在输入框 / 正文里 Esc = 退出来（回到 WASD）。
 //   Shift = 一次走 4 格。当前生效区的栏有一圈强调色描边（body[data-kbzone]）；画布是默认区，不描边。
 //   全靠 DOM 找行（和右键菜单 menuNav 一个思路），各栏长什么样这里不用跟着改。
 let zone = 'canvas';
@@ -69,9 +69,9 @@ function okey(tree, K, n) {
 function rowsOf(el) {
   if (el.matches('aside.outline')) return [...el.querySelectorAll('.files .fi')];
   const body = el.querySelector('.sidebody') || el;
-  return [...body.querySelectorAll('h3 input, .row, .bodyhead, textarea, .mdprev, .filerow, table.meta tr')].filter(r => r.offsetParent !== null && (r.matches('input, textarea, .mdprev') || r.querySelector('button, a, input, textarea')));
+  return [...body.querySelectorAll('h3 input, .row, .bodyhead, textarea, .cm-content, .filerow, table.meta tr')].filter(r => r.offsetParent !== null && (r.matches('input, textarea, .cm-content') || r.querySelector('button, a, input, textarea')));
 }
-const ctrls = r => r.matches('input, textarea, .mdprev') ? [] : [...r.querySelectorAll('button, a, input, textarea, select')].filter(c => c.offsetParent !== null);
+const ctrls = r => r.matches('input, textarea, .cm-content') ? [] : [...r.querySelectorAll('button, a, input, textarea, select')].filter(c => c.offsetParent !== null);
 const pos = {}; // 每个区记 {row, col}
 function mark(el, rows) {
   clearKb();
@@ -127,6 +127,6 @@ export function zoneKeys(e) {
   if (K === 'left' || K === 'right') { step(0, K === 'right' ? n : -n); return; }
   // E：点这一格；输入框 / 正文 = 光标进去
   const cs = ctrls(r), c = cs.length ? cs[Math.min(p.col, cs.length - 1)] : r;
-  if (c.matches('.mdprev')) { clearKb(); c.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); } // 正文预览：E = 进源码（光标进框）
-  else if (c.matches('input, textarea, select')) { clearKb(); c.focus(); } else { c.click(); setTimeout(() => step(0), 0); }
+  if (c.matches('input, textarea, select, .cm-content')) { clearKb(); c.focus(); } // .cm-content = 正文编辑器
+  else { c.click(); setTimeout(() => step(0), 0); }
 }

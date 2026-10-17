@@ -1,7 +1,7 @@
 // 右键菜单、属性面板、文件树（外部区）、文件预览。外壳把状态和动作传进来，这里只管显示。
 import { useStash } from './stash.js';
 import { MdLite } from './mdlite.jsx';
-import { SrcArea } from './mdsrc.jsx';
+import { MdEditor, caretToLine } from './mdedit.jsx';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, Children } from 'react';
 
 import { PALETTE, parseColor, satHex } from './colors.js';
@@ -228,62 +228,42 @@ export function RawText({ text, hl, file, onSelMenu }) {
   return <pre className="raw" ref={ref} onContextMenu={menu}>{lines.map((l, i) => <span key={i} data-ln={i + 1} className={hl?.line === i + 1 ? 'ln hl' : 'ln'}>{l}{i < lines.length - 1 ? '\n' : ''}</span>)}</pre>;
 }
 
-// >v<📝右栏-正文-预览 / 源码（👤 2026-10-17，Ctrl+E 切换；顶替原来的「原文」页签）
-//   预览 = MdLite 渲染（粗体、斜体、表格…），双击某一块 = 进源码、光标落在那一行；
-//   源码 = 上面灰着的 frontmatter（只读，属性在上面的表里改）+ 正文框（失焦保存）。切换时按行对齐：看到的第一行（光标在框里 = 光标那行）在原来的高度。
-//   源码框背后垫一层同样排版的镜像（一行一个 span，data-ln = 文件里的行号）：量行的位置、钉子跳过来时高亮那一行
+// >v<📝右栏-正文-实时预览 / 全部源码（👤 2026-10-17 方案 B：Ctrl+E 切换；顶替原来的「原文」页签和只读预览）
+//   实时预览 = 编辑器里就是渲染好的样子，光标进到哪一段那一段的符号才露出来（mdedit.jsx）；全部源码 = 符号全显示 + 上面灰着的 frontmatter（只读，属性在上面的表里改）。
+//   两种模式是同一个编辑器，切换时只是多 / 少了上面的 frontmatter：按「看到的第一行」把滚动摆回原来的高度。失焦自动保存
 const fmOf = raw => { const m = /^---\r?\n[\s\S]*?\r?\n---[^\n]*(\n|$)/.exec(raw || ''); return m ? m[0].replace(/\r?\n$/, '') : ''; };
 function topLine(box) { // 容器里看得到的第一行 → {line, dy}
   const top = box.getBoundingClientRect().top;
   for (const el of box.querySelectorAll('[data-ln]')) { const r = el.getBoundingClientRect(); if (r.bottom > top + 2 && r.height) return { line: +el.dataset.ln, dy: r.top - top }; }
   return null;
 }
-function scrollToLine(box, a) { // 把第 a.line 行（没有就往前找最近的一块）摆回 a.dy 的高度
+function scrollToLine(box, a) { // 把第 a.line 行（没有就往前找最近的一行）摆回 a.dy 的高度
   let best = null;
   for (const el of box.querySelectorAll('[data-ln]')) if (+el.dataset.ln <= a.line && el.getBoundingClientRect().height) best = el;
   if (!best) { box.scrollTop = 0; return; }
   box.scrollTop += best.getBoundingClientRect().top - box.getBoundingClientRect().top - a.dy;
 }
 export function MdBody({ id, body, setBody, onSave, raw, editable, mode, onMode, hl, file, onSelMenu }) {
-  const box = useRef(null), ta = useRef(null), anchor = useRef(null), caret = useRef(null);
+  const box = useRef(null), ed = useRef(null), anchor = useRef(null);
   const fm = useMemo(() => fmOf(raw), [raw]);
   // 正文第一行在文件里是第几行：文件行数 − 正文行数（和 pinSelection 一个算法）；还没读到文件就按 frontmatter 行数算
   const off = useMemo(() => { const rl = raw ? raw.split('\n').length : 0, bl = String(body).split('\n').length; return raw && rl >= bl ? rl - bl + 1 : (fm ? fm.split('\n').length + 1 : 1); }, [raw, body, fm]);
-  const remember = () => { if (!box.current) return; const t = ta.current; if (mode === 'src' && t && document.activeElement === t) { const ln = off + t.value.slice(0, t.selectionStart).split('\n').length - 1, el = box.current.querySelector(`.mirror [data-ln="${ln}"]`); if (el) { anchor.current = { line: ln, dy: el.getBoundingClientRect().top - box.current.getBoundingClientRect().top }; return; } } anchor.current = topLine(box.current); };
-  // 切过来以后（新 DOM）：把对齐行摆回原来的高度。对齐行是切之前随手记的（滚动 / 光标动 / 双击时），所以外面 Ctrl+E 切也对得上。
-  //   进源码 = 光标放到对齐行、可以直接打字；回预览 = 先存（框被拿掉不会触发失焦）
   const first = useRef(true);
-  useLayoutEffect(() => {
+  useLayoutEffect(() => { // 切模式：frontmatter 出现 / 消失后把看到的第一行摆回原位
     const b = box.current; if (!b) return;
     if (first.current) { first.current = false; anchor.current = topLine(b); return; }
     if (anchor.current) scrollToLine(b, anchor.current);
-    if (mode === 'prev') onSave();
-    else if (editable && ta.current && !(hl && Date.now() - hl.n < 1500)) { // 钉子刚跳过来 = 只看，不抢焦点
-      const t = ta.current, lines = t.value.split('\n'), k = Math.max(0, Math.min(lines.length - 1, (caret.current ?? anchor.current?.line ?? off) - off)), pos = lines.slice(0, k).join('\n').length + (k ? 1 : 0);
-      t.focus({ preventScroll: true }); t.setSelectionRange(pos, pos);
-    }
-    caret.current = null;
   }, [mode]);
   useLayoutEffect(() => { anchor.current = box.current && topLine(box.current); }, [id]);
-  // 钉子跳过来：滚到那一行（居中）
-  useEffect(() => { if (!hl || mode !== 'src') return; const t = setTimeout(() => box.current?.querySelector(`[data-ln="${hl.line}"]`)?.scrollIntoView({ block: 'center' }), 30); return () => clearTimeout(t); }, [hl, mode, raw]);
-  const prevMenu = e => { // 预览里选中文字右键 → 钉到…（行号按那一块的 data-ln）
-    const s = window.getSelection(); if (!onSelMenu || !file || !s || s.isCollapsed || !box.current?.contains(s.anchorNode)) return;
-    const el = (s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentElement)?.closest('[data-ln]'); if (!el) return;
-    const lines = String(body).split('\n'), k = +el.dataset.ln - off; if (k < 0 || k >= lines.length) return;
-    const start = lines.slice(0, k).join('\n').length + (k ? 1 : 0), txt = s.toString().split('\n')[0], j = Math.max(0, lines[k].indexOf(txt.slice(0, 12)));
-    e.preventDefault(); onSelMenu(e, { from: 'body', file, text: body, start: start + j, end: start + j + Math.min(txt.length, lines[k].length - j) });
-  };
+  // 钉子跳过来：光标放到那一行、滚到中间（文件行号 → 正文里第几行）
+  useEffect(() => { if (!hl || !ed.current) return; const t = setTimeout(() => { if (hl.line >= off) caretToLine(ed.current, hl.line - off + 1, true); else box.current?.querySelector(`[data-ln="${hl.line}"]`)?.scrollIntoView({ block: 'center' }); }, 60); return () => clearTimeout(t); }, [hl, raw]);
   const fl = fm ? fm.split('\n') : [];
-  return <div className={'mdbody ' + mode} ref={box} onScroll={() => { if (document.activeElement !== ta.current) anchor.current = topLine(box.current); }}>
-    {mode === 'prev' ? <div className="mdprev" title={editable ? '双击进源码（光标落在那一行）· Ctrl+E 切换' : ''} onContextMenu={prevMenu}
-        onDoubleClick={e => { if (!editable) return; const el = e.target.closest('[data-ln]'); remember(); caret.current = el ? +el.dataset.ln : off; if (el) anchor.current = { line: +el.dataset.ln, dy: el.getBoundingClientRect().top - box.current.getBoundingClientRect().top }; onMode('src'); }}>
-        {body.trim() ? <MdLite text={body} ln={off} /> : <div className="hint">{editable ? '（空）双击或 Ctrl+E 开始写' : '（空）'}</div>}</div>
-      : <>
-        {fl.length > 0 && <pre className="fm" title="frontmatter（只读：状态、颜色、属性在上面改）">{fl.map((l, i) => <span key={i} data-ln={i + 1} className={hl?.line === i + 1 ? 'ln hl' : 'ln'}>{l}{'\n'}</span>)}</pre>}
-        <SrcArea taRef={ta} taClass="body" ln={off} hl={hl?.line ?? null} value={body} readOnly={!editable} placeholder={editable ? '想法、职责、验收方式……（存进这个节点的 .md）' : ''}
-          onChange={e => setBody(e.target.value)} onBlur={onSave} onKeyUp={remember} onClick={remember}
-          onContextMenu={e => { const t = e.target; if (!onSelMenu || !file || t.selectionStart === t.selectionEnd) return; e.preventDefault(); onSelMenu(e, { from: 'body', file, text: t.value, start: t.selectionStart, end: t.selectionEnd }); }} /></>}
+  return <div className={'mdbody ' + mode} ref={box} onScroll={() => { anchor.current = topLine(box.current); }}>
+    {mode === 'src' && fl.length > 0 && <pre className="fm" title="frontmatter（只读：状态、颜色、属性在上面改）">{fl.map((l, i) => <span key={i} data-ln={i + 1} className={hl?.line === i + 1 ? 'ln hl' : 'ln'}>{l}{'\n'}</span>)}</pre>}
+    <MdEditor viewRef={ed} value={body} mode={mode} ln={off} hl={hl?.line ?? null} readOnly={!editable}
+      placeholder={editable ? '想法、职责、验收方式……（存进这个节点的 .md）' : ''}
+      onChange={setBody} onBlur={onSave}
+      onContextMenu={(e, s) => { if (!onSelMenu || !file) return; e.preventDefault(); onSelMenu(e, { from: 'body', file, ...s }); }} />
   </div>;
 }
 
@@ -294,7 +274,8 @@ function TintButtons({ cur = 0, onTint }) { // 框里的「不透」（不透明
 function SatButtons({ base, cur = 100, onSat }) {
   return [12, 25, 50, 75, 100].map(p => <button key={p} title={p + '%（只改深浅，颜色还是自动 / 手动不变）'} className={cur === p ? 'on' : ''} style={{ background: base ? satHex(base, p) : 'var(--line2)' }} onClick={() => onSat(p)}>{p}</button>);
 }
-export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, bodyMode = 'prev', onBodyMode, raw, onReveal, onRename, color, onColor, baseColor, satNow, onSat, pattern, onPattern, words, onWords, onEdgeKind, onEdgeRemove, hl, onSelMenu }) {
+export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBody, onMeta, metaHints, onSelect, onClose, file, bodyMode: bm = 'live', onBodyMode, raw, onReveal, onRename, color, onColor, baseColor, satNow, onSat, pattern, onPattern, words, onWords, onEdgeKind, onEdgeRemove, hl, onSelMenu }) {
+  const bodyMode = bm === 'src' ? 'src' : 'live';
   // 自动色 / 底纹是哪一层词表的哪个词给的（👤 2026-10-11 层级词表）：点 = 打开那份词表
   const why = k => { const w = words?.[k]?.why; return w ? <a className="why" title={`自动${k === 'color' ? '颜色' : '底纹'}来自「${w.fromLabel}」的词表，命中「${w.word}」；点 = 打开那份词表`} onClick={() => onWords?.(w.from)}>词：{w.word}（{w.fromLabel}）</a> : null; };
   const n = graph.nodes.get(id);
@@ -346,9 +327,9 @@ export function PropsPanel({ id, graph, wsNode, edges, editable, onStatus, onBod
           {ins.length > 0 && <><div className="eh in">← 输入{sub.size > 1 ? '（含子节点）' : ''}</div><ul>{ins.map(e => edgeRow(e, e.from, e.to))}</ul></>}
           {outs.length > 0 && <><div className="eh out">→ 输出{sub.size > 1 ? '（含子节点）' : ''}</div><ul>{outs.map(e => edgeRow(e, e.to, e.from))}</ul></>}
         </div>}
-        <div className="eh bodyhead">正文<span className="modesw" title="预览 / 源码（Ctrl+E）：源码里能改，也看得到 frontmatter">
-          {[['prev', '预览'], ['src', '源码']].map(([m, t]) => <a key={m} className={bodyMode === m ? 'on' : ''} onClick={() => onBodyMode(m)}>{t}</a>)}<kbd>Ctrl+E</kbd></span>
-          <span className="hint">{editable ? (bodyMode === 'src' ? '失焦自动保存' : '双击进源码') : '样例模式不可编辑'}</span></div>
+        <div className="eh bodyhead">正文<span className="modesw" title="实时预览 / 全部源码（Ctrl+E）：两种都能直接改；源码 = 符号全显示，还看得到 frontmatter">
+          {[['live', '实时预览'], ['src', '源码']].map(([m, t]) => <a key={m} className={bodyMode === m ? 'on' : ''} onClick={() => onBodyMode(m)}>{t}</a>)}<kbd>Ctrl+E</kbd></span>
+          <span className="hint">{editable ? '直接改 · 失焦自动保存 · Ctrl+B / I / K' : '样例模式不可编辑'}</span></div>
         <MdBody id={id} body={body} setBody={setBody} onSave={() => { if (editable && body !== (wsNode?.body || '')) onBody(id, body); }} raw={raw} editable={editable}
           mode={bodyMode} onMode={onBodyMode} hl={hl} file={file} onSelMenu={onSelMenu} />
         {file && <div className="filerow"><span className="hint" title={file}>{file}</span>

@@ -210,7 +210,7 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .edges .el { color: var(--faint); margin-left: 5px; }
 .eh { font-size: 11px; font-weight: 600; color: var(--dim); }
 .eh.in { color: var(--in); } .eh.out { color: var(--out); }
-/* 👤 2026-10-17 右栏正文：预览 / 源码（Ctrl+E）。.mdbody 自己滚；源码 = 灰的 frontmatter + 背后垫着镜像的正文框（框跟着内容长高，不自己滚，滚动交给 .mdbody，切换时好按行对齐） */
+/* 👤 2026-10-17 右栏正文：实时预览 / 全部源码（Ctrl+E）。.mdbody 自己滚（编辑器跟着内容长高），源码时上面多一块灰的 frontmatter */
 .eh.bodyhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .eh.bodyhead .modesw { display: inline-flex; gap: 2px; align-items: center; font-weight: 400; }
 .eh.bodyhead .modesw a { padding: 0 6px; border-radius: 3px; cursor: pointer; color: var(--dim); border: 1px solid transparent; }
@@ -218,29 +218,32 @@ button.ghost { border-color: transparent; background: none; padding: 1px 4px; co
 .eh.bodyhead .modesw kbd { font: 10px var(--mono-font, Consolas, monospace); color: var(--dim); opacity: .7; margin-left: 2px; }
 .eh.bodyhead .hint { font-weight: 400; }
 .mdbody { flex: 1 1 auto; min-height: 160px; max-height: 70vh; overflow: auto; border: 1px solid var(--line); border-radius: 3px; background: var(--panel2); }
-.mdbody.prev .mdprev { padding: 6px 8px; font-size: 12.5px; line-height: 1.6; color: var(--text); min-height: 100%; user-select: text; cursor: text; }
-.mdbody.prev .mdprev .hint { color: var(--dim); }
-.mdbody pre.fm { margin: 0; padding: 6px 6px 2px; font: var(--mono); font-size: 11px; color: var(--dim); white-space: pre-wrap; word-break: break-word; border-bottom: 1px dashed var(--line); opacity: .8; }
-/* 👤 2026-10-17 带高亮的源码（mdsrc.jsx SrcArea）：镜像上色 + 正文框字透明。镜像和框的字体 / 字号 / 行高 / 内边距必须一模一样，只能改颜色 */
-.srcwrap { position: relative; }
-.srcwrap .mirror, div.srcwrap textarea { display: block; margin: 0; padding: 6px; border: 0; font: 12px/1.6 "Microsoft YaHei", system-ui; white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word; tab-size: 4; letter-spacing: normal; }
-.srcwrap .mirror { color: var(--text); pointer-events: none; min-height: 140px; }
-div.srcwrap textarea { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; resize: none; overflow: hidden; background: transparent; color: transparent; caret-color: var(--text); box-sizing: border-box; outline: none; }
-div.srcwrap textarea::selection { background: rgba(77,155,255,.35); color: transparent; }
-div.srcwrap textarea::placeholder { color: var(--dim); }
-.srcwrap .mk { color: var(--dim); opacity: .65; }
-.srcwrap .h { color: color-mix(in srgb, var(--accent) 70%, var(--strong)); text-shadow: .35px 0 currentColor; }
-.srcwrap .b { color: var(--strong); text-shadow: .35px 0 currentColor; } /* 假加粗：不改字宽 */
-.srcwrap .i { color: color-mix(in srgb, #b48cff 70%, var(--text)); }
-.srcwrap .s { color: var(--dim); text-decoration: line-through; }
-.srcwrap .c { color: color-mix(in srgb, #e6a35c 75%, var(--text)); }
-.srcwrap .a { color: var(--accent); text-decoration: underline; }
-.srcwrap .q { color: var(--dim); }
-.srcwrap .li { color: var(--accent); }
-.card .srcwrap.cardedit { margin-top: 4px; background: var(--bg); border: 1px solid var(--accent); border-radius: 4px; cursor: text; } /* 画布里改正文 */
-.card .srcwrap.cardedit .mirror, .card div.srcwrap.cardedit textarea { padding: 4px 6px; font: 12px/1.5 "Microsoft YaHei", system-ui; }
-.card .srcwrap.cardedit .mirror { min-height: 4.5em; }
-.card.sized .srcwrap.cardedit { overflow: auto; max-height: calc(100% - 2em); }
+.mdbody pre.fm { margin: 0; padding: 6px 8px 2px; font: var(--mono); font-size: 11px; color: var(--dim); white-space: pre-wrap; word-break: break-word; border-bottom: 1px dashed var(--line); opacity: .8; }
+/* 编辑器（mdedit.jsx，CodeMirror 6）：右栏和画布「编辑正文」共用 */
+.mdedit .cm-editor { background: transparent; color: var(--text); font: 12.5px/1.65 "Microsoft YaHei", system-ui; }
+.mdedit .cm-editor.cm-focused { outline: none; }
+.mdedit .cm-scroller { font-family: inherit; line-height: inherit; overflow: visible; }
+.mdedit .cm-content { padding: 6px 0; caret-color: var(--text); min-height: 140px; }
+.mdedit .cm-line { padding: 0 8px; }
+.mdedit .cm-cursor { border-left-color: var(--text); }
+.mdedit .cm-selectionBackground, .mdedit .cm-focused .cm-selectionBackground, .mdedit .cm-content ::selection { background: rgba(77,155,255,.35) !important; }
+.mdedit .cm-placeholder { color: var(--dim); }
+.mdedit .cm-h { color: color-mix(in srgb, var(--accent) 55%, var(--strong)); font-weight: 700; }
+.mdedit .cm-h1 { font-size: 1.3em; } .mdedit .cm-h2 { font-size: 1.18em; } .mdedit .cm-h3 { font-size: 1.08em; } /* 👤「差别不要太大」 */
+.mdedit .cm-strong { font-weight: 700; color: var(--strong); }
+.mdedit .cm-em { font-style: italic; }
+.mdedit .cm-strike { text-decoration: line-through; color: var(--dim); }
+.mdedit .cm-icode { font-family: Consolas, "Microsoft YaHei", monospace; font-size: .92em; background: var(--bg); border-radius: 2px; color: color-mix(in srgb, #e6a35c 75%, var(--text)); }
+.mdedit .cm-link { color: var(--accent); text-decoration: underline; }
+.mdedit .cm-mk { color: var(--dim); opacity: .7; font-weight: 400; font-style: normal; }
+.mdedit .cm-li { color: var(--accent); }
+.mdedit .cm-quote { border-left: 2px solid var(--line2); color: var(--dim); }
+.mdedit .cm-codeblock { font-family: Consolas, "Microsoft YaHei", monospace; font-size: .92em; background: var(--bg); }
+.card .cardedit { margin-top: 4px; background: var(--bg); border: 1px solid var(--accent); border-radius: 4px; cursor: text; } /* 画布里改正文 */
+.card .cardedit .cm-editor { font-size: 12px; line-height: 1.5; }
+.card .cardedit .cm-content { min-height: 4.5em; padding: 3px 0; }
+.card .cardedit .cm-line { padding: 0 6px; }
+.card.sized .cardedit { overflow: auto; max-height: calc(100% - 2em); }
 .mdbody .ln.hl { background: rgba(77,155,255,.30); border-radius: 2px; box-shadow: 0 0 0 1px rgba(77,155,255,.55); }
 .mdbody pre.fm .ln.hl { color: var(--text); }
 textarea.body { min-height: 160px; flex: 1; border: 1px solid var(--line); border-radius: 3px; padding: 6px; font: 12px/1.6 "Microsoft YaHei", system-ui; resize: vertical; background: var(--panel2); color: var(--text); outline: none; }
