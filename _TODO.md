@@ -25,7 +25,7 @@
 - [ ] 卡片引用 `shot: <章>/<镜头id>`：平时显示海报 `previews/<shot>.poster.jpg`；选中或悬停才挂 `<video preload="none">`，同时最多播 1 段；海报的 ran_with 和当前输入对不上 → 标旧（不自动重渲）；5420 没开 → 显示「VisualProcess 没开」
 - [ ] 剪辑条 = 画布底部单独一条，可收起（时间是线性的，不塞进画布）；选中一段 ⇄ 高亮链到它的意图节点。键位草案：A / D 换段，Shift+A / D 挪顺序，`[` `]` 入点 / 出点，G 插留空
 - [ ] 处理界面 = iframe `http://127.0.0.1:5420/web/marker.html?ch=&shot=&t=`；监听 `postMessage {src:'vp', type:'key'|'saved'}`：收到 Esc / Ctrl+Tab 就把焦点拿回来，收到 saved 就刷新海报
-- [ ] 待👤定：5420 没开时要不要由 Synapsis 代为启动 viewer.py
+- [ ] 5420 没开 → Synapsis 自动启动 viewer.py（👤 2026-10-19 定）。做法以 `3_VisualProcess/_设计/Synapsis剪辑桥接.md`「Synapsis 这边」一节为准（探测 0.5 s → 后台起、不弹窗、不随 Synapsis 退出 → 每 200 ms 探、最多 5 s，超时附 stderr 尾巴）；Synapsis 只存 VisualProcess 根目录（可配，默认 `Desktop/Vault_Automata/3_VisualProcess`）。那边现在由会话「Visual」负责
 
 ## 👤 2026-10-10 晚 路线（高频交互定的，按顺序做；UI 框放最后）
 1. **左侧大纲**
