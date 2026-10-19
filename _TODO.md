@@ -18,6 +18,15 @@
 - [x] 散图拖到卡片上 = 归给那个节点；节点图拖出卡片 = 变散图（core movePic）
 - [x] CLI 跨父移动节点（`move <id> <新父id|.>`，moveNodes 带新旧 id 对应）
 
+## 剪辑桥接 VisualProcess（👤 2026-10-19 定：剪辑进 Synapsis，画面处理桥接过去；推翻 10-17「时间轴不进 Synapsis」）
+> 和 ReadScreen（VisualProcess 那边）商量好的接口，对方的分工表在 `3_VisualProcess/_设计/Synapsis剪辑桥接.md`。上游是 VisualProcess（`127.0.0.1:5420`），Synapsis 只读现成的，不存副本。**还没开工，剪辑条的手感等👤粗剪回来再问。**
+- [ ] 剪辑表真源 = `Projekt_Visual/<章>/project.json` 的 `edit: {rev, items: [{id, shot, in, out} | {id, gap, note}]}`，时间用秒、保留 3 位小数。写的时候走 `POST /api/project/edit?ch=`：If-Match 带 rev，冲突回 409，就重读再合并；撤销 = 用旧值再 POST 一次
+- [ ] Synapsis 服务端转发 5420（只允许 127.0.0.1）：页面不跨域，内置 LLM / CLI 也走这条路读（写要过计划确认）
+- [ ] 卡片引用 `shot: <章>/<镜头id>`：平时显示海报 `previews/<shot>.poster.jpg`；选中或悬停才挂 `<video preload="none">`，同时最多播 1 段；海报的 ran_with 和当前输入对不上 → 标旧（不自动重渲）；5420 没开 → 显示「VisualProcess 没开」
+- [ ] 剪辑条 = 画布底部单独一条，可收起（时间是线性的，不塞进画布）；选中一段 ⇄ 高亮链到它的意图节点。键位草案：A / D 换段，Shift+A / D 挪顺序，`[` `]` 入点 / 出点，G 插留空
+- [ ] 处理界面 = iframe `http://127.0.0.1:5420/web/marker.html?ch=&shot=&t=`；监听 `postMessage {src:'vp', type:'key'|'saved'}`：收到 Esc / Ctrl+Tab 就把焦点拿回来，收到 saved 就刷新海报
+- [ ] 待👤定：5420 没开时要不要由 Synapsis 代为启动 viewer.py
+
 ## 👤 2026-10-10 晚 路线（高频交互定的，按顺序做；UI 框放最后）
 1. **左侧大纲**
    - [ ] 拖动只调次序，不再「拖进别的行」（拖到行上 / 树下空白 / 画布卡片上，原有三种放进去的都改）
