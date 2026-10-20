@@ -406,5 +406,25 @@ try {
     ok(ensureColorWords(r).endsWith('_词表.md') && /## 图案\n- 网格/.test(readFileSync(join(r, DIR, '_词表.md'), 'utf8')), '项目那份：_词表.md 带默认的颜色 + 图案两节');
   } finally { rmSync(r, { recursive: true, force: true }); }
 }
+// 👤 2026-10-20 AI 生成的图：文件名 = 日期_模型_简介，说明进同名 .md；删 / 撤销 / 挪 都跟着图走；普通贴图照旧
+{
+  const W = await import('../workspace.js'), { imageMeta } = await import('../imagegen.js');
+  const r = mkdtempSync(join(tmpdir(), 'syn-side-')), base = join(r, DIR), at = p => join(base, p);
+  try {
+    saveOutline(r, '物理\n  薛定谔\n别处');
+    const PNG = 'data:image/png;base64,' + Buffer.from('89504e470d0a1a0a', 'hex').toString('base64');
+    const meta = imageMeta({ prompt: 'a wave packet', title: '波包', about: '冷蓝色波包' }, { provider: 'ark', model: 'doubao-seedream-5-0-flash-260915', params: '16:9' }, '薛定谔');
+    const p = saveAsset(r, '物理/薛定谔', PNG, meta), side = q => at(W.sideOf(q));
+    ok(/^物理\/_pics_薛定谔\/\d{4}-\d{2}-\d{2}_seedream-flash_波包\.png$/.test(p) && /生成：豆包.*\n- 日期：\d{4}-\d{2}-\d{2}\n[\s\S]*## 描述\n冷蓝色波包[\s\S]*## 提示词\na wave packet/.test(readFileSync(side(p), 'utf8')), 'AI 图：日期_模型_简介 + 同名 .md（生成方 / 日期 / 描述 / 提示词）' + p);
+    ok(saveAsset(r, '物理/薛定谔', PNG, meta).endsWith('波包_2.png') && loadWorkspace(r).graph.nodes.get('物理/薛定谔').pics.length === 2 && !loadWorkspace(r).graph.nodes.has('物理/_pics_薛定谔'), '重名加 _2；.md 不算图、不算节点');
+    const [junk, orig] = W.removePic(r, p); const gone = !existsSync(side(p)) && existsSync(side(junk));
+    W.restoreRemoved(r, [[junk, orig]]);
+    ok(gone && existsSync(side(p)), '删图：说明一起进 .junk；撤销一起回来');
+    const m = W.movePic(r, p, '别处');
+    ok(existsSync(side(m.path)) && !existsSync(side(p)), '挪到别的卡：说明跟着走');
+    const plain = saveAsset(r, '别处', PNG);
+    ok(/\/\d{8}_\d{6}\.png$/.test(plain) && !existsSync(side(plain)), '普通贴图照旧：时间戳名、没有说明');
+  } finally { rmSync(r, { recursive: true, force: true }); }
+}
 console.log(`workspace: ${pass} 过 / ${fail} 挂`);
 process.exit(fail ? 1 : 0);

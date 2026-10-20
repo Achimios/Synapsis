@@ -5,7 +5,7 @@ import { PALETTE } from './colors.js';
 import { withMoved, ROOT } from './outline.js';
 import { badMemName, TYPES } from './memory.js';
 import { tighten } from './arrange.js';
-
+
 // 生图模型名缩短给人看：grok-imagine-image-2.0 → imagine-2.0；doubao-seedream-5-0-flash-260915 → seedream flash
 export const imgShort = m => /^doubao-seedream/.test(m) ? 'seedream ' + (/-(flash|pro|lite)-/.exec(m)?.[1] || m.slice(16)) : m.replace('grok-imagine-image', 'imagine');
 export const KINDS = { '': '', 普通: '', 调节: '调节', 离散: '离散' };
@@ -100,7 +100,9 @@ export const VALIDATORS = {
     // 没写的参数留 null = 用 AI 设置里的默认（👤 2026-10-17 生图默认可选）；模型名认 xAI 列表里带 image 的（新模型不用改这里）+ 豆包 doubao-seedream-*
     const quality = ['low', 'medium'].includes(a.quality) ? a.quality : null, resolution = ['1k', '2k'].includes(a.resolution) ? a.resolution : null, model = typeof a.model === 'string' && /^(grok-[\w.-]*image[\w.-]*|doubao-seedream[\w.-]*)$/.test(a.model) ? a.model : null;
     const tag = [aspect !== 'auto' && aspect, quality === 'medium' && '高质量', resolution === '2k' && '2k', model && imgShort(model)].filter(Boolean).join('，');
-    return { id, ...(loose ? { scope: scope ?? ROOT } : {}), prompt: prompt.slice(0, 2000), aspect, quality, resolution, ...(model ? { model } : {}), desc: `配图（${model && /^doubao/.test(model) ? '豆包' : model ? 'Grok' : '默认模型'}生成，花钱）：${loose ? '这一页的散图' : `「${label(id)}」`}←${prompt.slice(0, 40)}${prompt.length > 40 ? '…' : ''}${tag ? '（' + tag + '）' : ''}` };
+    // 👤 2026-10-20 title = 简介（进文件名），about = 描述（进图旁边的同名 .md）；都可省
+    const title = typeof a.title === 'string' ? a.title.replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim().slice(0, 30) : '', about = typeof a.about === 'string' ? a.about.trim().slice(0, 1000) : '';
+    return { id, ...(loose ? { scope: scope ?? ROOT } : {}), prompt: prompt.slice(0, 2000), ...(title ? { title } : {}), ...(about ? { about } : {}), aspect, quality, resolution, ...(model ? { model } : {}), desc: `配图（${model && /^doubao/.test(model) ? '豆包' : model ? 'Grok' : '默认模型'}生成，花钱）：${loose ? '这一页的散图' : `「${label(id)}」`}←${prompt.slice(0, 40)}${prompt.length > 40 ? '…' : ''}${tag ? '（' + tag + '）' : ''}` };
   },
   color: (a, { many, label }) => {
     const ids = many(a.ids);

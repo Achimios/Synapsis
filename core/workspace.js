@@ -348,6 +348,7 @@ export function restoreRemoved(root, pairs) {
     if (!existsSync(src) || existsSync(dst)) continue;
     mkdirSync(dirname(dst), { recursive: true });
     renameSync(src, dst);
+    if (IMG_EXT.test(src) && existsSync(sideOf(src)) && !existsSync(sideOf(dst))) renameSync(sideOf(src), sideOf(dst)); // 图的说明文件
     done.push(to);
   }
   return done;
@@ -545,30 +546,34 @@ export function pasteNodes(root, ids, parent, srcRoot = root) {
 }
 
 // >v<🖼️图片-贴图落盘-存进节点旁边的 _pics_名字/（不写 frontmatter：文件夹就是真源）
-function writeImage(dir, base, dataUrl) {
+//   👤 2026-10-20 AI 生成的图：opts.name = 文件名（日期_模型_简介，不带扩展名），opts.note = 说明，写进同名 .md（「图的说明文件」，见 sideOf；删 / 挪 / 撤销都跟着图走）
+export const sideOf = p => p.replace(/\.[^./\\]+$/, '') + '.md';
+function writeImage(dir, base, dataUrl, opts = {}) {
   const m = dataUrl.match(/^data:image\/([\w+]+);base64,(.+)$/);
   if (!m) throw new Error('不是图片 dataURL');
   const ext = m[1] === 'jpeg' ? 'jpg' : m[1] === 'svg+xml' ? 'svg' : m[1];
   mkdirSync(dir, { recursive: true });
-  let name = `${stamp()}.${ext}`;
-  for (let k = 2; existsSync(join(dir, name)); k++) name = `${stamp()}_${k}.${ext}`;
+  const stem = opts.name ? String(opts.name).replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim().slice(0, 80) || stamp() : stamp();
+  let name = `${stem}.${ext}`;
+  for (let k = 2; existsSync(join(dir, name)) || (opts.note && existsSync(sideOf(join(dir, name)))); k++) name = `${stem}_${k}.${ext}`;
   writeFileSync(join(dir, name), Buffer.from(m[2], 'base64'));
+  if (opts.note) writeFileSync(sideOf(join(dir, name)), opts.note);
   return posix(relative(base, join(dir, name)));
 }
-export function saveAsset(root, id, dataUrl) {
+export function saveAsset(root, id, dataUrl, opts = {}) {
   const ws = loadWorkspace(root);
   const n = ws.graph.nodes.get(id);
   if (!n || id === ROOT) throw new Error('没有这个节点：' + id);
-  return writeImage(picsDir(n.file, n.label), ws.base, dataUrl);
+  return writeImage(picsDir(n.file, n.label), ws.base, dataUrl, opts);
 }
 // >v<🖼️图片-散图-落在某页空白处、不属于任何节点的图：存进那一页的 _pics/（叶子页没有文件夹 → 归给叶子节点自己）。返回 {path, node?}
-export function saveLooseImage(root, scope, dataUrl) {
+export function saveLooseImage(root, scope, dataUrl, opts = {}) {
   const ws = loadWorkspace(root);
   const n = ws.graph.nodes.get(scope);
   if (!n) throw new Error('没有这一页：' + scope);
   const d = pageDir(ws.base, n);
-  if (!d) return { path: writeImage(picsDir(n.file, n.label), ws.base, dataUrl), node: scope };
-  return { path: writeImage(join(d, '_pics'), ws.base, dataUrl) };
+  if (!d) return { path: writeImage(picsDir(n.file, n.label), ws.base, dataUrl, opts), node: scope };
+  return { path: writeImage(join(d, '_pics'), ws.base, dataUrl, opts) };
 }
 // 删一张图（散图 _pics/ 或节点的 _pics_名字/）= 移进 __synapsis/.junk/（不真删），坐标一并去掉。
 // 返回 [.junk 里的路径, 原路径, 原坐标?]（路径相对 __synapsis），交给 restoreRemoved 就能搬回来（撤销用；坐标由调用方写回）
@@ -578,6 +583,7 @@ export function removePic(root, relPath, tag = '图') {
   const g = join(base, TRASH), name = `${stamp()}_${tag}_${relPath.replace(/\//g, '～')}`;
   junkDir(g);
   renameSync(f, join(g, name));
+  if (existsSync(sideOf(f))) renameSync(sideOf(f), sideOf(join(g, name))); // 说明文件跟着进 .junk（restoreRemoved 搬回）
   const lay = { ...loadWorkspace(root).layout }, at = lay['@pic:' + relPath];
   if (at) { delete lay['@pic:' + relPath]; writeLayout(base, lay); }
   return at ? [TRASH + '/' + name, relPath, at] : [TRASH + '/' + name, relPath];
@@ -600,8 +606,9 @@ export function movePic(root, relPath, to, scope = ROOT) {
   mkdirSync(dir, { recursive: true });
   const ext = relPath.slice(relPath.lastIndexOf('.'));
   let name = relPath.split('/').pop();
-  for (let k = 2; existsSync(join(dir, name)); k++) name = `${stamp()}_${k}${ext}`;
+  for (let k = 2; existsSync(join(dir, name)) || existsSync(sideOf(join(dir, name))); k++) name = `${stamp()}_${k}${ext}`;
   renameSync(f, join(dir, name));
+  if (existsSync(sideOf(f))) renameSync(sideOf(f), sideOf(join(dir, name))); // 说明文件跟着走
   const lay = { ...loadWorkspace(root).layout };
   if (lay['@pic:' + relPath]) { delete lay['@pic:' + relPath]; writeLayout(base, lay); }
   return { path: posix(relative(base, join(dir, name))) };

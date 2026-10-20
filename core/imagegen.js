@@ -24,7 +24,18 @@ export function arkSize(aspect, resolution) {
   return w + 'x' + h;
 }
 
-export async function genImage(cfg, { prompt, aspect = 'auto', quality = null, resolution = null, model: want = null }, { fetchFn = fetch } = {}) { // 没指定 = AI 设置里的默认（cfg.imageQuality / imageRes），再没有 = 最便宜：low、1k
+// 👤 2026-10-20「只要日期，不要几点几分；加上用什么生成的、简介、描述」：文件名 = 日期_模型_简介，说明（描述 / 提示词 / 参数）进同名 .md
+const localDate = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+export const modelShort = m => /^doubao-seedream/.test(m) ? 'seedream-' + (/-(flash|pro|lite)-/.exec(m)?.[1] || 'x') : m.replace('grok-imagine-image', 'imagine');
+const PROV_NAME = { ark: '豆包（火山方舟）', xai: 'Grok（xAI）' };
+export function imageMeta(a, info, label = null) {
+  const date = localDate(), title = String(a.title || '').trim() || String(a.prompt || '').replace(/[,，.。].*$/s, '').trim().slice(0, 24) || '配图';
+  const note = [`# ${title}`, '', `- 生成：${PROV_NAME[info.provider] || info.provider} · ${info.model}`, `- 日期：${date}`, `- 参数：${info.params || '默认'}`, ...(label ? [`- 配给：「${label}」`] : []),
+    ...(a.about ? ['', '## 描述', String(a.about).trim()] : []), '', '## 提示词', String(a.prompt || '').trim(), ''].join('\n');
+  return { name: `${date}_${modelShort(info.model)}_${title}`, note };
+}
+
+export async function genImage(cfg, { prompt, aspect = 'auto', quality = null, resolution = null, model: want = null }, { fetchFn = fetch, info = null } = {}) { // info：传个空对象进来 = 回填实际用的服务商 / 模型 / 参数（写说明文件用） // 没指定 = AI 设置里的默认（cfg.imageQuality / imageRes），再没有 = 最便宜：low、1k
   quality = quality || cfg.imageQuality || 'low'; resolution = resolution || cfg.imageRes || '1k';
   const model = want || cfg.imageModel || IMAGE_MODEL, t0 = Date.now(), ark = isArkImage(model);
   const prov = ark ? 'ark' : 'xai', key = onlineKey(cfg, prov);
@@ -32,6 +43,7 @@ export async function genImage(cfg, { prompt, aspect = 'auto', quality = null, r
   const body = ark
     ? { model, prompt: String(prompt).slice(0, 2000), size: arkSize(aspect, resolution), response_format: 'b64_json', watermark: false }
     : { model, prompt: String(prompt).slice(0, 2000), n: 1, response_format: 'b64_json', ...(ASPECTS.includes(aspect) && aspect !== 'auto' ? { aspect_ratio: aspect } : {}), ...(resolution === '2k' ? { resolution: '2k' } : {}), ...(model === 'grok-imagine-image-2.0' ? { quality: quality === 'medium' ? 'medium' : 'low' } : {}) }; // quality 只有 grok 2.0 认
+  if (info) Object.assign(info, { provider: prov, model, params: [aspect !== 'auto' && aspect, body.size, body.quality, body.resolution].filter(Boolean).join(' · ') });
   let err = null, b64 = '', mime = null;
   try {
     const r = await fetchFn((process.env.SYNAPSIS_ONLINE_URL || ONLINE[prov].url) + '/images/generations', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key }, body: JSON.stringify(body), signal: AbortSignal.timeout(ark ? 300000 : 120000) });

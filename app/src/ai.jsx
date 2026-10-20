@@ -404,6 +404,7 @@ function ImageEdit({ a, onChange }) {
   const seg = (k, opts) => <span className="seg">{opts.map(([v, t]) => <a key={t} className={(a[k] ?? null) === v ? 'on' : ''} onClick={() => onChange({ [k]: v })}>{t}</a>)}</span>;
   return <div className="imgedit">
     <div className="ih">✓ 🎨 配图（{a.model ? (/^doubao/.test(a.model) ? '豆包' : 'Grok') : '默认模型'}生成，花钱）→ {a.id ? '「' + a.id.split('/').pop() + '」' : '这一页的散图'}</div>
+    <input className="ititle" value={a.title || ''} placeholder="简介（进文件名：日期_模型_简介）" spellCheck={false} onKeyDown={e => { if (e.key !== 'Escape') e.stopPropagation(); }} onChange={e => onChange({ title: e.target.value })} />
     <textarea value={a.prompt} rows={3} spellCheck={false} title="画什么：执行前可以改（中英文都行）" onKeyDown={e => { if (e.key !== 'Escape') e.stopPropagation(); }}
       onChange={e => onChange({ prompt: e.target.value, desc: a.desc.replace(/←[\s\S]*$/, '←' + e.target.value.slice(0, 40) + (e.target.value.length > 40 ? '…' : '')) })} />
     <div className="iparams">

@@ -11,7 +11,7 @@ import { workspaceRoot, manualText, synItems, synWrite } from '../core/cli.js';
 import { wakeLms, aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus, related, rerank, explainRelation, semColors, semPatterns, suggestWords, applyWords, suggestPatternWords, readAiLog, readUsage } from '../core/ai.js';
 import { lmsEstimate, lmsReload } from '../core/lmstudio.js';
 import { loadVoice, saveVoiceCfg, speak } from '../core/voice.js';
-import { genImage } from '../core/imagegen.js';
+import { genImage, imageMeta } from '../core/imagegen.js';
 import { loadTodo, saveTodo, todoFile, TODO_HEAD } from '../core/todo.js';
 import { runAgent, applyPlan, updateOutcome, loadChat, clearChat, setSummaryText, estimateContext, isLoose, loadSummary, compactChat, needCompact } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
@@ -29,10 +29,9 @@ async function runImgJobs(root, cfg) {
   while (job.queue.length) {
     const { a, at, tag } = job.queue.shift(), name = a.id ? a.id.split('/').pop() : '散图';
     try {
-      const img = await genImage(cfg, a);
-      if (a.id) saveAsset(root, a.id, img);
-      else { const s = saveLooseImage(root, a.scope ?? '', img); if (at && !s.node) saveLayout(root, { ['@pic:' + s.path]: at }); }
-      job.made.push(name); updateOutcome(root, tag, a.desc + '（已生成，贴好了）');
+      const info = {}, img = await genImage(cfg, a, { info }), meta = imageMeta(a, info, a.id ? name : null); // 文件名 = 日期_模型_简介，说明进同名 .md
+      const path = a.id ? saveAsset(root, a.id, img, meta) : (s => { if (at && !s.node) saveLayout(root, { ['@pic:' + s.path]: at }); return s.path; })(saveLooseImage(root, a.scope ?? '', img, meta));
+      job.made.push(name); updateOutcome(root, tag, a.desc + `（已生成，贴好了：${path.split('/').pop()}）`);
     } catch (e) { job.failed.push(`配图「${name}」失败：${e.message}`); updateOutcome(root, tag, a.desc + `（失败：${e.message}）`); }
     job.pending--; job.seq++;
   }
