@@ -9,7 +9,8 @@ import { loadWorkspace, workspaceOutline, saveOutline, setNodeMeta, setNodeBody,
 import { overlaps } from './arrange.js';
 import { parseOutline, withStatus, withEdge, withoutEdge, withNode, withLabel, withMoved, toOutline, ROOT } from './outline.js';
 import { validateAction, planMoves, VALIDATORS } from './plan.js';
-import { chat, chatModel, onlineKey, aiLog } from './ai.js';
+import { chat, chatModel, onlineKey, aiLog, isArkImage } from './ai.js';
+import { IMAGE_MODEL } from './imagegen.js';
 import { pickKnowledge, knowledgeText, knowledgeChunks } from './knowledge.js';
 import { memoryIndex, readMemories, writeMemory, indexStatus } from './memory.js';
 import { webSearch, webRead, grokSearch } from './web.js';
@@ -385,7 +386,12 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
   const g = parseOutline(workspaceOutline(ws));
   for (const [id, n] of ws.graph.nodes) if (g.nodes.has(id)) g.nodes.get(id).status = n.status;
   g.edges = ws.graph.edges;
-  const check = a => validateAction(a, { refs: ctx.refs, graph: g, scope: ctx.scope });
+  // 👤 2026-10-20「图片没有出来」：配图那家没填 key → 草案上直接写明（以前要人点了执行才在警告里看到）
+  const check = a => {
+    const v = validateAction(a, { refs: ctx.refs, graph: g, scope: ctx.scope });
+    if (v.ok && v.do === 'image') { const ark = isArkImage(v.model || cfg.imageModel || IMAGE_MODEL); if (!onlineKey({ ...cfg, offline: false }, ark ? 'ark' : 'xai')) v.desc += `（⚠ 还没填${ark ? '豆包（火山方舟）' : 'Grok（xAI）'}的 key，执行会失败：⋯ → 🤖 AI 设置「在线」页填）`; }
+    return v;
+  };
 
   if (native) { // —— 原生工具调用：回话 = 正文；propose / look / read_memory / todo / speak 是工具，来回最多 STEP_MAX 跳 ——
     const sys = mkSys(true), tools = agentTools(!!vo), convo = [], proposed = [];
@@ -396,7 +402,7 @@ export async function runAgent(root, { scope = ROOT, selected = [], text, boxes 
       if (name === 'propose') {
         const list = (Array.isArray(a.actions) ? a.actions : []).filter(x => x && typeof x === 'object').slice(0, 60), v = list.map(check);
         proposed.push(...list.filter((x, i) => v[i].ok)); rejected = list.filter((x, i) => !v[i].ok);
-        return v.length ? v.map(x => x.ok ? '✓ ' + x.desc : `✗ ${x.do || '?'}：${x.why}`).join('\n') + (v.some(x => !x.ok) ? '\n（✗ 的不会执行；要的话改好再 propose 一次）' : '\n（都合格，人确认后执行）') : '没有动作';
+        return v.length ? v.map(x => x.ok ? '✓ ' + x.desc : `✗ ${x.do || '?'}：${x.why}`).join('\n') + (v.some(x => !x.ok) ? '\n（✗ 的不会执行；要的话改好再 propose 一次）' : '\n（都合格，人确认后执行）') + (v.some(x => x.ok && x.do === 'image') ? '\n（配图要人点了执行才开始生成，现在还没有图）' : '') : '没有动作';
       }
       if (name === 'look') {
         if (++lookN > LOOK_MAX) return `查看次数用完了（每轮最多 ${LOOK_MAX} 次），用手上的信息回答`;
