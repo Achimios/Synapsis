@@ -3,6 +3,7 @@
 //   👤 2026-10-20 加豆包 Seedream（火山方舟，ark key）：模型名 doubao-seedream-* 就走方舟。接口按 4_Eidolon/_设计/接口_生成.md（Eidolon 10-20 实测过 flash）：
 //     POST {ark}/images/generations {model, prompt, size: '1.5K' | '2K' | '宽x高', watermark: false}；宽x高 总像素 [921600, 4624220]；返回的 url 24 小时失效 → 当场取回
 //     ⚠ pro / flash 别传 sequential_image_generation / stream（只有 lite 认，会 400）。参考图 / 图层拆分还没接
+//     Eidolon 10-20 实测：flash 认 response_format=b64_json，data[0] 只有 b64_json / output_format / size（不带 url）；1K 档按 prompt 自定比例（出过 1424x800）
 import { ONLINE, onlineKey, aiLog, isArkImage } from './ai.js';
 
 export const IMAGE_MODEL = 'grok-imagine-image-2.0';
