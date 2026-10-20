@@ -155,9 +155,10 @@ const EFFORT_ZH = { off: '不思考（快、省钱，推荐）', low: '低', hig
 // Grok 4.5 起推理关不掉：「不思考」实际发 low，所以和「低」合成一档（官方默认是 high）
 const EFFORT_GROK = { off: '低（最快，推荐）', high: '高（官方默认，慢）', max: '最高（xhigh，更慢、更贵）' };
 // 在线服务商（👤 2026-10-16 加 Grok）：每家一个 key（只存本机），模型列表合在一起选；DeepSeek 的模型名不带前缀（老写法），别家带「服务商:」
-const PROVIDERS = [['deepseek', 'DeepSeek', 'sk-…', 'platform.deepseek.com'], ['xai', 'Grok（xAI）', 'xai-…', 'console.x.ai']];
+const PROVIDERS = [['deepseek', 'DeepSeek', 'sk-…', 'platform.deepseek.com'], ['xai', 'Grok（xAI）', 'xai-…', 'console.x.ai'], ['ark', '豆包（火山方舟）', 'API key', 'console.volcengine.com/ark', true]]; // 第 5 项 true = 只用来生图（不列聊天模型）
 // 生图模型：默认 + 已知的几个（xAI 列表里有新的会自动补上；和 core/imagegen.js 的 IMAGE_MODEL 对齐）
-const IMAGE_MODEL0 = 'grok-imagine-image-2.0', IMAGE_MODELS = ['grok-imagine-image-2.0', 'grok-imagine-image-quality', 'grok-imagine-image'];
+const IMAGE_MODEL0 = 'grok-imagine-image-2.0', IMAGE_MODELS = ['grok-imagine-image-2.0', 'grok-imagine-image-quality', 'grok-imagine-image', 'doubao-seedream-5-0-flash-260915', 'doubao-seedream-5-0-pro-260628']; // 👤 2026-10-20 加豆包 Seedream（ark key）
+const imgShort = m => /^doubao-seedream/.test(m) ? 'seedream ' + (/-(flash|pro|lite)-/.exec(m)?.[1] || m.slice(16)) : m.replace('grok-imagine-image', 'imagine'); // 和 core/plan.js 同一条
 const modelKey = id =>id.startsWith('deepseek:') ? id.slice(9) : id; // 存进设置的写法
 function OnlineTab({ api, status, cfg, save, onStatus }) {
   const [keys, setKeys] = useState({}), [msg, setMsg] = useState('');
@@ -168,9 +169,9 @@ function OnlineTab({ api, status, cfg, save, onStatus }) {
   const opts = list.length ? list : [{ id: 'deepseek:deepseek-flash', name: 'deepseek-flash' }, { id: 'deepseek:deepseek-v4-pro', name: 'deepseek-v4-pro' }];
   return (
     <div className="aigroup">
-      {PROVIDERS.map(([p, name, ph, site]) => { const has = status?.hasKey?.[p], n = list.filter(x => x.id.startsWith(p + ':')).length;
+      {PROVIDERS.map(([p, name, ph, site, imgOnly]) => { const has = status?.hasKey?.[p], n = list.filter(x => x.id.startsWith(p + ':')).length;
         return <div key={p} className="provider">
-          <div className={'aistat ' + (n ? 'on' : 'off')}>{!status ? '检查中…' : n ? `● ${name}：已连上（${n} 个模型）` : has ? `● ${name}：有 key，但连不上（网络？key 失效？）` : `○ ${name}：没填 key`}</div>
+          <div className={'aistat ' + (n ? 'on' : 'off')}>{!status ? '检查中…' : imgOnly ? (has ? `● ${name}：有 key（只用来生图）` : `○ ${name}：没填 key（只用来生图）`) : n ? `● ${name}：已连上（${n} 个模型）` : has ? `● ${name}：有 key，但连不上（网络？key 失效？）` : `○ ${name}：没填 key`}</div>
           <label>API key <span className="hint">只存本机 Synapsis/.synapsis/keys.json（不进 git，也不会回传到页面）；在 {site} 申请</span>
             <span className="row"><input type="password" value={keys[p] || ''} placeholder={has ? '已设置（要换就填新的）' : ph} onChange={e => setKeys(x => ({ ...x, [p]: e.target.value }))} style={{ flex: 1 }} />
               <button disabled={!(keys[p] || '').trim()} onClick={() => putKey(p, keys[p].trim())}>保存</button>{has && <button onClick={() => putKey(p, '')}>删除</button>}</span></label>
@@ -182,12 +183,12 @@ function OnlineTab({ api, status, cfg, save, onStatus }) {
       {(isDs || grokEff) && <label>思考强度<select value={cfg.onlineEffort || 'off'} onChange={e => save({ onlineEffort: e.target.value })}>{Object.entries(grokEff ? EFFORT_GROK : EFFORT_ZH).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></label>}
       <div className="hint">{cur?.ctx ? `🧠 上下文 ${kfmt(cur.ctx)} token。` : ''}按量计费，余额在各家平台看。{isDs || grokEff ? '' : '这个模型调不了思考强度。'}{msg}</div>
       {/* 👤 2026-10-17 生图（AI 配图）的默认：模型从 xAI 列表里筛带 image 的（新模型自动出现）；质量 / 分辨率。AI 不写参数就用这里的，确认卡上还能单张改 */}
-      <div className="imgdefaults"><b>🎨 生图默认</b><span className="hint"> 用 Grok（xAI key），和聊天用哪个模型无关</span>
+      <div className="imgdefaults"><b>🎨 生图默认</b><span className="hint"> grok-* 用 xAI key，doubao-seedream-* 用豆包 key；和聊天用哪个模型无关</span>
         <label>模型<select value={cfg.imageModel || ''} onChange={e => save({ imageModel: e.target.value || null })}>
           <option value="">{IMAGE_MODEL0}（默认）</option>
           {[...new Set([...(status?.images || []), ...IMAGE_MODELS, ...(cfg.imageModel ? [cfg.imageModel] : [])])].filter(m => m !== IMAGE_MODEL0).map(m => <option key={m} value={m}>{m}</option>)}
         </select></label>
-        <label>质量<span className="seg">{[['low', 'low（便宜）'], ['medium', 'medium']].map(([v, t]) => <a key={v} className={(cfg.imageQuality || 'low') === v ? 'on' : ''} onClick={() => save({ imageQuality: v })}>{t}</a>)}</span><span className="hint">只有 2.0 认</span></label>
+        <label>质量<span className="seg">{[['low', 'low（便宜）'], ['medium', 'medium']].map(([v, t]) => <a key={v} className={(cfg.imageQuality || 'low') === v ? 'on' : ''} onClick={() => save({ imageQuality: v })}>{t}</a>)}</span><span className="hint">只有 grok 2.0 认</span></label>
         <label>分辨率<span className="seg">{['1k', '2k'].map(v => <a key={v} className={(cfg.imageRes || '1k') === v ? 'on' : ''} onClick={() => save({ imageRes: v })}>{v}</a>)}</span></label>
       </div>
     </div>
@@ -402,14 +403,14 @@ const ASPECTS = ['auto', '1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '21:
 function ImageEdit({ a, onChange }) {
   const seg = (k, opts) => <span className="seg">{opts.map(([v, t]) => <a key={t} className={(a[k] ?? null) === v ? 'on' : ''} onClick={() => onChange({ [k]: v })}>{t}</a>)}</span>;
   return <div className="imgedit">
-    <div className="ih">✓ 🎨 配图（Grok 生成，花钱）→ {a.id ? '「' + a.id.split('/').pop() + '」' : '这一页的散图'}</div>
+    <div className="ih">✓ 🎨 配图（{a.model ? (/^doubao/.test(a.model) ? '豆包' : 'Grok') : '默认模型'}生成，花钱）→ {a.id ? '「' + a.id.split('/').pop() + '」' : '这一页的散图'}</div>
     <textarea value={a.prompt} rows={3} spellCheck={false} title="画什么：执行前可以改（中英文都行）" onKeyDown={e => { if (e.key !== 'Escape') e.stopPropagation(); }}
       onChange={e => onChange({ prompt: e.target.value, desc: a.desc.replace(/←[\s\S]*$/, '←' + e.target.value.slice(0, 40) + (e.target.value.length > 40 ? '…' : '')) })} />
     <div className="iparams">
       <label>比例<select value={a.aspect || 'auto'} onChange={e => onChange({ aspect: e.target.value })}>{ASPECTS.map(v => <option key={v} value={v}>{v === 'auto' ? '自动' : v}</option>)}</select></label>
       <label>质量{seg('quality', [[null, '默认'], ['low', 'low'], ['medium', 'medium']])}</label>
       <label>分辨率{seg('resolution', [[null, '默认'], ['1k', '1k'], ['2k', '2k']])}</label>
-      <label>模型<select value={a.model || ''} onChange={e => onChange({ model: e.target.value || undefined })}><option value="">默认</option>{IMAGE_MODELS.map(m => <option key={m} value={m}>{m.replace('grok-imagine-image', 'imagine')}</option>)}</select></label>
+      <label>模型<select value={a.model || ''} onChange={e => onChange({ model: e.target.value || undefined })}><option value="">默认</option>{IMAGE_MODELS.map(m => <option key={m} value={m}>{imgShort(m)}</option>)}</select></label>
     </div>
   </div>;
 }

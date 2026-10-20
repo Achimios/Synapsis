@@ -5,7 +5,9 @@ import { PALETTE } from './colors.js';
 import { withMoved, ROOT } from './outline.js';
 import { badMemName, TYPES } from './memory.js';
 import { tighten } from './arrange.js';
-
+
+// 生图模型名缩短给人看：grok-imagine-image-2.0 → imagine-2.0；doubao-seedream-5-0-flash-260915 → seedream flash
+export const imgShort = m => /^doubao-seedream/.test(m) ? 'seedream ' + (/-(flash|pro|lite)-/.exec(m)?.[1] || m.slice(16)) : m.replace('grok-imagine-image', 'imagine');
 export const KINDS = { '': '', 普通: '', 调节: '调节', 离散: '离散' };
 export const STATUSES = { done: 'done', partial: 'partial', todo: 'todo', dropped: 'dropped', none: null };
 export const EDGES = ['left', 'right', 'top', 'bottom', 'hcenter', 'vcenter'];
@@ -89,16 +91,16 @@ export const VALIDATORS = {
     if (ids.some(id => graph.nodes.get(id).parent !== p)) throw new Error('order 的节点必须是同一个父节点下的兄弟');
     return { ids, desc: '大纲顺序改成：' + ids.map(label).join(' → ') };
   },
-  // 👤 2026-10-16 配图（Grok 生成，花钱）：执行时由服务端调 core/imagegen.js，图存进这张卡的 _pics_
+  // 👤 2026-10-16 配图（Grok / 👤 10-20 起也可以豆包 Seedream，花钱）：执行时由服务端调 core/imagegen.js，图存进这张卡的 _pics_
   //   👤 2026-10-17 不写 id = 当前页的散图（空白处右键「AI 配图」落在右键点的位置）
   image: (a, { one, label, scope }) => {
     const loose = a.id == null || a.id === '', id = loose ? null : one(a.id), prompt = String(a.prompt || '').trim();
     if (!prompt) throw new Error('prompt 不能空：写清画面内容和风格');
     const aspect = ['auto', '1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '2:1', '1:2', '21:9'].includes(a.aspect) ? a.aspect : 'auto';
-    // 没写的参数留 null = 用 AI 设置里的默认（👤 2026-10-17 生图默认可选）；模型名认 xAI 列表里带 image 的（新模型不用改这里）
-    const quality = ['low', 'medium'].includes(a.quality) ? a.quality : null, resolution = ['1k', '2k'].includes(a.resolution) ? a.resolution : null, model = typeof a.model === 'string' && /^grok-[\w.-]*image[\w.-]*$/.test(a.model) ? a.model : null;
-    const tag = [aspect !== 'auto' && aspect, quality === 'medium' && '高质量', resolution === '2k' && '2k', model && model.replace('grok-imagine-image', 'imagine')].filter(Boolean).join('，');
-    return { id, ...(loose ? { scope: scope ?? ROOT } : {}), prompt: prompt.slice(0, 2000), aspect, quality, resolution, ...(model ? { model } : {}), desc: `配图（Grok 生成，花钱）：${loose ? '这一页的散图' : `「${label(id)}」`}←${prompt.slice(0, 40)}${prompt.length > 40 ? '…' : ''}${tag ? '（' + tag + '）' : ''}` };
+    // 没写的参数留 null = 用 AI 设置里的默认（👤 2026-10-17 生图默认可选）；模型名认 xAI 列表里带 image 的（新模型不用改这里）+ 豆包 doubao-seedream-*
+    const quality = ['low', 'medium'].includes(a.quality) ? a.quality : null, resolution = ['1k', '2k'].includes(a.resolution) ? a.resolution : null, model = typeof a.model === 'string' && /^(grok-[\w.-]*image[\w.-]*|doubao-seedream[\w.-]*)$/.test(a.model) ? a.model : null;
+    const tag = [aspect !== 'auto' && aspect, quality === 'medium' && '高质量', resolution === '2k' && '2k', model && imgShort(model)].filter(Boolean).join('，');
+    return { id, ...(loose ? { scope: scope ?? ROOT } : {}), prompt: prompt.slice(0, 2000), aspect, quality, resolution, ...(model ? { model } : {}), desc: `配图（${model && /^doubao/.test(model) ? '豆包' : model ? 'Grok' : '默认模型'}生成，花钱）：${loose ? '这一页的散图' : `「${label(id)}」`}←${prompt.slice(0, 40)}${prompt.length > 40 ? '…' : ''}${tag ? '（' + tag + '）' : ''}` };
   },
   color: (a, { many, label }) => {
     const ids = many(a.ids);

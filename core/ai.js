@@ -27,7 +27,12 @@ const cfgFile = home => join(home, '.synapsis', 'ai.json');
 export const ONLINE = {
   deepseek: { name: 'DeepSeek', url: 'https://api.deepseek.com', env: 'DEEPSEEK_API_KEY', site: 'platform.deepseek.com', thinking: true },
   xai: { name: 'Grok（xAI）', url: 'https://api.x.ai/v1', env: 'XAI_API_KEY', site: 'console.x.ai' },
+  // 👤 2026-10-20 豆包生图（火山方舟 Seedream）：只用来生图，chat: false = 不进聊天模型列表（不去拉 /models）
+  ark: { name: '豆包（火山方舟）', url: 'https://ark.cn-beijing.volces.com/api/v3', env: 'ARK_API_KEY', site: 'console.volcengine.com/ark', chat: false },
 };
+// 豆包生图模型（方舟没有按 key 列模型的接口 → 写死；新版本出来改这里）。flash = 草图、快、便宜；pro = 定稿
+export const ARK_IMAGES = ['doubao-seedream-5-0-flash-260915', 'doubao-seedream-5-0-pro-260628'];
+export const isArkImage = m => /^doubao-seedream/.test(m || '');
 // xAI 的 /models 不给上下文长度 → 照 docs.x.ai/docs/models 的价格表抄（2026-10-16），新模型没在表里就显示 ?
 const XAI_CTX = [[/^grok-build/, 256e3], [/^grok-4\.[5-9]/, 500e3], [/^grok-4/, 1e6]];
 // 👤 2026-10-16「4.7 好慢」：grok-4.5 起推理关不掉、默认 high → 思考强度「不思考」对它们发 low（最快的一档）
@@ -81,7 +86,7 @@ async function onlineModels(cfg) {
   const out = [];
   for (const [p, o] of Object.entries(ONLINE)) {
     const key = onlineKey(cfg, p);
-    if (!key) continue;
+    if (!key || o.chat === false) continue;
     if (!onlineCache[p] || Date.now() - onlineCache[p].t > 10 * 60e3) {
       try {
         const r = await fetch(o.url + '/models', { headers: { authorization: 'Bearer ' + key }, signal: AbortSignal.timeout(5000) });
@@ -152,7 +157,7 @@ export async function aiStatus(cfg) {
 // online = 在线对话模型列表；hasKey = 各家有没有 key（只回有没有，不回 key）
 async function onlinePart(cfg) {
   const online = await onlineModels(cfg);
-  return { online, images: onlineCache.xai?.images || [], hasKey: Object.fromEntries(Object.keys(ONLINE).map(p => [p, !!onlineKey({ ...cfg, offline: false }, p)])) /* 只说「有没有」，offline 也照实说 */ };
+  return { online, images: [...(onlineCache.xai?.images || []), ...(onlineKey(cfg, 'ark') ? ARK_IMAGES : [])], hasKey: Object.fromEntries(Object.keys(ONLINE).map(p => [p, !!onlineKey({ ...cfg, offline: false }, p)])) /* 只说「有没有」，offline 也照实说 */ };
 }
 // 这次用的对话模型的信息（上下文容量等）
 export const chatInfo = (st, id) => (st.chat || []).find(m => m.id === id) || (st.online || []).find(m => m.id === id) || null;
