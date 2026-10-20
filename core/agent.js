@@ -202,6 +202,12 @@ export function outcomeNote(t) {
   if (t.executed?.length) return `【上一轮结果】人确认并执行了：${t.executed.join('；')}。${t.warnings?.length ? '执行后检查发现：' + t.warnings.join('；') + '。' : ''}`;
   return '【上一轮结果】人没有执行你上一轮提议的动作，页面没有因此改变。';
 }
+// 后台配图做完一张：把那一轮「执行了」里的那一条换成结果（从后往前找第一条一样的）
+export function updateOutcome(root, from, to) {
+  const h = loadChat(root);
+  for (let i = h.length - 1; i >= 0; i--) { const k = h[i].executed?.indexOf(from) ?? -1; if (k >= 0) { h[i].executed[k] = to; saveChat(root, h); return true; } }
+  return false;
+}
 // 把结果记在最近一个「有可执行提议、还没记结果」的轮次上；没有对话记录（比如自检里直接调 applyPlan）就什么也不做
 export function recordOutcome(root, { executed = [], warnings = [] }) {
   const h = loadChat(root);
@@ -523,7 +529,7 @@ export function applyPlan(root, actions, boxes = {}, opts = {}) {
   const label = id => g.nodes.get(id)?.label ?? id;
   const warnings = overlapWarnings(fixedBoxes, moves, label);
   if (remembered.length) { const st = indexStatus(opts.home || root, root); if (st.near) warnings.push(`记忆索引${st.over ? '满了' : '快满了'}（${st.n}/${st.max} 条）：建议整理——合并重复的、用 replace 换掉过时的（旧的会进 _过期的/）`); }
-  recordOutcome(root, { executed: actions.map(a => a.desc), warnings });
+  recordOutcome(root, { executed: [...actions.map(a => a.desc), ...(opts.extraDone || [])], warnings }); // extraDone = 交给后台接着做的（配图）
   return { report: { ...report, outline: workspaceOutline(loadWorkspace(root)) }, moves, select, remembered, warnings };
 }
 

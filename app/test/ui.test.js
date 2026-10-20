@@ -984,8 +984,10 @@ for (const kind of ['reactflow']) {
   ok(await page.evaluate(() => document.activeElement?.matches('.imgedit textarea')) && (await page.$eval('.agentbox .imgedit textarea', e => e.value)) === 'a small goblin, painterly, night', '在确认卡里打字：焦点留在卡里，Enter 之前不会执行');
   await page.selectOption('.agentbox .imgedit select >> nth=0', '16:9'); await page.click('.agentbox .imgedit .seg a:has-text("medium")'); await sleep(100);
   ok((await page.$eval('.agentbox .imgedit .seg a.on', e => e.textContent)) === 'medium' && (await page.$eval('.agentbox .imgedit select', e => e.value)) === '16:9', '比例选 16:9、质量点 medium');
-  await page.click('.agentbox button.go'); await sleep(1500);
-  ok(/没有 Grok/.test(await page.$eval('.status, .savestate, footer', e => e.textContent).catch(() => '')) || /没有 Grok/.test(await page.evaluate(() => document.body.innerText)), '没填 xAI key → 执行后提示「没有 Grok key」，不花钱');
+  await page.click('.agentbox button.go'); await sleep(300);
+  ok(!/执行中/.test(await page.$eval('.agentbox', e => e.innerText)), '配图排进后台：点执行后 AI 框马上空出来（不等生成）'); // 👤 2026-10-20
+  await sleep(1500);
+  ok(await page.waitForFunction(() => /没有 ?(Grok|豆包)/.test(document.body.innerText), null, { timeout: 6000 }).then(() => true, () => false), '自检工作区拿不到 key（默认生图模型跟本机设置：Grok 或豆包）→ 后台生成失败，状态栏报「没有 … key」，不花钱');
   // 问用法 → 问答模式：多行回答，标出参考了快捷键表，没有执行预览
   await page.click('.agentbox textarea.ask'); await page.keyboard.type('怎么连线？'); await page.keyboard.press('Enter'); await sleep(3000); // 全量跑时机器忙，1.5 秒偶尔不够
   const lastA = await page.$$eval('.agentbox .turn', ts => { const t = ts.at(-1); return [t.querySelector('.a')?.textContent || '', t.querySelector('.know')?.textContent || '', !!t.querySelector('.a .mdlite')]; });

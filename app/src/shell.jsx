@@ -73,6 +73,18 @@ export function Shell({ name, Canvas }) {
   const [outlineGroup, setOutlineGroup] = useState(false); // 大纲分组视图（按连线分组，组内按流向排）
   const [agentPreset, setAgentPreset] = useState(null);
   const imgAt = useRef(null); // 空白处右键「AI 配图」点的位置（画布坐标）：生成的散图落这里
+  // 👤 2026-10-20 配图在后台生成（服务端 runImgJobs）：轮询 /ai/images，做完一张就重读工作区（图出现在卡上），状态栏报剩几张。AI 框不用等，能接着聊、能关
+  const imgWatch = useRef(null);
+  const watchImages = seq0 => {
+    if (imgWatch.current) return; let seq = seq0;
+    const tick = () => api('/ai/images').then(async j => {
+      if (j.seq !== seq) { seq = j.seq; setWsData(await api('/ws')); setPositions(p => ({ ...p, ...Object.fromEntries(Object.entries(j.layout || {}).filter(([k]) => k.startsWith('@pic:'))) })); }
+      if (j.pending > 0) { setSaveState(`🎨 配图后台生成中：还剩 ${j.pending} 张（可以接着聊、关掉对话框）`); imgWatch.current = setTimeout(tick, 1500); }
+      else { imgWatch.current = null; setSaveState(`🎨 配图好了：${j.made.length} 张` + (j.failed.length ? ' ⚠ ' + j.failed.join('；') + '（AI 下一轮会知道）' : '')); }
+    }).catch(() => { imgWatch.current = setTimeout(tick, 3000); });
+    imgWatch.current = setTimeout(tick, 1000);
+  };
+  useEffect(() => { if (mode === 'ws') api('/ai/images').then(j => j.pending > 0 && watchImages(j.seq - 1)).catch(() => {}); }, [mode]); // 窗口刷新 / 重开时还在生成 → 接着看
   const [outlineHere, setOutlineHere] = useState(0); // 大纲范围三态：0 完整 / 1 本节点和它上一层 / 2 只本节点里面（旧版存的 true = 2）
   const [multiIds, setMultiIds] = useState([]); // 多选（画布和大纲共用一组；≥2 个才算）
   const [outlineLock, setOutlineLock] = useState(null); // 🔒 大纲锁：{root, scope, selected}，锁住时列表不跟着导航换页 / 展开 / 滚动
@@ -1362,7 +1374,8 @@ export function Shell({ name, Canvas }) {
           lastSaved.current = d.report.outline; setText(d.report.outline); setWsData(d); recordSave(d.report.outline, d.report);
           if (Object.keys(d.moves).length) move(d.moves);
           if (d.select.length) cardActions.select?.(d.select);
-          setSaveState('AI 指令已执行 ' + good.length + ' 步（Ctrl+Z 撤销）' + (d.warnings?.length ? ' ⚠ ' + d.warnings.join('；') + '（AI 下一轮会知道）' : ''));
+          setSaveState('AI 指令已执行 ' + good.length + ' 步（Ctrl+Z 撤销）' + (d.warnings?.length ? ' ⚠ ' + d.warnings.join('；') + '（AI 下一轮会知道）' : '') + (d.imaging ? ` · 🎨 配图后台生成中（${d.imaging} 张，可以接着聊、关掉对话框）` : ''));
+          if (d.imaging) watchImages(d.imgSeq);
         }} />}
       {aiOpen && <AiPanel api={api} status={aiStatus} onStatus={setAiStatus} onClose={() => setAiOpen(false)} />}
       {repl && <ReplaceBar r={repl} setR={setRepl} total={replHits.length} cur={replCur} skip={replSkip} scopeText={repl.ids ? `只在选中的 ${repl.ids.length} 张里` : '本页节点名'}

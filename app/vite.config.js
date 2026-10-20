@@ -13,12 +13,31 @@ import { lmsEstimate, lmsReload } from '../core/lmstudio.js';
 import { loadVoice, saveVoiceCfg, speak } from '../core/voice.js';
 import { genImage } from '../core/imagegen.js';
 import { loadTodo, saveTodo, todoFile, TODO_HEAD } from '../core/todo.js';
-import { runAgent, applyPlan, loadChat, clearChat, setSummaryText, estimateContext, isLoose, loadSummary, compactChat, needCompact } from '../core/agent.js';
+import { runAgent, applyPlan, updateOutcome, loadChat, clearChat, setSummaryText, estimateContext, isLoose, loadSummary, compactChat, needCompact } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
 import { useProxy } from './proxy.js';
 const PROXY = useProxy(); // 有本机代理就让服务端的 fetch 走它（xAI 国内直连不通）；本机地址直连
 if (PROXY) console.log('[synapsis] 联网走代理', PROXY);
 const STASH = new Map(); // 工作区 → 界面暂存（见 /ui/stash）
+// >v<🤖AI指令-配图-后台生成（👤 2026-10-20「生成过程中还能和内置 LLM 对话吗」「能 Shift+F 暂时关掉对话吗」）：
+//   /ai/apply 只把配图排进队就回（AI 框马上空出来，能接着聊、能关框）；这里一张张生成，做完一张 seq + 1，界面轮询 /ai/images 看到变了就重读工作区。
+//   对话记录里那一条「…（后台生成中）」做完换成「…（已生成）」或「…（失败：原因）」，AI 下一轮看得到
+const IMG_JOBS = new Map(); // root → { queue, pending, seq, made, failed }
+const imgJob = root => { let j = IMG_JOBS.get(root); if (!j) IMG_JOBS.set(root, j = { queue: [], pending: 0, seq: 0, made: [], failed: [], running: false }); return j; };
+async function runImgJobs(root, cfg) {
+  const job = imgJob(root); if (job.running) return; job.running = true;
+  while (job.queue.length) {
+    const { a, at, tag } = job.queue.shift(), name = a.id ? a.id.split('/').pop() : '散图';
+    try {
+      const img = await genImage(cfg, a);
+      if (a.id) saveAsset(root, a.id, img);
+      else { const s = saveLooseImage(root, a.scope ?? '', img); if (at && !s.node) saveLayout(root, { ['@pic:' + s.path]: at }); }
+      job.made.push(name); updateOutcome(root, tag, a.desc + '（已生成，贴好了）');
+    } catch (e) { job.failed.push(`配图「${name}」失败：${e.message}`); updateOutcome(root, tag, a.desc + `（失败：${e.message}）`); }
+    job.pending--; job.seq++;
+  }
+  job.running = false;
+}
 const SESSION_START = Date.now() - 2000; // 这次服务进程（= 托盘）启动的时刻（留 2 秒余量：.junk 里的时间戳只到秒）。.junk/ 里比这更早的 = 上次没正常退出留下的
 const SYN_HOME = resolve(fileURLToPath(new URL('.', import.meta.url)), '..'); // AI 设置是本机的：<Synapsis>/.synapsis/ai.json
 
@@ -167,20 +186,14 @@ function workspaceApi() {
             // AI 指令框：问模型（只回动作草案）/ 👤 确认后执行
             if (url.pathname === '/ai/apply' && req.method === 'POST') {
               const b = await body(req), all = b.actions || [], imgs = all.filter(a => a && a.ok && a.do === 'image');
-              const r = applyPlan(root, all.filter(a => !(a && a.do === 'image')), b.boxes || {}, { home: SYN_HOME });
-              // 配图（花钱，慢）：大纲改完再一张张生成，存进那张卡的 _pics_；失败的写进 warnings（AI 下一轮会知道）
+              // 配图（花钱，慢）：大纲改完，配图排进后台队列（见 runImgJobs），这里不等；存进那张卡的 _pics_
               //   没 id = 当前页的散图，落在 b.at（空白处右键「AI 配图」点的位置；几张错开）
-              for (const [i, a] of imgs.slice(0, 4).entries()) {
-                const name = a.id ? a.id.split('/').pop() : '散图';
-                try {
-                  const img = await genImage(cfg, a);
-                  if (a.id) saveAsset(root, a.id, img);
-                  else { const s = saveLooseImage(root, a.scope ?? '', img); if (b.at && !s.node) saveLayout(root, { ['@pic:' + s.path]: { x: b.at.x + i * 30, y: b.at.y + i * 30 } }); }
-                  (r.made ??= []).push('配图：' + name);
-                } catch (e) { r.warnings.push(`配图「${name}」失败：${e.message}`); }
-              }
-              delete (STASH.get(root) || {}).plan; return send(200, { ...r, ...payload(root) });
+              const todo = imgs.slice(0, 4).map((a, i) => ({ a, tag: a.desc + '（后台生成中）', at: b.at ? { x: b.at.x + i * 30, y: b.at.y + i * 30 } : null }));
+              const r = applyPlan(root, all.filter(a => !(a && a.do === 'image')), b.boxes || {}, { home: SYN_HOME, extraDone: todo.map(t => t.tag) });
+              if (todo.length) { const job = imgJob(root); if (!job.pending) { job.made = []; job.failed = []; } job.queue.push(...todo); job.pending += todo.length; runImgJobs(root, cfg); }
+              delete (STASH.get(root) || {}).plan; return send(200, { ...r, imaging: imgJob(root).pending, imgSeq: imgJob(root).seq, ...payload(root) });
             }
+            if (url.pathname === '/ai/images') { const j = imgJob(root); return send(200, { pending: j.pending, seq: j.seq, made: j.made, failed: j.failed, layout: payload(root).layout }); }
             // 在线 key：只写进 <Synapsis>/.synapsis/keys.json，回的状态里只有「有没有」
             if (url.pathname === '/ai/key' && req.method === 'PUT') { const b = await body(req); saveKey(SYN_HOME, b.provider || 'deepseek', b.key || ''); return send(200, await aiStatus(aiConfig(SYN_HOME))); }
             // 本地模型的上下文长度：先估显存，再「卸载 → 按新长度加载」（core/lmstudio.js，走 LM Studio 的 lms 命令行）
