@@ -94,7 +94,7 @@ function get(ws, id) {
 
 // >v<🎬时间轴-导出-CLI timeline：一页时间轴的条（给 Eidolon edl.py 读，👤 2026-10-24 剪辑真源在 Synapsis 节点）
 // JSON 格式（和 ReadScreen 约定的，改了要先通知它）：
-//   {page, unit: 's', fps, beats, items: [{id, label, t0, t1, track, pics: [绝对路径], body, ref}]}，按 t0 排
+//   {page, unit: 's', fps, beats, items: [{id, label, t0, t1, track, pics: [绝对路径], body, ref, src?, speed?}]}，按 t0 排
 //   传送门卡（ref:）自己没图 → 用它指向的节点的图；fps 没写就读 beats 那份的 fps
 export function timeline(ws, page) {
   const g = ws.graph, meta = id => g.nodes.get(id)?.meta;
@@ -112,7 +112,9 @@ export function timeline(ws, page) {
   const items = info.items.map(it => {
     const n = g.nodes.get(it.id), tgt = it.ref && g.nodes.get(it.ref);
     const pics = (n.pics?.length ? n.pics : tgt?.pics || []).map(abs);
-    return { id: it.id, label: it.label, t0: round3(it.t0), t1: round3(it.t1), track: it.track, pics, body: (n.body || '').trim(), ref: it.ref };
+    // src（剪辑表语法，如 样片:粒子海/20_….mp4@1.2、原片@0:52.5）/ speed：有才带；传送门卡自己没写 src 就用目标的（speed 是这一次用法，不继承）
+    const src = n.meta.src ?? tgt?.meta?.src, speed = n.meta.speed;
+    return { id: it.id, label: it.label, t0: round3(it.t0), t1: round3(it.t1), track: it.track, pics, body: (n.body || '').trim(), ref: it.ref, ...(src ? { src: String(src) } : {}), ...(speed ? { speed: String(speed) } : {}) };
   });
   const data = { page, unit: 's', fps: info.fps ?? src?.fps ?? null, beats: info.beats, items };
   const text = [`时间轴 [${page}]  fps ${data.fps ?? '未写'}${info.beats ? '  拍点 ' + info.beats + (src ? '' : '（读不到）') : ''}`,

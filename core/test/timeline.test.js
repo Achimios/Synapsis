@@ -33,7 +33,9 @@ writeFileSync(join(root, '感官.json'), JSON.stringify({ fps: 24, events: { bea
 mkdirSync(join(root, '__synapsis', '素材库', '_pics_爆炸'), { recursive: true });
 writeFileSync(join(root, '__synapsis', '素材库', '_pics_爆炸', 'a.jpg'), 'x');
 const ref = addRefNode(root, '镜头3', '素材库/爆炸');
-setNodeMeta(root, ref.id, { t0: '6.5', t1: '7' });
+setNodeMeta(root, ref.id, { t0: '6.5', t1: '7', speed: '0.5' });
+setNodeMeta(root, '素材库/爆炸', { src: '样片:粒子海/20_a.mp4@1.2', speed: '2' });
+setNodeMeta(root, '镜头3/第三', { src: '原片@0:52.5' });
 
 let ws = loadWorkspace(root);
 const meta = id => ws.graph.nodes.get(id)?.meta;
@@ -58,6 +60,9 @@ const it = r.items[0];
 ok(it.id === '镜头3/入画' && it.t0 === 1.2 && it.t1 === 3.48 && it.track === 0 && it.body === '人物从左入画，慢推' && it.ref === null, '条目字段 ' + JSON.stringify(it));
 const rc = r.items.find(i => i.ref);
 ok(rc && rc.ref === '素材库/爆炸' && rc.pics.length === 1 && rc.pics[0].endsWith('/__synapsis/素材库/_pics_爆炸/a.jpg') && !rc.pics[0].includes('\\'), '传送门卡没图 → 用目标的图（绝对路径、正斜杠） ' + JSON.stringify(rc));
+ok(!('src' in it) && !('speed' in it), '没写 src / speed 就不带这两个键');
+ok(r.items.find(i => i.label === '第三').src === '原片@0:52.5', '节点自己的 src');
+ok(rc.src === '样片:粒子海/20_a.mp4@1.2' && rc.speed === '0.5', '传送门卡：src 继承目标，speed 用卡自己的 ' + JSON.stringify(rc));
 setNodeMeta(root, '镜头3', { fps: '25' }); ws = loadWorkspace(root);
 ok(timeline(ws, '镜头3').data.fps === 25, '页面写了 fps 就用页面的');
 ok(timeline(ws, '素材库').error && timeline(ws, '没有').error, '不是时间轴页 / 没这个节点 → 报错');
