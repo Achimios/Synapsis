@@ -2,7 +2,14 @@
 
 **2026-10-08 夜** —— 在本目录开的新对话（不再是 SimuWeb 里）。两个会话分工：一个 Opus 聊认知 / 信息论 / 工程方法，一个 Sonnet 实现；共用 `_Blackboard.md`。
 
-- 🌙 **2026-10-16 夜（最新，全部已提交）**：👤 睡前定的一串，开发待办临时放在 `Life Games/研究/.synapsis/AI待办.md`（📋 待办页能看）
+- 🎬 **2026-10-23 ~ 24（最新，全部已提交到 `c824cd3`）**：细节见 `_开发进度.md`「时间轴页 / 截帧」「规模」两行
+  - **几千节点提速**：读库 / 保存 / 打开快了 3～4 倍（3666 节点改名 4.9 → 1.5 s）；还剩：进页主线程卡 200 ms（左栏全量渲染，推测）、每次写回传整库、`check` / `find` 输出太长
+  - **剪辑在 Synapsis 里做**（👤 定 A：剪辑真源 = Synapsis 节点；和 Eidolon「ReadScreen」会话商量的）：时间轴页（`timeline: true`，子节点 t0 / t1 / track，拍点 `beats: 感官.json`）、段落（时间由镜头自动算）、父页画布上的**时间轴卡**（镜头 → 参考 的线落在条上）、导出 `cli.js timeline <页> --json`（Eidolon edl.py 已接）
+  - **截帧**：拖视频到卡片 / 右键「🎞 从视频截帧…」弹窗截（浏览器解码）；命令行 `frame`（走 Eidolon .venv 的 ffmpeg）
+  - **用法**：快捷键页（? / F1）顶部「📖 用法」页签（Tab 切），`core/usage.js`
+  - 等 👤：在 `Projekt_Visual/MV_Cant_Kill_Us` 真用起来；6 个段落上子代理写的 t0 / t1 可删（check 有提示）；Visual 会话判断 VisualProcess 的 project.json `edit` 停用还是改从这里导出
+  - ⚠️ 托盘要重启（vite.config 加了 /timeline/beats、/nodes）；`.claude/launch.json` 加了 `synapsis-test`（5477，SYN_DESKTOP=1）没提交；界面「UI 框展开」居中那条在 HEAD 上也 3/4 挂（老的不稳定）
+- 🌙 **2026-10-16 夜**：👤 睡前定的一串，开发待办临时放在 `Life Games/研究/.synapsis/AI待办.md`（📋 待办页能看）
   - 内置 AI 换**原生工具调用**（在线 + 大本地模型；≤ 9B 留 JSON），一段一段说 + 念；⚠️ 只跑了假服务，真模型没试（付费，等 👤 自己用）
   - Ctrl+Tab 生效区（`app/src/zones.js`）、右键「外观 ▸」二级 + 「编辑正文」、左右栏顶部换行、模型下拉排序 / Grok 思考强度
   - ✅ 10-17 做了：右栏正文 **预览 / 源码（Ctrl+E）**，顶替「原文」页签；右键「🎨 AI 配图…」（空白处 = 散图）；粘贴图片落在鼠标处；语音提示词「口头禅别句句用」
