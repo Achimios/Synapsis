@@ -8,7 +8,9 @@ export const USAGE = `用法：node core/cli.js <命令> [参数] [--ws <被规�
   export [节点id]              节点卡（给 LLM 的结构化文本），默认全部
   get <节点id>                 单个节点：属性 + 入边/出边 + 正文
   find <关键词>                在名字 / 属性 / 正文里找
-  check                        悬空边、无状态、code 指向不存在的文件 / 符号
+  check                        悬空边、无状态、code 指向不存在的文件 / 符号、时间轴 t0/t1 不对或同轨重叠
+  timeline [页id] [--json]     时间轴页（timeline: true）上的条：t0 / t1（成片时间，秒）/ track / 图 / 正文，按 t0 排；
+                               不带页id = 列出所有时间轴页。--json 给程序读（Eidolon edl.py 用这个）
 写（每条都是原子的一小步；删除一律进 .junk/（关窗口时才清，期间能撤销），不真删）：
   add <父id|.> <名字> [--after <兄弟id>] [--if-missing]
                                新建节点，打印新 id；同级已有同名 → 报错（--if-missing 则直接返回已有 id）
@@ -37,6 +39,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadWorkspace, workspaceOutline, checkWorkspace, groupStatus, saveOutline, ensureWorkspaceReadme, setNodeMeta, setNodeBody, setEdgeLabel, findNodes, moveNodes, ensureGitignore, MANUAL_MARK, DIR } from './workspace.js';
 import { spaceInfo, closestPairs } from './space.js';
+import { isTimeline, timelineInfo, parseBeats, round3 } from './timeline.js';
 import { ensureLauncher, PROJECT_LNK } from './launcher.js';
 import { loadSettings } from './settings.js';
 import { scaffoldPlan, scaffoldWrite } from './scaffold.js';
@@ -84,6 +87,35 @@ function get(ws, id) {
     spaceText(g, id),
     n.body ? '\n' + n.body.trim() : '',
   ].filter(Boolean).join('\n');
+}
+
+// >v<🎬时间轴-导出-CLI timeline：一页时间轴的条（给 Eidolon edl.py 读，👤 2026-10-24 剪辑真源在 Synapsis 节点）
+// JSON 格式（和 ReadScreen 约定的，改了要先通知它）：
+//   {page, unit: 's', fps, beats, items: [{id, label, t0, t1, track, pics: [绝对路径], body, ref}]}，按 t0 排
+//   传送门卡（ref:）自己没图 → 用它指向的节点的图；fps 没写就读 beats 那份的 fps
+export function timeline(ws, page) {
+  const g = ws.graph, meta = id => g.nodes.get(id)?.meta;
+  if (!page) {
+    const pages = [...g.nodes.keys()].filter(id => id !== ROOT && isTimeline(meta(id)));
+    const data = pages.map(id => ({ page: id, items: timelineInfo(g, id, meta).items.length }));
+    return { data, text: pages.length ? data.map(p => `[${p.page}] ${p.items} 条`).join('\n') : '没有时间轴页（页面节点写 timeline: true）' };
+  }
+  if (!g.nodes.has(page)) return { error: '没有这个节点：' + page };
+  const info = timelineInfo(g, page, meta);
+  if (!info) return { error: `${page} 不是时间轴页（它的属性里加 timeline: true）` };
+  let src = null;
+  if (info.beats) { try { src = parseBeats(JSON.parse(readFileSync(join(ws.root, info.beats), 'utf8'))); } catch { /* 读不到就当没有 */ } }
+  const abs = p => join(ws.base, p).split('\\').join('/');
+  const items = info.items.map(it => {
+    const n = g.nodes.get(it.id), tgt = it.ref && g.nodes.get(it.ref);
+    const pics = (n.pics?.length ? n.pics : tgt?.pics || []).map(abs);
+    return { id: it.id, label: it.label, t0: round3(it.t0), t1: round3(it.t1), track: it.track, pics, body: (n.body || '').trim(), ref: it.ref };
+  });
+  const data = { page, unit: 's', fps: info.fps ?? src?.fps ?? null, beats: info.beats, items };
+  const text = [`时间轴 [${page}]  fps ${data.fps ?? '未写'}${info.beats ? '  拍点 ' + info.beats + (src ? '' : '（读不到）') : ''}`,
+    ...items.map(it => `${it.t0.toFixed(3)}–${it.t1.toFixed(3)}  轨${it.track}  ${it.label}${it.ref ? ' ↗' + it.ref : ''}${it.pics.length ? '  🖼' + it.pics.length : ''}`),
+    info.loose.length ? '没上轴（没写 t0 / t1）：' + info.loose.map(c => g.nodes.get(c).label).join('、') : ''].filter(Boolean).join('\n');
+  return { data, text };
 }
 
 const BLACKBOARD = '# 讨论黑板（人和各个 AI 讨论这个项目的设计）\n\n> 格式：`## YYYY-MM-DD · 谁 · 话题`，往下追加。定下来的结论搬进对应节点的正文 / 属性，这里的条目剪进 `_过期的/_Blackboard.md`。\n> Synapsis 工具本身的问题不写这里，写 Synapsis 仓库根目录的 `_Blackboard.md`。\n';
@@ -236,6 +268,7 @@ function main(argv) {
   else if (cmd === 'outline') console.log(workspaceOutline(ws));
   else if (cmd === 'export') console.log(exportForLLM(ws.graph, arg || ROOT));
   else if (cmd === 'get') console.log(get(ws, arg));
+  else if (cmd === 'timeline') { const r = timeline(ws, arg); if (r.error) { console.error('✗ ' + r.error); process.exitCode = 1; } else console.log(argv.includes('--json') ? JSON.stringify(r.data, null, 1) : r.text); }
   else if (cmd === 'check') {
     const issues = checkWorkspace(ws);
     for (const i of issues) console.log(`${i.level === 'error' ? '✗' : i.level === 'warn' ? '⚠' : '·'} [${i.where}] ${i.msg}`);

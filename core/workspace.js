@@ -21,6 +21,7 @@ import { spawnSync } from 'node:child_process';
 import { PATTERN_FILE, DEFAULT_PATTERN_WORDS, parsePatternWords, WORDS_ALL, splitWords, DEFAULT_ALL, LOCAL_WORDS, joinWords, wordsHead } from './patterns.js';
 import { parseOutline, toOutline, resolveLabel, labelIndex, shortRef, isDropped, withCopies, withEdge, withoutEdge, withMoved, withNode, ROOT } from './outline.js';
 import { checkSpaces } from './space.js';
+import { checkTimelines, isTimeline } from './timeline.js';
 import { emptyPins, cleanPins, remapNodes } from './pins.js';
 import { WORDS_FILE, DEFAULT_WORDS, OLD_DEFAULT_WORDS, parseColorWords } from './colors.js';
 
@@ -733,7 +734,7 @@ export function checkWorkspace(ws) {
   const issues = [...ws.graph.errors.map(e => ({ level: 'error', where: e.file, msg: e.msg }))];
   for (const n of ws.graph.nodes.values()) {
     if (n.id === ROOT || isDropped(ws.graph, n.id)) continue; // 弃用的（含弃用分组的子孙）不查
-    if (!n.status && !n.children.length && !n.meta.file && !n.meta.ref && !n.meta.ui) issues.push({ level: 'warn', where: n.id, msg: '没有 status' }); // 分组的状态由子节点汇总；引用外部文件的节点（file:）不是待做的事，不查
+    if (!n.status && !n.children.length && !n.meta.file && !n.meta.ref && !n.meta.ui && !isTimeline(ws.graph.nodes.get(n.parent)?.meta)) issues.push({ level: 'warn', where: n.id, msg: '没有 status' }); // 分组的状态由子节点汇总；引用外部文件的节点（file:）不是待做的事，不查
     if (n.meta.file && !existsSync(join(ws.root, String(n.meta.file)))) issues.push({ level: 'warn', where: n.id, msg: 'file 指向不存在的文件：' + n.meta.file + '（文件被移走或改名了？）' });
     if (n.meta.ref && !ws.graph.nodes.has(String(n.meta.ref))) issues.push({ level: 'warn', where: n.id, msg: 'ref 指向不存在的节点：' + n.meta.ref + '（目标被删了或改名没跟上？）' });
     if (n.meta.code && n.meta.code !== 'null') {
@@ -760,6 +761,7 @@ export function checkWorkspace(ws) {
   const g = ws.graph;
   issues.push(...checkSpaces(g, id => g.nodes.get(id)?.meta, (from, ref) => resolveLabel(g.nodes, from, ref) || (g.nodes.has(ref) ? ref : null)));
   issues.push(...checkAnchors(ws));
+  issues.push(...checkTimelines(g, id => g.nodes.get(id)?.meta));
   return issues;
 }
 

@@ -27,6 +27,7 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
    - 📎 `file: 相对项目根的路径`：这个节点只是引用一个 `__synapsis` 外的项目文件（笔记 / json 等；界面里右键空白 →「引入…」建的）。要看内容就按路径自己去读，别改写路径；文件被移走时 `check` 会提示（warn）。这种节点不带 status，不算进度。
    - ↗ `ref: <另一个节点的 id>`：传送门卡片，只是在这一页放个指向别处节点的入口（界面：右键空白 →「引入…」→ 选节点；双击跳过去）；名字 `↗ 目标名`，不带 status；目标改名 / 搬家时 ref 会自动跟；目标删了 check 报 warn。**不是复制**，别当成有内容的节点。
    - ▭ `ui: true` + `w` / `h`：UI 框（界面草稿用）。在所在页里是个有宽高的线框，**里面（钻进去）是正常画布，位置用里面那一页自己的坐标**；里面可以放 UI 框，也可以放普通节点写文字说明。要读布局：`_layout.json` 里是各节点左上角坐标（`x` 向右、`y` 向下），UI 框的四个角 = 左上 (x,y)，右下 (x+w, y+h)；界面里右键 UI 框 →「复制 UI 布局」能得到整理好的文字（每一级 UI 框带四个角 + 宽高，普通节点带名字和正文）。UI 框不带 status。
+   - 🎬 **时间轴页**（剪辑用）：页面节点写 `timeline: true`（可选 `beats: 感官.json` 拍点源、`fps: 24`），它的子节点写 `t0` / `t1`（**成片时间**，秒，3 位小数；也认 `分:秒`）+ 可选 `track`（0 = 主轨）就是轴上的一段；没写的不上轴。**剪辑以这些节点为准**，读用 `timeline <页id> --json`（别自己解析 md）。同一素材用两次 = 放两张传送门卡（`ref:`），各写各的 t0 / t1，别复制节点。截帧的时间码是素材时间（写 `src_t`），别和 t0 / t1 混。轴上的条不带 status；`check` 只警告 t0 ≥ t1、只写了一个、同轨重叠。
    - 分组不用标状态：`overview` 按子节点汇总（全 ✅ 才 ✅）。
    - 不做了就 `status <id> dropped`（❌ 弃用，别删）：不算完成度，`check` 跳过它和它的子孙。
 3. **一次写很多节点用 `batch`**（一个 JSON 文件，一个进程跑完），别每个节点 spawn 好几次。`add` 撞名会报错；脚本可能重跑就加 `--if-missing`（batch 里是 `{"ifMissing":true}`）。
@@ -58,7 +59,9 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
   export [节点id]              节点卡（给 LLM 的结构化文本），默认全部
   get <节点id>                 单个节点：属性 + 入边/出边 + 正文
   find <关键词>                在名字 / 属性 / 正文里找
-  check                        悬空边、无状态、code 指向不存在的文件 / 符号
+  check                        悬空边、无状态、code 指向不存在的文件 / 符号、时间轴 t0/t1 不对或同轨重叠
+  timeline [页id] [--json]     时间轴页（timeline: true）上的条：t0 / t1（成片时间，秒）/ track / 图 / 正文，按 t0 排；
+                               不带页id = 列出所有时间轴页。--json 给程序读（Eidolon edl.py 用这个）
 写（每条都是原子的一小步；删除一律进 .junk/（关窗口时才清，期间能撤销），不真删）：
   add <父id|.> <名字> [--after <兄弟id>] [--if-missing]
                                新建节点，打印新 id；同级已有同名 → 报错（--if-missing 则直接返回已有 id）
