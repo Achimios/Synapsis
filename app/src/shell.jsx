@@ -8,6 +8,8 @@ import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode
 import { colorMap, wordTables, hierHit, upperTable, baseColor, satOf } from './colors.js';
 import { patternMap, patternTables, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
+import { timelineInfo, isTimeline, parseTime } from './timeline.js';
+import { TimelineView } from './timeline.jsx';
 import { KeyCombo, ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, HistoryPanel, OutlineTree, HelpModal, SettingsModal, ReplaceBar, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
 const DRAG_PIC = 'application/x-synapsis-pic';
 import { initStash, useStash, putStash } from './stash.js';
@@ -150,6 +152,26 @@ export function Shell({ name, Canvas }) {
     const S = 260 / Math.max(1, ...pts.map(p => Math.max(Math.abs(p.x), Math.abs(p.y)))); // 1 个单位多少像素：坐标都在 ±1 内就固定 260
     return { keys, u, v, S, pts, angle: angleDeg(u, v), labels: keys.map(k => directionLabel(space, k)) };
   }, [space, spaceAxes, realScope]);
+  // >v<🎬时间轴-界面-当前页 timeline: true → 默认显示时间轴视图（V 切回画布，记在 view.json 的 tlOff）；拍点源只拿精简后的（服务端挑 beats / downbeats / phrases）
+  const tl = useMemo(() => graph.nodes.has(realScope) ? timelineInfo(graph, realScope, getMeta) : null, [graph, realScope, getMeta]);
+  const [tlOff, setTlOff] = useState({}); // scope -> true = 这一页看画布
+  const showTl = !!tl && !tlOff[realScope];
+  const [beats, setBeats] = useState(null); // {src, data}
+  useEffect(() => {
+    if (!tl?.beats || mode !== 'ws') { setBeats(null); return; }
+    if (beats?.src === tl.beats) return;
+    api('/timeline/beats?p=' + encodeURIComponent(tl.beats)).then(d => setBeats({ src: tl.beats, data: d })).catch(e => { setBeats({ src: tl.beats, data: null }); setSaveState('⚠ 拍点读不到：' + e.message); });
+  }, [tl?.beats, mode]);
+  const tlFps = tl ? tl.fps ?? beats?.data?.fps ?? null : null;
+  const tlLead = tl && tlFps ? (parseTime(getMeta(realScope)?.lead) || 0) / tlFps : 0; // 页面 lead: N = 吸附时提前 N 帧
+  // 时间轴改 t0 / t1 / track：先改本地（不闪回），再走 saveMeta（进撤销栈）
+  const tlCommit = (id, p) => {
+    const old = getMeta(id) || {};
+    const patch = { t0: String(p.t0), t1: String(p.t1), track: p.track ? String(p.track) : old.track != null ? '0' : null };
+    if (patch.track === null) delete patch.track;
+    setWsData(d => ({ ...d, nodes: { ...d.nodes, [id]: { ...d.nodes[id], meta: { ...d.nodes[id].meta, ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v != null)) } } } }));
+    saveMeta(id, patch);
+  };
   // >v<🤖AI辅助-接入-LM Studio 状态 / 语义配色（core/ai.js）：连不上就当没有，什么都不挡
   const [aiStatus, setAiStatus] = useState(null), [aiOpen, setAiOpen] = useState(false), [semCols, setSemCols] = useState(null), [agentOpen, setAgentOpen] = useStash('agent.open', false); // AI 框开着关窗口，回来还开着
   const aiCheck = () => mode === 'ws' && api('/ai/status').then(setAiStatus).catch(() => setAiStatus({ ok: false, error: 'Synapsis 服务没回应' }));
@@ -256,7 +278,7 @@ export function Shell({ name, Canvas }) {
       // 撤销记录优先从服务进程的暂存取（关 vault 再从托盘打开也还在，退出托盘才没）；取不到再用 sessionStorage（刷新页面）
       const sv = stash?.[HIST_KEY] || (() => { try { return JSON.parse(sessionStorage.getItem(HIST_KEY)); } catch { return null; } })();
       if (sv?.committed?.text === d.outline) { hist2.current.undo = sv.undo || []; hist2.current.redo = sv.redo || []; }
-      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); setPropsShut(v.propsShut || {}); setLeftCols(+v.leftCols || 1); setOutlineHere(v.outlineHere === true ? 2 : +v.outlineHere || 0); setOutlineGroup(!!v.outlineGroup); setSeeModes(v.seeModes || {}); setSeeLines(!!v.seeLines); if (v.histOpen) setHistOpen(true); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); if (v.scope) setScope(v.scope);
+      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); setPropsShut(v.propsShut || {}); setLeftCols(+v.leftCols || 1); setOutlineHere(v.outlineHere === true ? 2 : +v.outlineHere || 0); setOutlineGroup(!!v.outlineGroup); setSeeModes(v.seeModes || {}); setSeeLines(!!v.seeLines); if (v.histOpen) setHistOpen(true); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); setTlOff(v.tlOff || {}); if (v.scope) setScope(v.scope);
       api('/scaffold').then(s => { if (!s.mounted) setScaffold(s); }).catch(() => {}); // 👤 2026-10-12 没挂过 Synapsis 的文件夹：先问要建哪些
       setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
       // .junk/ = 删除的临时去处，正常关窗口会清空；还有东西 = 上次没正常关闭（或 CLI / AI 删过东西）→ 问要不要清
@@ -323,9 +345,9 @@ export function Shell({ name, Canvas }) {
   // 工作区：视图状态停手 0.6s 写进 .synapsis/view.json
   useEffect(() => {
     if (mode !== 'ws') return;
-    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, framed, panelW, leftHidden, leftCols, outlineHere, outlineGroup, picFold, textOpen, portalModes, propsShut, seeModes, seeLines, histOpen, propsOpen, spaceAxes, scope: realScope }) }).catch(() => {}), 600);
+    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, framed, panelW, leftHidden, leftCols, outlineHere, outlineGroup, picFold, textOpen, portalModes, propsShut, seeModes, seeLines, histOpen, propsOpen, spaceAxes, tlOff, scope: realScope }) }).catch(() => {}), 600);
     return () => clearTimeout(t);
-  }, [viewports, expanded, framed, panelW, leftHidden, leftCols, outlineHere, outlineGroup, picFold, textOpen, portalModes, propsShut, seeModes, seeLines, histOpen, propsOpen, spaceAxes, realScope, mode]);
+  }, [viewports, expanded, framed, panelW, leftHidden, leftCols, outlineHere, outlineGroup, picFold, textOpen, portalModes, propsShut, seeModes, seeLines, histOpen, propsOpen, spaceAxes, tlOff, realScope, mode]);
   const onViewport = useCallback((sc, vp) => setViewports(v => ({ ...v, [sc]: vp })), []);
   // 导航历史每一条 = { scope, sel }：后退 / 前进恢复离开那一页时选中的（👤 2026-10-12，像浏览器恢复滚动位置；离开时没选 = 不选）
   const go = useCallback(next => {
@@ -787,6 +809,8 @@ export function Shell({ name, Canvas }) {
   // 属性面板的快捷按钮：把空白模板填进「＋ 属性」那一行，改完回车
   const metaHints = id => {
     const m = getMeta(id) || {}, out = [], par = graph.nodes.get(id)?.parent, pm = par != null ? getMeta(par) : null;
+    if (graph.nodes.get(id)?.children.length && !isTimeline(m)) out.push({ label: '设为时间轴', key: 'timeline', value: 'true', title: '这一页变成时间轴（V 切回画布）：子节点写 t0 / t1（成片时间，秒）就排成条。还可以写 beats: 感官.json（拍点网格）、fps、lead（吸附提前几帧）' });
+    if (isTimeline(pm) && m.t0 == null) out.push({ label: '上轴', key: 't0', value: '0', title: '在「' + graph.nodes.get(par).label + '」的时间轴上的入点（秒）；再加 t1 = 出点。也可以在时间轴视图里把它从「没上轴」拖上去' });
     if (!isSpace(m)) out.push({ label: '设为空间', key: 'axes', value: '轴1, 轴2, 轴3', title: '这个节点变成「空间」：axes = 轴名，逗号分隔。子节点写 vec 就成了它的成员' });
     if (isSpace(pm) && !m.vec) out.push({ label: '加坐标', key: 'vec', value: parseAxes(pm.axes).map(() => '0').join(', '), title: '在「' + graph.nodes.get(par).label + '」里的坐标：' + parseAxes(pm.axes).join('、') });
     if (isSpace(m)) for (const e of graph.edges.filter(x => x.from === id)) {
@@ -948,6 +972,7 @@ export function Shell({ name, Canvas }) {
       if (helpOpen && e.key === 'Escape') { setHelpOpen(false); return; }
       if (e.key === '`' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.isComposing) { e.preventDefault(); e.stopPropagation(); if (mode === 'ws') setPinsOpen(o => !o); return; } // 👤 2026-10-09 反引号 = 钉子窗口开关
       if (e.code === 'KeyQ' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.isComposing && !e.repeat) { e.preventDefault(); e.stopPropagation(); setSeeLines(o => !o); return; } // 👤 2026-10-10 Q = 看清连线开关
+      if (e.code === 'KeyV' && tl && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.isComposing && !e.repeat) { e.preventDefault(); e.stopPropagation(); setTlOff(m => ({ ...m, [realScope]: !m[realScope] })); return; } // 🎬 V = 时间轴页：时间轴 ⇄ 画布
       if (e.shiftKey && !e.ctrlKey && !e.altKey && e.code === 'KeyF') { e.preventDefault(); e.stopPropagation(); if (mode === 'ws') setAgentOpen(o => !o); return; } // 👤 2026-10-08 Shift+F = AI 指令框（单手）
       if (e.ctrlKey && !e.altKey && (e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y')) { e.preventDefault(); e.stopPropagation(); (e.key.toLowerCase() === 'y' || e.shiftKey ? redo : undo)(); return; }
       if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); e.stopPropagation(); setPropsOpen(o => !o); } // 👤 2026-10-10 Shift+Tab = 右栏（属性）开关
@@ -1325,7 +1350,7 @@ export function Shell({ name, Canvas }) {
             return <button className={'tool portalbtn' + (pm !== 'show' ? ' on' : '')} title={'这一页的传送门（别的层的节点）：显示 → 淡化 → 隐藏（隐藏时和选中节点相连的仍显示）\n现在：' + { show: '显示', fade: '淡化', hide: '隐藏' }[pm]} onClick={() => setPortalModes(m => ({ ...m, [realScope]: { show: 'fade', fade: 'hide', hide: 'show' }[m[realScope] || 'show'] }))}>↗{{ show: '门', fade: '淡化', hide: '隐藏' }[pm]}</button>; })()}
         </div>}
         {mode === 'loading' ? <div className="canvas"><div className="hint" style={{ padding: 20 }}>加载工作区…</div></div> : <div className={'canvas' + (seeLines ? ' seelines' : '') + (sel ? ' hassel' : '')} onDragOver={e => e.preventDefault()} onDrop={onDrop}>
-          {keyHints ? <div className="keyhud" title="键位提示（H 关掉）">{KEY_HUD.map(([k, v]) => <div key={k}><KeyCombo text={k} /><span>{v}</span></div>)}<div className="hk">H 关掉 · ? 全部</div></div>
+          {showTl ? null : keyHints ? <div className="keyhud" title="键位提示（H 关掉）">{KEY_HUD.map(([k, v]) => <div key={k}><KeyCombo text={k} /><span>{v}</span></div>)}<div className="hk">H 关掉 · ? 全部</div></div>
             : <div className="keychip" title="打开按键提示（H）" onClick={() => setKeyHints(true)}><KeyCombo text="H" /> 按键提示</div>} {/* 👤 2026-10-12 右下角始终有个入口 */}
           {plane && <div className="planebar" title="投影方向可以是轴，也可以是某个成员的方向（= 换一组基看同一批点）。拖动卡片 = 改它在这两个方向上的坐标">
             <b>空间</b>
@@ -1340,11 +1365,15 @@ export function Shell({ name, Canvas }) {
           {Object.keys(sm).length > 0 && <div className="seebanner" title="点一下关掉本页所有预览展开" onClick={() => setSeeModes(m => { const r = { ...m }; delete r[realScope]; return r; })}>
             预览展开中：{Object.entries(sm).map(([k, v]) => EXP[k]?.name + (v === 'deep' ? '（含子孙）' : '')).filter(Boolean).join(' · ')}<span>节点自己没变 · 点这里关闭</span>
           </div>}
-          <Canvas key={realScope} theme={theme} view={view} layout={layout} selected={sel} images={images} seeLines={seeLines} multiSel={multiIds} onMultiSel={setMultiIds}
+          {showTl ? <TimelineView key={realScope} info={tl} labelOf={id => graph.nodes.get(id)?.label ?? id} colorOf={id => colors.get(id)}
+            imgOf={id => images[id]?.[0] || (getMeta(id)?.ref && images[getMeta(id).ref]?.[0]) || null}
+            beats={beats?.src === tl.beats ? beats.data : null} fps={tlFps} lead={tlLead} selected={sel} onSelect={id => setSelected(id)}
+            onCommit={tlCommit} onPlace={tlCommit} onOpen={id => { setSelected(id); setPropsOpen(true); }} />
+          : <Canvas key={realScope} theme={theme} view={view} layout={layout} selected={sel} images={images} seeLines={seeLines} multiSel={multiIds} onMultiSel={setMultiIds}
             plane={plane && { S: plane.S, labels: plane.labels, ids: plane.pts.map(p => p.id) }}
             pics={loosePics.map(p => ({ ...p, w: positions[p.id]?.w || 0, folded: !!picFold[p.id] }))}
             onSelect={setSelected} onDrill={drill} onConnect={connect} onMove={move} onContextMenu={onContextMenu} onEdgeMenu={onEdgeMenu} onRewire={rewire} onRemoveEdges={removeEdges}
-            viewport={viewports[realScope]} onViewport={vp => onViewport(realScope, vp)} />
+            viewport={viewports[realScope]} onViewport={vp => onViewport(realScope, vp)} />}
           {mode === 'ws' && aiStatus?.ok && sel && !sel.startsWith('@') && graph.nodes.has(sel) &&
             <RelatedDock api={api} id={sel} label={graph.nodes.get(sel).label} onJump={jumpTo} onOpenFile={openFile} onLink={to => connect(sel, to)} />}
         </div>}

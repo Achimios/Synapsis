@@ -29,10 +29,10 @@
 
 ## 镜头画布：人和 AI 改同一批节点（👤 2026-10-24，Eidolon / ReadScreen 转来）
 > 用法：`Projekt_Visual/MV_Cant_Kill_Us/` 已挂 Synapsis，**每个镜头一张画布**，节点 + 顺序 + 描述 + 参考图表达镜头内部的运动；AI 读节点出剪辑表和参数，再把「更新了什么」写回节点。不给每个效果做 GUI、不暴露参数。Eidolon 的子代理正按手册在那边建「素材库」（10–15 个画面类型节点，各带代表图 +「👤要求」「AI 回报」两块）。
-- [ ] **截帧当节点图**（👤：画布插视频不一定要，更有用的是选一个时刻截一帧）：CLI / 右键「从视频截帧…」：mp4 + 时间码 → 静帧存进那张卡的 `_pics_`，旁边同名 .md 记 来源文件 / 时间码（和 AI 配图的说明同一套 `sideOf`）。ffmpeg 用 `Vault_Automata/4_Eidolon/.venv` 里 imageio_ffmpeg 的那个（路径可配，找不到就报清楚）。界面里挑时刻：先简单（输入时间码），要拖条再说
+- [x] 2026-10-24 CLI 做了（`frame`）；界面入口（右键「从视频截帧…」）还没做 **截帧当节点图**（👤：画布插视频不一定要，更有用的是选一个时刻截一帧）：CLI / 右键「从视频截帧…」：mp4 + 时间码 → 静帧存进那张卡的 `_pics_`，旁边同名 .md 记 来源文件 / 时间码（和 AI 配图的说明同一套 `sideOf`）。ffmpeg 用 `Vault_Automata/4_Eidolon/.venv` 里 imageio_ffmpeg 的那个（路径可配，找不到就报清楚）。界面里挑时刻：先简单（输入时间码），要拖条再说
 - [ ] **AI 改了要看得见**（现有机制不够）：现在 CLI / 外部 AI 改了文件，开着的界面不会自己刷新，也不标哪里变了。要：服务端看 `__synapsis/` 变动 → 界面重读 → 外面改过的卡片标一个「AI 改过」小点（点开 / 看过就消失），操作历史栏记一条「外部：改了 X 的正文」
 - [ ] **分块写回，别整段覆盖**：「👤要求」「AI 回报」先用正文里的二级标题约定就够（`## 👤要求` / `## AI 回报`，写进手册，不新增机制）；但 CLI `body` 是整段替换，人正在改要求时 AI 写回报会把它盖掉 → 加 `body <id> --section "AI 回报" <文件|->` 只换那一节（没有就追加），手册里让 AI 只用这个写回
-- [ ] **时间轴视图**（10-24 和 ReadScreen 商量的方案，⚠ 等👤定真源：A = Synapsis 节点为准 / B = 维持 project.json，见上面「剪辑桥接」）：不新设类型；子节点属性 `t0` / `t1`（成片时间，秒，3 位小数）+ 可选 `track`；页面 `timeline: true`、`beats: 感官.json`（只读 events 画拍点网格、吸附，可提前 N 帧）、`fps`（不写就读 beats 源的 fps，本作品 24）。照空间页的做法：`core/timeline.js` 纯函数 + shell 里和空间页并列的分支，画布 ⇄ 时间轴一个键切；没时间的列「未上轴」。同一素材用两次 = 传送门卡（`ref:`）带自己的 t0/t1。check 只提示：t0 < t1、同轨重叠。导出 `cli.js timeline <页id> --json` → {page, unit:'s', fps, items:[{id,label,t0,t1,track,pics,body,ref}]}（Eidolon 的 edl.py 按这个读，改格式先通知 ReadScreen）。截帧的时间码是素材时间，说明里记 `src_t`，别和 t0/t1 混
+- [x] 2026-10-24 做了（👤 定 A：真源在 Synapsis 节点；见 `_开发进度.md`「时间轴页 / 截帧」）。上面「剪辑桥接」里 project.json 那几条随之作废，Visual 会话判断 project.json 的 edit 改从这里导出还是停用 **时间轴视图**（10-24 和 ReadScreen 商量的方案）：不新设类型；子节点属性 `t0` / `t1`（成片时间，秒，3 位小数）+ 可选 `track`；页面 `timeline: true`、`beats: 感官.json`（只读 events 画拍点网格、吸附，可提前 N 帧）、`fps`（不写就读 beats 源的 fps，本作品 24）。照空间页的做法：`core/timeline.js` 纯函数 + shell 里和空间页并列的分支，画布 ⇄ 时间轴一个键切；没时间的列「未上轴」。同一素材用两次 = 传送门卡（`ref:`）带自己的 t0/t1。check 只提示：t0 < t1、同轨重叠。导出 `cli.js timeline <页id> --json` → {page, unit:'s', fps, items:[{id,label,t0,t1,track,pics,body,ref}]}（Eidolon 的 edl.py 按这个读，改格式先通知 ReadScreen）。截帧的时间码是素材时间，说明里记 `src_t`，别和 t0/t1 混
 - [ ] 剪辑表那边照旧走上面「剪辑桥接」的接口
 
 ## 👤 2026-10-10 晚 路线（高频交互定的，按顺序做；UI 框放最后）

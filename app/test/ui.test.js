@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSy
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { saveOutline, setNodeBody, setNodeMeta } from '../../core/workspace.js';
+import { saveOutline, setNodeBody, setNodeMeta, parseFrontmatter } from '../../core/workspace.js';
 import { runBatch } from '../../core/cli.js';
 import { SAMPLE } from '../src/sample.js';
 import { PALETTE } from '../../core/colors.js';
@@ -2032,6 +2032,49 @@ for (const kind of ['reactflow']) {
   await page.click('.bar.tabs a:text-is("文本")'); await sleep(300);
   await page.keyboard.press('Control+Tab'); await sleep(200); const z1 = await zone(); await page.keyboard.press('Control+Tab'); await sleep(200); const z2 = await zone();
   ok(z1 !== 'left' && z2 !== 'left', '左栏是「文本」页：轮转跳过它 ' + z1 + ' ' + z2);
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
+// —— 时间轴页（👤 2026-10-24）：timeline: true 的页显示时间轴，拖条改 t0 / t1、吸附拍点、键盘挪帧、V 切画布 ——
+{
+  console.log('== 时间轴');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-tl-ui-')); noAi(ws);
+  saveOutline(ws, '镜头\n  入画\n  近景\n  待定');
+  writeFileSync(join(ws, '感官.json'), JSON.stringify({ fps: 24, events: { beats: [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6], downbeats: [0.5, 2.5, 4.5], phrases: [0.5] } }));
+  runBatch(ws, [['set', '镜头', 'timeline=true', 'beats=感官.json'], ['set', '镜头/入画', 't0=0.5', 't1=2.5'], ['set', '镜头/近景', 't0=2.5', 't1=4.5', 'track=1']]);
+  writeFileSync(join(ws, '.synapsis', 'view.json'), JSON.stringify({ scope: '镜头' }));
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
+  const meta = id => parseFrontmatter(readFileSync(join(ws, '__synapsis', '镜头', id + '.md'), 'utf8')).meta;
+  ok(!!(await page.$('.tlview')) && !(await page.$('.react-flow')), '时间轴页默认显示时间轴，不是画布');
+  ok((await page.$$('.tlclip')).length === 2 && /拍点 12/.test(await page.$eval('.tlbar', e => e.innerText)), '两段上轴、读到 12 个拍点 ' + await page.$eval('.tlbar', e => e.innerText));
+  ok((await page.$$eval('.tlloose .chip', l => l.map(x => x.innerText))).join() === '待定', '没写时间的在「没上轴」');
+  const bx = async lab => (await page.$(`.tlclip:has(.tllab:text-is("${lab}"))`)).boundingBox();
+  let b = await bx('入画'); const pxs = b.width / 2; // 每秒多少像素
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down();
+  for (let i = 1; i <= 6; i++) await page.mouse.move(b.x + b.width / 2 + pxs * 0.47 * i / 6, b.y + b.height / 2);
+  await page.mouse.up(); await sleep(1200);
+  ok(meta('入画').t0 === '1' && meta('入画').t1 === '3', '拖中间平移 0.47 秒 → 吸到 1.0 拍点、长度不变 ' + JSON.stringify(meta('入画')));
+  b = await bx('近景');
+  await page.mouse.move(b.x + b.width - 3, b.y + b.height / 2); await page.mouse.down();
+  for (let i = 1; i <= 6; i++) await page.mouse.move(b.x + b.width - 3 + pxs * 0.73 * i / 6, b.y + b.height / 2, { steps: 1 });
+  await page.keyboard.down('Alt'); await page.mouse.move(b.x + b.width - 3 + pxs * 0.73 + 1, b.y + b.height / 2); await page.mouse.up(); await page.keyboard.up('Alt'); await sleep(1200);
+  ok(meta('近景').t0 === '2.5' && Math.abs(+meta('近景').t1 - 5.25) < 0.05 && meta('近景').track === '1', '拖右边 + Alt = 不吸，只改出点（对齐到帧） ' + JSON.stringify(meta('近景')));
+  await page.click('.tlclip:has(.tllab:text-is("入画"))'); await sleep(200);
+  await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowRight'); await sleep(900);
+  ok(Math.abs(+meta('入画').t0 - (1 + 2 / 24)) < 0.002, '→ 两下 = 挪两帧，停手才存 ' + meta('入画').t0);
+  await page.keyboard.press('Control+z'); await sleep(900);
+  ok(meta('入画').t0 === '1', 'Ctrl+Z 一步撤回键盘挪动 ' + meta('入画').t0);
+  await page.keyboard.press('d'); await sleep(200);
+  ok((await page.$eval('.tlclip.sel .tllab', e => e.innerText)) === '近景', 'D = 按时间选下一段');
+  await page.keyboard.press('ArrowUp'); await sleep(900);
+  ok(!meta('近景').track || meta('近景').track === '0', '↑ = 换到上一条轨 ' + meta('近景').track);
+  await page.keyboard.press('v'); await sleep(800);
+  ok(!(await page.$('.tlview')) && !!(await page.$('.react-flow')), 'V = 切回画布');
+  await page.keyboard.press('v'); await sleep(800);
+  ok(!!(await page.$('.tlview')), '再按 V = 回时间轴');
   ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
   await page.close();
   rmSync(ws, { recursive: true, force: true });

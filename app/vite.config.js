@@ -12,6 +12,7 @@ import { wakeLms, aiConfig, saveAiConfig, saveKey, chatModel, chatInfo, aiStatus
 import { lmsEstimate, lmsReload } from '../core/lmstudio.js';
 import { loadVoice, saveVoiceCfg, speak } from '../core/voice.js';
 import { genImage, imageMeta } from '../core/imagegen.js';
+import { parseBeats } from '../core/timeline.js';
 import { loadTodo, saveTodo, todoFile, TODO_HEAD } from '../core/todo.js';
 import { runAgent, applyPlan, updateOutcome, loadChat, clearChat, setSummaryText, estimateContext, isLoose, loadSummary, compactChat, needCompact } from '../core/agent.js';
 import { fileURLToPath } from 'node:url';
@@ -241,6 +242,13 @@ function workspaceApi() {
           if (url.pathname === '/addui' && req.method === 'POST') { const b = await body(req); try { const r = addUiNode(root, b.parent || '', { w: b.w, h: b.h }); return send(200, { id: r.id, report: { ...r.report, outline: workspaceOutline(loadWorkspace(root)) }, ...payload(root) }); } catch (e) { return send(400, { error: e.message }); } } // UI 框
           if (url.pathname === '/findfile' && req.method === 'GET') return send(200, { matches: findFilesByName(root, url.searchParams.get('p') || '') }); // 📌 行钉子的文件搬了位置：按文件名找
           if (url.pathname === '/raw' && req.method === 'GET') return send(200, readProjectFile(root, url.searchParams.get('p') || ''));
+          // 🎬 时间轴的拍点源（感官.json 动辄几百 KB）：服务端只挑出 fps 和 beats / downbeats / phrases 回给页面
+          if (url.pathname === '/timeline/beats' && req.method === 'GET') {
+            const rel = url.searchParams.get('p') || '', f = join(root, rel);
+            if (rel.includes('..') || !existsSync(f)) return send(404, { error: '没有这个拍点文件：' + rel });
+            const b = parseBeats(JSON.parse(readFileSync(f, 'utf8')));
+            return b ? send(200, b) : send(400, { error: rel + ' 里没有 events（beats / downbeats / phrases）' });
+          }
           if (url.pathname === '/layout' && req.method === 'PUT') { saveLayout(root, (await body(req)).positions); return send(200, { ok: true }); }
           // 图片：/asset 进某个节点；/loose 当散图放进某一页；/loose-remove 删散图（进 .junk/）
           if ((url.pathname === '/asset' || url.pathname === '/loose') && req.method === 'POST') {

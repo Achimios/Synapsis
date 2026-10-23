@@ -800,3 +800,33 @@ aside.outline > :not(.bar) { zoom: var(--zl, 1); } aside.side > :not(.bar) { zoo
 .ctx .mi.row.picrow { display: flex; align-items: center; gap: 6px; }
 .ctx .mi.row.picrow img { width: 36px; height: 36px; object-fit: cover; border-radius: 3px; background: #111; flex: none; }
 .ctx .mi.row.picrow span { flex: 1; }
+/* 🎬 时间轴视图（timeline.jsx）：时间轴页替换画布显示，V 切回 */
+.tlview { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
+.tlbar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 5px 10px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 11px; }
+.tlbar b { font-size: 12px; }
+.tlbar .hint { color: var(--dim); }
+.tlloose { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; color: var(--dim); }
+.tlloose .chip { padding: 1px 7px; border-radius: 9px; background: var(--chip); color: var(--text); cursor: grab; }
+.tlloose .chip:hover { background: var(--chip2); }
+.tlscroll { flex: 1; overflow: auto; position: relative; }
+.tlinner { position: relative; }
+svg.tlgrid { position: absolute; left: 0; top: 0; }
+svg.tlgrid rect.even { fill: transparent; }
+svg.tlgrid rect.odd { fill: color-mix(in srgb, var(--text) 3%, transparent); }
+svg.tlgrid line.beat { stroke: var(--line); stroke-width: 1; }
+svg.tlgrid line.down { stroke: var(--line2); stroke-width: 1; }
+svg.tlgrid line.phrase { stroke: color-mix(in srgb, var(--accent) 55%, transparent); stroke-width: 1.5; }
+svg.tlgrid line.tick { stroke: var(--dim); stroke-width: 1; }
+svg.tlgrid text { fill: var(--dim); font-size: 10px; font-family: Consolas, monospace; }
+.tlclip { position: absolute; box-sizing: border-box; overflow: hidden; border-radius: 4px; cursor: grab; user-select: none;
+  border: 1px solid color-mix(in srgb, var(--c) 70%, var(--line2)); background: color-mix(in srgb, var(--c) 22%, var(--panel2)); }
+.tlclip::before, .tlclip::after { content: ''; position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; z-index: 2; }
+.tlclip::before { left: 0; } .tlclip::after { right: 0; }
+.tlclip:hover::before, .tlclip:hover::after { background: color-mix(in srgb, var(--c) 45%, transparent); }
+.tlclip.sel { border-color: var(--sel); box-shadow: 0 0 0 1px var(--sel); }
+.tlclip.live { opacity: .85; cursor: grabbing; }
+.tlclip.bad { border-color: var(--bad); }
+.tlimg { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: .55; }
+.tllab, .tltime { position: relative; padding: 2px 9px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg); }
+.tllab { font-size: 12px; color: var(--strong); }
+.tltime { font-size: 10px; color: var(--dim); font-family: Consolas, monospace; }
