@@ -1610,6 +1610,10 @@ for (const kind of ['reactflow']) {
   await page.click('button:has-text("快捷键")'); await sleep(400);
   const all = (await page.$$('.helpgrid tr')).length;
   ok(all > 25 && !!(await page.$('.help input.hkey')) && !!(await page.$('.help input.htext')), '快捷键页有两个搜索框，默认显示全部 ' + all);
+  await page.keyboard.press('Tab'); await sleep(200);
+  ok(!!(await page.$('.helpgrid.usage')) && (await page.textContent('.helpgrid.usage')).includes('时间轴'), 'Tab = 切到「📖 用法」页签（👤 2026-10-24）');
+  await page.click('.help .htabs a:has-text("快捷键")'); await sleep(200);
+  ok(!(await page.$('.helpgrid.usage')) && !!(await page.$('.help input.hkey')), '点页签切回快捷键');
   const helpText = await page.textContent('.helpgrid');
   ok(!helpText.includes('双击图片') && !helpText.includes('散图拖到卡片上') && !helpText.includes('顶栏 ☀') && !(await page.$$eval('.helpgrid h4', h => h.some(x => x.textContent.includes('图片')))), '基础操作（双击图片、散图拖到卡片上、顶栏主题按钮……）不在快捷键页里，「图片」组也没了');
   await page.click('.help input.hkey'); await page.keyboard.press('Control+z'); await sleep(300);

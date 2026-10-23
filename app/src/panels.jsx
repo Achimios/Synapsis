@@ -8,7 +8,7 @@ import { PALETTE, parseColor, satHex } from './colors.js';
 import { PATTERNS, PATTERN_HINT } from './patterns.js';
 import { searchNodes, filterTree } from './search.js';
 import { groupSiblings } from './outline.js';
-import { KEYMAP, comboFromKeyEvent, comboText, matchKey } from './keymap.js';
+import { KEYMAP, comboFromKeyEvent, comboText, matchKey, USAGE } from './keymap.js';
 const STATUS = [['done', '✅'], ['partial', '◐'], ['todo', '○'], ['dropped', '❌']];
 
 // >v<🎨画布-右键菜单-节点：属性/改名/状态/新建/展开/钻进/删除；空白处：新建/全部展开/上一层
@@ -748,10 +748,14 @@ export function SettingsModal({ api, onClose, onHelp }) {
 
 // 两个搜索框（都要满足）：左边「按一下键」= 查键位（组合键直接按；只按修饰键就在抬起时记；Backspace / Delete 清除，留白 = 不按键位筛）；右边打字搜说明文字
 export function HelpModal({ onClose }) {
-  const [combo, setCombo] = useState(null), [tq, setTq] = useState('');
+  const [combo, setCombo] = useState(null), [tq, setTq] = useState(''), [page, setPage] = useState('keys'); // 👤 2026-10-24 顶部页签：快捷键 / 用法，点或 Tab 切
   const pendingMod = useRef(null);
+  useEffect(() => { // Tab = 切页签（焦点在哪都行；也挡住外壳的 Tab = 开关左栏）
+    const k = e => { if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) { /* Shift+Tab 留给键位框查「Shift+Tab」 */ e.preventDefault(); e.stopPropagation(); setPage(p => p === 'keys' ? 'usage' : 'keys'); } };
+    window.addEventListener('keydown', k, true); return () => window.removeEventListener('keydown', k, true);
+  }, []);
   const onKeyDown = e => {
-    if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) return; // 光按 Tab = 正常移走焦点
+    if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) return; // 光按 Tab = 交给外层切页签
     if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
     e.preventDefault(); e.stopPropagation();
     if (e.key === 'Backspace' || e.key === 'Delete') { setCombo(null); return; }
@@ -764,15 +768,17 @@ export function HelpModal({ onClose }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="help" onClick={e => e.stopPropagation()}>
-        <div className="bar"><b>⌨️ 快捷键</b>
+        <div className="bar"><span className="htabs">{[['keys', '⌨️ 快捷键'], ['usage', '📖 用法']].map(([k, l]) => <a key={k} className={page === k ? 'on' : ''} onClick={() => setPage(k)} title="Tab 切换">{l}</a>)}</span>
+          {page === 'keys' && <>
           <input className="hkey" readOnly value={comboText(combo)} placeholder="按一下键查键位…" title="按一下键（组合键直接按）= 查哪些条目用到它；Backspace 清除，留白 = 不按键位筛" onKeyDown={onKeyDown} onKeyUp={onKeyUp} />
           {combo && <a className="hclear" onClick={() => setCombo(null)} title="清除键位">✕</a>}
-          <input className="htext" value={tq} onChange={e => setTq(e.target.value)} placeholder="搜文字…" title="搜说明文字；和左边的键位一起用 = 两个都要满足" />
+          <input className="htext" value={tq} onChange={e => setTq(e.target.value)} placeholder="搜文字…" title="搜说明文字；和左边的键位一起用 = 两个都要满足" /></>}
           <span className="grow" /><button onClick={onClose}>✕</button></div>
+        {page === 'usage' ? <div className="helpgrid usage">{USAGE.map(([g, lines]) => <section key={g}><h4>{g}</h4><ol>{lines.map((l, i) => <li key={i}>{l}</li>)}</ol></section>)}</div> :
         <div className="helpgrid">{groups.map(([g, rows]) => (
           <section key={g} style={{ '--hue': KEY_HUE[g]?.[1] }}><h4>{KEY_HUE[g]?.[0] || '•'} {g}</h4><table><tbody>{rows.map(([k, v]) => <tr key={k}><td><KeyCombo text={k} /></td><td>{v}</td></tr>)}</tbody></table></section>
         ))}
-        {!groups.length && <div className="hint" style={{ padding: 16 }}>没有符合的条目。</div>}</div>
+        {!groups.length && <div className="hint" style={{ padding: 16 }}>没有符合的条目。</div>}</div>}
       </div>
     </div>
   );
