@@ -2079,6 +2079,43 @@ for (const kind of ['reactflow']) {
   await page.close();
   rmSync(ws, { recursive: true, force: true });
 }
+// —— 时间轴段落 + 父页画布上的时间轴卡（👤 2026-10-24 定 A：段落时间由镜头自动算；镜头 → 参考 的线落在卡里那段条上）——
+{
+  console.log('== 时间轴卡');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-tlcard-ui-')); noAi(ws);
+  saveOutline(ws, '参考图\n剪辑\n  段一\n    入画 -> 参考图\n    近景\n  段二\n    空镜');
+  runBatch(ws, [['set', '剪辑', 'timeline=true', 'fps=24'], ['set', '剪辑/段一', 'timeline=true', 't0=50', 't1=60'], ['set', '剪辑/段二', 'timeline=true', 'track=1'],
+    ['set', '剪辑/段一/入画', 't0=0', 't1=2'], ['set', '剪辑/段一/近景', 't0=2', 't1=4'], ['set', '剪辑/段二/空镜', 't0=4', 't1=6']]);
+  writeFileSync(join(ws, '__synapsis', '_layout.json'), JSON.stringify({ 参考图: { x: 0, y: -200 }, 剪辑: { x: 0, y: 0 } }));
+  writeFileSync(join(ws, '.synapsis', 'view.json'), JSON.stringify({ scope: '', framed: { 剪辑: true } }));
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
+  const t0of = id => parseFrontmatter(readFileSync(join(ws, '__synapsis', '剪辑', ...id.split('/')) + '.md', 'utf8')).meta.t0;
+  const clips = () => page.$$eval('.tlcard .tlclip .tllab', l => l.map(x => x.innerText.replace(/[▸▾]/, '')));
+  ok(!!(await page.$('.react-flow__node-tl .tlcard')) && (await clips()).join() === '段一,段二', '展开的 timeline 节点 = 画布上的时间轴卡，里面是两个段落条 ' + await clips());
+  const eids = () => page.$$eval('.react-flow__edge', l => l.map(e => e.getAttribute('data-testid')));
+  ok((await eids()).some(x => x.includes('剪辑#剪辑/段一=>参考图')), '镜头 → 参考 的线：段落没展开 = 落在段落条上 ' + await eids());
+  await page.click('.tlcard .tltog'); await sleep(900);
+  ok((await clips()).join() === '段一,段二,入画,近景' && (await eids()).some(x => x.includes('剪辑#剪辑/段一/入画=>参考图')), '▸ 展开段一 → 镜头条出来，线改落在「入画」上 ' + await clips() + ' ' + await eids());
+  const box = async lab => (await page.$(`.tlcard .tlclip:has(.tllab:text-is("${lab}"))`)).boundingBox();
+  let b = await box('近景'); const pxs = b.width / 2;
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down();
+  for (let i = 1; i <= 6; i++) await page.mouse.move(b.x + b.width / 2 + pxs * 1.5 * i / 6, b.y + b.height / 2);
+  await page.keyboard.down('Alt'); await page.mouse.move(b.x + b.width / 2 + pxs * 1.5 + 1, b.y + b.height / 2); await page.mouse.up(); await page.keyboard.up('Alt'); await sleep(1200);
+  ok(Math.abs(+t0of('段一/近景') - 3.5) < 0.05, '卡里拖镜头条 = 改它的 t0（卡本身不动） ' + t0of('段一/近景'));
+  ok(JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8')).剪辑.x === 0, '卡没被拖走');
+  b = await box('段二');
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down();
+  for (let i = 1; i <= 6; i++) await page.mouse.move(b.x + b.width / 2 + pxs * 1 * i / 6, b.y + b.height / 2);
+  await page.keyboard.down('Alt'); await page.mouse.move(b.x + b.width / 2 + pxs + 1, b.y + b.height / 2); await page.mouse.up(); await page.keyboard.up('Alt'); await sleep(1200);
+  ok(Math.abs(+t0of('段二/空镜') - 5) < 0.05, '拖段落条 = 里面的镜头一起挪 ' + t0of('段二/空镜'));
+  await page.keyboard.press('Control+z'); await sleep(1000);
+  ok(t0of('段二/空镜') === '4', 'Ctrl+Z 一步撤回段落平移 ' + t0of('段二/空镜'));
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
 await browser.close();
 console.log(`ui:${pass} 过 / ${fail} 挂`);
 process.exit(fail ? 1 : 0);

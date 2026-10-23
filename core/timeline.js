@@ -63,6 +63,39 @@ export function timelineInfo(graph, id, getMeta) {
   return { id, items, loose, fps: Number.isFinite(fps) && fps > 0 ? fps : null, beats: up('beats'), lead: up('lead') };
 }
 
+// 时间轴卡（👤 2026-10-24：父页画布上展开 timeline 节点 = 一张嵌着时间轴的卡，镜头能连线到画布上的参考 / 描述）：
+// 把投影里连到卡里面的边改成「卡 + 那段条」：fromH / toH = 卡里显示着的那段（展开的段落里的镜头也算；没展开的段落 = 落在段落条上；
+// 没上轴的子节点 = 落在卡本身）。同一张卡里面互相连的不画；另一端不在这一页的不画（不出传送门）。
+// view = projectView 的结果（卡不在 frames 里，所以它的子孙已经被聚到卡上）；open = {卡 id: [展开的段落 id…]}
+export function tlCardEdges(graph, view, cards, infoOf, open = {}) {
+  if (!cards.length) return view;
+  const cardSet = new Set(cards), disp = new Map(); // 节点 → [卡, 显示着的那段]
+  const mark = (id, card, item) => { disp.set(id, [card, item]); for (const c of graph.nodes.get(id)?.children || []) mark(c, card, item); };
+  for (const c of cards) {
+    const op = new Set(open[c] || []);
+    const walk = inf => { for (const it of inf.items) mark(it.id, c, it.id); for (const it of inf.items) if (it.group && op.has(it.id)) { const s = infoOf(it.id); if (s) walk(s); } };
+    const inf = infoOf(c); if (inf) walk(inf);
+  }
+  const visible = new Set(view.nodes.map(n => n.id));
+  const inCard = id => { for (let x = id; x != null; x = graph.nodes.get(x)?.parent ?? null) if (cardSet.has(x)) return true; return false; };
+  const end = id => {
+    if (disp.has(id)) { const [c, it] = disp.get(id); return { node: c, h: it }; }
+    let cur = id; while (cur != null && !visible.has(cur)) cur = graph.nodes.get(cur)?.parent ?? null;
+    return cur == null ? null : { node: cur, h: null };
+  };
+  const keep = view.edges.filter(e => !cardSet.has(e.from) && !cardSet.has(e.to)), agg = new Map();
+  for (const e of graph.edges) {
+    if (!inCard(e.from) && !inCard(e.to)) continue;
+    const a = end(e.from), b = end(e.to);
+    if (!a || !b || a.node === b.node) continue;
+    const key = a.node + (a.h ? '#' + a.h : '') + '=>' + b.node + (b.h ? '#' + b.h : '');
+    if (!agg.has(key)) agg.set(key, { id: key, from: a.node, to: b.node, fromH: a.h, toH: b.h, count: 0, raw: [] });
+    const x = agg.get(key); x.count++; x.raw.push(e.id);
+  }
+  const edges = [...keep, ...agg.values()], used = new Set(edges.flatMap(e => [e.from, e.to]));
+  return { ...view, edges, portals: view.portals.filter(p => used.has(p.id)) };
+}
+
 // 拍点源（感官.json）→ {fps, beats, downbeats, phrases, onsets}；格式不认识 → null
 export function parseBeats(json) {
   const ev = json && json.events;

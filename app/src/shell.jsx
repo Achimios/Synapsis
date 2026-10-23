@@ -8,7 +8,7 @@ import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode
 import { colorMap, wordTables, hierHit, upperTable, baseColor, satOf } from './colors.js';
 import { patternMap, patternTables, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
-import { timelineInfo, isTimeline, parseTime, spanOf, round3 } from './timeline.js';
+import { timelineInfo, isTimeline, parseTime, spanOf, round3, tlCardEdges } from './timeline.js';
 import { TimelineView } from './timeline.jsx';
 import { KeyCombo, ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, HistoryPanel, OutlineTree, HelpModal, SettingsModal, ReplaceBar, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
 const DRAG_PIC = 'application/x-synapsis-pic';
@@ -155,13 +155,14 @@ export function Shell({ name, Canvas }) {
   // >v<🎬时间轴-界面-当前页 timeline: true → 默认显示时间轴视图（V 切回画布，记在 view.json 的 tlOff）；拍点源只拿精简后的（服务端挑 beats / downbeats / phrases）
   const tl = useMemo(() => graph.nodes.has(realScope) ? timelineInfo(graph, realScope, getMeta) : null, [graph, realScope, getMeta]);
   const [tlOff, setTlOff] = useState({}); // scope -> true = 这一页看画布
+  const [tlOpen, setTlOpen] = useState({}); // 时间轴页 / 时间轴卡 id -> [展开的段落 id…]（记 view.json）
+  const tlToggle = (cid, gid) => setTlOpen(m => { const s = new Set(m[cid] || []); s.has(gid) ? s.delete(gid) : s.add(gid); return { ...m, [cid]: [...s] }; });
   const showTl = !!tl && !tlOff[realScope];
-  const [beats, setBeats] = useState(null); // {src, data}
-  useEffect(() => {
-    if (!tl?.beats || mode !== 'ws') { setBeats(null); return; }
-    if (beats?.src === tl.beats) return;
-    api('/timeline/beats?p=' + encodeURIComponent(tl.beats)).then(d => setBeats({ src: tl.beats, data: d })).catch(e => { setBeats({ src: tl.beats, data: null }); setSaveState('⚠ 拍点读不到：' + e.message); });
-  }, [tl?.beats, mode]);
+  const [beatsAt, setBeatsAt] = useState({}); // 拍点源路径 -> 精简后的拍点（null = 读不到）；时间轴页和画布上的时间轴卡共用
+  const needBeats = src => { if (!src || mode !== 'ws' || src in beatsAt) return; setBeatsAt(m => ({ ...m, [src]: null }));
+    api('/timeline/beats?p=' + encodeURIComponent(src)).then(d => setBeatsAt(m => ({ ...m, [src]: d }))).catch(e => setSaveState('⚠ 拍点读不到：' + e.message)); };
+  useEffect(() => { needBeats(tl?.beats); }, [tl?.beats, mode]);
+  const beats = tl?.beats ? { src: tl.beats, data: beatsAt[tl.beats] || null } : null;
   const tlFps = tl ? tl.fps ?? beats?.data?.fps ?? null : null;
   const tlInfoOf = useCallback(id => graph.nodes.has(id) ? timelineInfo(graph, id, getMeta) : null, [graph, getMeta]);
   const tlLead = tl && tlFps ? (parseTime(tl.lead) || 0) / tlFps : 0; // 页面 lead: N = 吸附时提前 N 帧（段落页跟上级）
@@ -220,7 +221,10 @@ export function Shell({ name, Canvas }) {
   const sizeKey = useMemo(() => JSON.stringify(Object.entries(positions).filter(([k, v]) => !k.startsWith('@') && v?.w && v?.h).map(([k, v]) => [k, v.w, v.h])), [positions]);
   const sizes = useMemo(() => new Map(JSON.parse(sizeKey).map(([k, w, h]) => [k, { w, h }])), [sizeKey]);
   const view = useMemo(() => {
-    const v = projectView(graph, realScope, space ? null : new Set([...graph.nodes.keys()].filter(k => graph.nodes.get(k)?.children.length && frmE(k))));
+    // 🎬 时间轴卡：展开的 timeline 节点不摆子节点，整张卡就是一条时间轴（子节点画在卡里）
+    const isCard = k => !space && frmE(k) && isTimeline(getMeta(k)) && graph.nodes.get(k)?.children.length > 0;
+    const v0 = projectView(graph, realScope, space ? null : new Set([...graph.nodes.keys()].filter(k => graph.nodes.get(k)?.children.length && frmE(k) && !isCard(k))));
+    const v = tlCardEdges(graph, v0, v0.nodes.filter(n => isCard(n.id)).map(n => n.id), id => timelineInfo(graph, id, getMeta), tlOpen);
     const lab = new Map((wsData?.edges || []).map(e => [e.from + '->' + e.to, e.label]));
     // >v<🔭视图投影-传送门三档-每页：显示 / 淡化 / 隐藏（👤 2026-10-08 待办第 5 条）；隐藏时和选中节点相连的传送门照样显示
     const pm = portalModes[realScope] || 'show';
@@ -249,7 +253,8 @@ export function Shell({ name, Canvas }) {
         spaceAxes: isSpace(getMeta(n.id)) ? parseAxes(getMeta(n.id).axes) : null,
         picw: +(wsData?.nodes[n.id]?.meta?.picw) || localPicw[n.id] || 0, foldPics: !picE(n.id), body: wsData?.nodes[n.id]?.body || '', file: wsData?.nodes[n.id]?.meta?.file || null, sw: sizes.get(n.id)?.w || 0, sh: sizes.get(n.id)?.h || 0, ui: isUi(wsData?.nodes[n.id]?.meta), tint: +(wsData?.nodes[n.id]?.meta?.tint) || 0, uiW: uiSize(wsData?.nodes[n.id]?.meta).w, uiH: uiSize(wsData?.nodes[n.id]?.meta).h, ref: wsData?.nodes[n.id]?.meta?.ref || null, refMissing: !!wsData?.nodes[n.id]?.meta?.ref && !graph.nodes.has(String(wsData.nodes[n.id].meta.ref)), textOpen: txtE(n.id),
         open: expE(n.id) && n.children.length > 0 && !v.parentOf.has(n.id) && !(frmE(n.id) && !space), renaming: canvasRename === n.id, editing: bodyEdit === n.id,
-        framed: !space && frmE(n.id) && n.children.length > 0, seeDeep: sm.frame === 'deep', // 本页开着 Shift+1 递进预览（画布据此让 UI 框里的子图超出、不裁）
+        tlCard: isCard(n.id), tlOpen: tlOpen[n.id] || null, tlRev: isCard(n.id) ? Object.values(beatsAt).filter(Boolean).length + '/' + selected : null, // 拍点到了 / 选中变了 → 卡重画
+        framed: !space && frmE(n.id) && n.children.length > 0 && !isCard(n.id), seeDeep: sm.frame === 'deep', // 本页开着 Shift+1 递进预览（画布据此让 UI 框里的子图超出、不裁）
         tempFrame: !space && frmE(n.id) && !framed[n.id] && n.children.length > 0, realFramed: !!framed[n.id] && n.children.length > 0, // realFramed：节点自己真展开了（预览暂时盖掉时也是真） // 只是「看」临时展开的子图：不挪别的卡，也不存坐标
         frame: v.parentOf.get(n.id) ?? null,
         kids: kidRows(n.children, 0),
@@ -258,7 +263,7 @@ export function Shell({ name, Canvas }) {
       // 线 = 出发节点的颜色；kind 是「离散」→ 虚线（聚合的边要每条都离散才虚）
       edges: v.edges.filter(e => pm !== 'hide' || [e.from, e.to].every(x => !x.startsWith('@portal:') || keepPortal.has(x))).map(e => ({ ...e, fadedPortal: pm === 'fade' && [e.from, e.to].some(x => x.startsWith('@portal:') && !keepPortal.has(x)), text: e.count > 1 ? '×' + e.count : lab.get(e.raw[0]) || '', mat: matOf(e), color: colOf(e.from), dropped: [e.from, e.to].some(x => isDropped(graph, x.startsWith('@portal:') ? x.slice(8) : x)), dashed: e.raw.every(r => DISCRETE.test(kind.get(r) || '')), mod: e.raw.every(r => MOD.test(kind.get(r) || '')) })),
     };
-  }, [graph, realScope, wsData, expanded, picFold, textOpen, localPicw, space, getMeta, colors, patterns, canvasRename, bodyEdit, framed, portalModes, selected, propsShut, seeModes, sizes]);
+  }, [graph, realScope, wsData, expanded, picFold, textOpen, localPicw, space, getMeta, colors, patterns, canvasRename, bodyEdit, framed, portalModes, selected, propsShut, seeModes, sizes, tlOpen, beatsAt]);
   // >v<🖼️图片-卡片显示-节点的 _pics_名字/ 里所有图（旧版 frontmatter img: 也认）
   const images = useMemo(() => {
     if (local) return localImages;
@@ -286,7 +291,7 @@ export function Shell({ name, Canvas }) {
       // 撤销记录优先从服务进程的暂存取（关 vault 再从托盘打开也还在，退出托盘才没）；取不到再用 sessionStorage（刷新页面）
       const sv = stash?.[HIST_KEY] || (() => { try { return JSON.parse(sessionStorage.getItem(HIST_KEY)); } catch { return null; } })();
       if (sv?.committed?.text === d.outline) { hist2.current.undo = sv.undo || []; hist2.current.redo = sv.redo || []; }
-      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); setPropsShut(v.propsShut || {}); setLeftCols(+v.leftCols || 1); setOutlineHere(v.outlineHere === true ? 2 : +v.outlineHere || 0); setOutlineGroup(!!v.outlineGroup); setSeeModes(v.seeModes || {}); setSeeLines(!!v.seeLines); if (v.histOpen) setHistOpen(true); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); setTlOff(v.tlOff || {}); if (v.scope) setScope(v.scope);
+      setViewports(v.viewports || {}); setExpanded(v.expanded || {}); setFramed(v.framed || {}); if (v.panelW) setPanelW(v.panelW); setPicFold(v.picFold || {}); setTextOpen(v.textOpen || {}); setPortalModes(v.portalModes || {}); setPropsShut(v.propsShut || {}); setLeftCols(+v.leftCols || 1); setOutlineHere(v.outlineHere === true ? 2 : +v.outlineHere || 0); setOutlineGroup(!!v.outlineGroup); setSeeModes(v.seeModes || {}); setSeeLines(!!v.seeLines); if (v.histOpen) setHistOpen(true); setLeftHidden(!!v.leftHidden); setPropsOpen(v.propsOpen ?? true); setSpaceAxes(v.spaceAxes || {}); setTlOff(v.tlOff || {}); setTlOpen(v.tlOpen || {}); if (v.scope) setScope(v.scope);
       api('/scaffold').then(s => { if (!s.mounted) setScaffold(s); }).catch(() => {}); // 👤 2026-10-12 没挂过 Synapsis 的文件夹：先问要建哪些
       setMode('ws'); setSaveState(d.errors.length ? '⚠️ 文件里有 ' + d.errors.length + ' 处解析错误（跑 check）' : '已加载');
       // .junk/ = 删除的临时去处，正常关窗口会清空；还有东西 = 上次没正常关闭（或 CLI / AI 删过东西）→ 问要不要清
@@ -353,9 +358,9 @@ export function Shell({ name, Canvas }) {
   // 工作区：视图状态停手 0.6s 写进 .synapsis/view.json
   useEffect(() => {
     if (mode !== 'ws') return;
-    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, framed, panelW, leftHidden, leftCols, outlineHere, outlineGroup, picFold, textOpen, portalModes, propsShut, seeModes, seeLines, histOpen, propsOpen, spaceAxes, tlOff, scope: realScope }) }).catch(() => {}), 600);
+    const t = setTimeout(() => api('/view', { method: 'PUT', body: JSON.stringify({ viewports, expanded, framed, panelW, leftHidden, leftCols, outlineHere, outlineGroup, picFold, textOpen, portalModes, propsShut, seeModes, seeLines, histOpen, propsOpen, spaceAxes, tlOff, tlOpen, scope: realScope }) }).catch(() => {}), 600);
     return () => clearTimeout(t);
-  }, [viewports, expanded, framed, panelW, leftHidden, leftCols, outlineHere, outlineGroup, picFold, textOpen, portalModes, propsShut, seeModes, seeLines, histOpen, propsOpen, spaceAxes, tlOff, realScope, mode]);
+  }, [viewports, expanded, framed, panelW, leftHidden, leftCols, outlineHere, outlineGroup, picFold, textOpen, portalModes, propsShut, seeModes, seeLines, histOpen, propsOpen, spaceAxes, tlOff, tlOpen, realScope, mode]);
   const onViewport = useCallback((sc, vp) => setViewports(v => ({ ...v, [sc]: vp })), []);
   // 导航历史每一条 = { scope, sel }：后退 / 前进恢复离开那一页时选中的（👤 2026-10-12，像浏览器恢复滚动位置；离开时没选 = 不选）
   const go = useCallback(next => {
@@ -1297,6 +1302,16 @@ export function Shell({ name, Canvas }) {
     const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
   };
+  // >v<🎬时间轴-时间轴卡-画布上的时间轴卡（main.jsx TNode）要用的数据和回调：每次渲染刷新
+  cardActions.tl = {
+    infoOf: tlInfoOf, labelOf: id => graph.nodes.get(id)?.label ?? id, colorOf: id => colors.get(id),
+    imgOf: id => images[id]?.[0] || (getMeta(id)?.ref && images[getMeta(id).ref]?.[0]) || null,
+    beatsOf: inf => { if (inf?.beats && !(inf.beats in beatsAt)) setTimeout(() => needBeats(inf.beats)); return inf?.beats ? beatsAt[inf.beats] || null : null; },
+    fpsOf: inf => inf?.fps ?? (inf?.beats && beatsAt[inf.beats]?.fps) ?? null,
+    leadOf: inf => { const f = inf?.fps ?? (inf?.beats && beatsAt[inf.beats]?.fps); return f ? (parseTime(inf.lead) || 0) / f : 0; },
+    commit: tlCommit, shift: tlShift, toggle: tlToggle, selected, select: id => setSelected(id), open: id => { setSelected(id); setPropsOpen(true); },
+    resize: (id, w) => move({ [id]: { ...(positions[id] || {}), w: Math.round(w) } }),
+  };
   return (
     <div className={'shell' + (keyHints ? ' showkeys' : '')} style={{ '--zl': paneZoom.left, '--zr': paneZoom.right, '--leftw': panelW.left + 'px', '--rightw': panelW.right + 'px' }}>
       {!leftHidden && <div className="resizer left" title="拖动调宽度" onPointerDown={e => dragPanel(e, 'left')} />}
@@ -1383,7 +1398,7 @@ export function Shell({ name, Canvas }) {
           {showTl ? <TimelineView key={realScope} info={tl} labelOf={id => graph.nodes.get(id)?.label ?? id} colorOf={id => colors.get(id)}
             imgOf={id => images[id]?.[0] || (getMeta(id)?.ref && images[getMeta(id).ref]?.[0]) || null}
             beats={beats?.src === tl.beats ? beats.data : null} fps={tlFps} lead={tlLead} selected={sel} onSelect={id => setSelected(id)}
-            infoOf={tlInfoOf} onShift={tlShift}
+            infoOf={tlInfoOf} onShift={tlShift} open={new Set(tlOpen[realScope] || [])} onToggle={gid => tlToggle(realScope, gid)}
             onCommit={tlCommit} onPlace={tlCommit} onOpen={id => { setSelected(id); setPropsOpen(true); }} />
           : <Canvas key={realScope} theme={theme} view={view} layout={layout} selected={sel} images={images} seeLines={seeLines} multiSel={multiIds} onMultiSel={setMultiIds}
             plane={plane && { S: plane.S, labels: plane.labels, ids: plane.pts.map(p => p.id) }}

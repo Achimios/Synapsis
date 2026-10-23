@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { ReactFlow, Background, Controls, ControlButton, MiniMap, Handle, Position, applyNodeChanges, BaseEdge, EdgeLabelRenderer, getBezierPath, ViewportPortal, useReactFlow } from '@xyflow/react';
+import { ReactFlow, Background, Controls, ControlButton, MiniMap, Handle, Position, applyNodeChanges, BaseEdge, EdgeLabelRenderer, getBezierPath, ViewportPortal, useReactFlow, useUpdateNodeInternals } from '@xyflow/react';
+import { TimelineView } from './timeline.jsx';
 import { dragScale } from './arrange.js';
 import { expand, pathBetween } from './select.js';
 import '@xyflow/react/dist/style.css';
@@ -23,7 +24,33 @@ function SNode({ data }) {
 const PNode = ({ data }) => <PicCard pic={data.pic} isSel={data.isSel} />;
 const ANode = ({ data }) => <AxesCard S={data.S} labels={data.labels} />;
 const FNode = ({ data }) => (<><Handle type="target" position={Position.Left} /><FrameCard node={data.node} dim={data.dim} isSel={data.isSel} /><Handle type="source" position={Position.Right} /><ModHandles /></>);
-const nodeTypes = { s: SNode, pic: PNode, axes: ANode, frame: FNode };
+// >v<🎬时间轴-时间轴卡-父页画布上展开 timeline 节点 = 一张嵌着时间轴的卡（👤 2026-10-24）：数据仍是子节点 t0 / t1；
+// 每段条左右各一个连接点（t:id / s:id），连到画布上的参考 / 描述节点的线就落在那段条上；右下角拖 = 改卡宽（记 _layout.json 的 w）
+function TNode({ id, data }) {
+  const T = cardActions.tl, n = data.node, upd = useUpdateNodeInternals();
+  const inf = T?.infoOf(n.id), open = useMemo(() => new Set(n.tlOpen || []), [n.tlOpen]);
+  const [w, setW] = useState(null), W = w ?? data.w;
+  const shape = inf ? inf.items.map(i => i.id + i.track).join('|') + '/' + [...open].join('|') + '/' + W : '';
+  useEffect(() => { upd(id); }, [shape]); // 连接点变了（展开段落、条换轨）→ 让 React Flow 重新量
+  const grip = e => {
+    e.preventDefault(); e.stopPropagation();
+    const x0 = e.clientX, w0 = W, z = e.currentTarget.closest('.react-flow__node').getBoundingClientRect().width / w0;
+    const mv = ev => setW(Math.max(320, w0 + (ev.clientX - x0) / z));
+    const up = ev => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); const nw = Math.max(320, w0 + (ev.clientX - x0) / z); setW(null); T.resize(n.id, nw); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+  };
+  if (!T || !inf) return null;
+  return (<div className={'tlcard' + (data.isSel ? ' sel' : '')} style={{ width: W, '--c': n.color }}>
+    <Handle type="target" position={Position.Left} />
+    <div className="tlcard-h" title="双击标题 = 进这一页（全屏时间轴）；⊞ / 1 = 收起成普通卡">🎬 <b>{n.label}</b><span>{inf.items.length} 段{inf.loose.length ? ` · ${inf.loose.length} 个没上轴` : ''}</span></div>
+    <TimelineView embedded key={Math.round(W / 40)} info={inf} infoOf={T.infoOf} labelOf={T.labelOf} imgOf={T.imgOf} colorOf={T.colorOf} beats={T.beatsOf(inf)} fps={T.fpsOf(inf)} lead={T.leadOf(inf)}
+      selected={T.selected} onSelect={T.select} onCommit={T.commit} onShift={T.shift} onOpen={T.open} open={open} onToggle={gid => T.toggle(n.id, gid)}
+      clipExtra={it => <><Handle type="target" position={Position.Top} id={'t:' + it.id} className="tlh tlhandle ti" /><Handle type="source" position={Position.Top} id={'s:' + it.id} className="tlh tlhandle so" /></>} />
+    <Handle type="source" position={Position.Right} />
+    <div className="tlgrip nodrag" title="拖 = 改卡宽" onPointerDown={grip} />
+  </div>);
+}
+const nodeTypes = { s: SNode, pic: PNode, axes: ANode, frame: FNode, tl: TNode };
 // 框：子节点坐标 = 钻进分组那页的坐标 − 子节点里最小的 + 内边距（上面留标题栏）
 const FP = { x: 16, y: 34 }, FMIN = { w: 180, h: 80 };
 // 框的大小跟着子节点走（含嵌套：倒着算，里层的框先算好）
@@ -280,7 +307,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   };
   const build = () => [
     ...(plane ? [{ id: '@axes', type: 'axes', position: { x: -plane.S * 1.25, y: -plane.S * 1.25 }, data: plane, draggable: false, selectable: false, focusable: false, zIndex: -1, style: { pointerEvents: 'none' } }] : []),
-    ...view.nodes.map(n => ({ id: n.id, type: n.framed && !n.ui ? 'frame' : 's', position: posOf(n), style: nodeStyle(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n.id in frameOv ? { ...n, ovOn: true } : n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id), zoom: n.frame != null ? fx[n.frame]?.z || 1 : 1 }, selected: isSel(n.id) })),
+    ...view.nodes.map(n => n.tlCard ? { id: n.id, type: 'tl', position: posOf(n), ...(n.frame != null ? { parentId: n.frame } : {}), data: { node: n, w: layout[n.id]?.w || 760, isSel: isSel(n.id), dim: nodeDim(n.id, view, selected) }, selected: isSel(n.id) } : ({ id: n.id, type: n.framed && !n.ui ? 'frame' : 's', position: posOf(n), style: nodeStyle(n), ...(n.frame != null ? { parentId: n.frame } : {}), ...(centered.has(n.id) ? { origin: [0.5, 0.5] } : {}), data: { node: n.id in frameOv ? { ...n, ovOn: true } : n, img: images[n.id], dim: nodeDim(n.id, view, selected), isSel: isSel(n.id), zoom: n.frame != null ? fx[n.frame]?.z || 1 : 1 }, selected: isSel(n.id) })),
     ...view.portals.map(p => ({ id: p.id, type: 's', position: layout[p.id], data: { portal: p, dim: nodeDim(p.id, view, selected) }, selected: isSel(p.id) })),
     ...pics.map(p => ({ id: p.id, type: 'pic', position: layout[p.id] || { x: 0, y: 0 }, data: { pic: p, isSel: isSel(p.id) }, selected: isSel(p.id) })),
   ];
@@ -297,7 +324,8 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
   // 选中一个框：框里的节点连出去的线也算「相连」
   const near = selected && view.parentOf?.size ? new Set([selected, ...view.nodes.filter(n => { for (let f = n.frame; f != null; f = view.parentOf.get(f)) if (f === selected) return true; return false; }).map(n => n.id)]) : null;
   const edges = view.edges.map((e, idx) => ({
-    id: e.id, source: e.from, target: e.to, type: 'flow', selectable: false, ...(e.mod ? { sourceHandle: 'mo', targetHandle: 'mi' } : {}),
+    id: e.id, source: e.from, target: e.to, type: 'flow', selectable: false, ...(e.mod && !e.fromH && !e.toH ? { sourceHandle: 'mo', targetHandle: 'mi' } : {}),
+    ...(e.fromH ? { sourceHandle: 's:' + e.fromH } : {}), ...(e.toH ? { targetHandle: 't:' + e.toH } : {}), // 🎬 时间轴卡：端点落在卡里那段条上
     data: { look: rw?.id === e.id ? { ...edgeLook(e, selected, near, seeLines), opacity: 0.2 } : edgeLook(e, selected, near, seeLines), idx, text: e.text || '', mat: e.mat || null },
   }));
 
@@ -523,7 +551,7 @@ function RFCanvas({ theme = 'dark', view, layout, selected, images, pics = [], p
         if (t && !t.startsWith('@') && ids.every(id => id.startsWith('@pic:'))) { cardActions.movePics?.(ids.map(id => id.slice(5)), t); return; } // 散图拖到卡片上 = 归给它
         if (t && !ids.every(id => view.parentOf?.get(id) === t || nodesRef.current.find(x => x.id === id)?.parentId === t)) { cardActions.moveInto?.(ids, t.startsWith('@portal:') ? t.slice(8) : t); return; }
         if (!t && framedKids.length === ids.length && cardActions.toFlow) { cardActions.moveInto?.(ids, null, cardActions.toFlow({ x: e.clientX, y: e.clientY })); return; } const cur = id => nodesRef.current.find(x => x.id === id)?.position; /* 用画布上的（锁轴后的）坐标 */ onMove(Object.fromEntries((dragged || [n]).map(d => [d.id, toLayout(d.id, cur(d.id) || d.position)]))); }}
-      onConnect={c => onConnect(c.source, c.target, c.sourceHandle === 'mo' || c.targetHandle === 'mi')}
+      onConnect={c => onConnect(c.sourceHandle?.startsWith('s:') ? c.sourceHandle.slice(2) : c.source, c.targetHandle?.startsWith('t:') ? c.targetHandle.slice(2) : c.target, c.sourceHandle === 'mo' || c.targetHandle === 'mi')} // 🎬 从时间轴卡里某段条拖出 / 拖进 = 连那个镜头
       zoomOnDoubleClick={false} deleteKeyCode={null} minZoom={0.1} colorMode={theme === 'light' ? 'light' : 'dark'}
       // 记住的视图优先；第一次进这个范围才 fitView
       fitView={!viewport} fitViewOptions={{ padding: 0.2 }} defaultViewport={viewport}

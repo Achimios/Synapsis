@@ -4,7 +4,8 @@
 //   段落（子节点本身也是时间轴页，👤 定 A：时间由里面各段自动算）：▸ / S 展开出它的子轨；拖段落 = 里面所有段一起挪，不能拖边
 //   A / D = 上一条 / 下一条；← → = 挪一帧（Shift = 10 帧）；Ctrl+← → = 改出点；↑ ↓ = 换轨。键盘连按停手 0.4 秒才存（一步撤销）
 //   滚轮 = 左右滚，Ctrl+滚轮 = 缩放（以鼠标处为中心）；「没上轴」的拖到轴上 = 在那个时刻放一段（默认 2 秒）
-//   embedded = 嵌在父页画布的卡片里（「时间轴卡」）：行矮一些、没有键盘（键盘归画布）、clipExtra 给每段条加连线点
+//   embedded = 嵌在父页画布的卡片里（「时间轴卡」）：行矮一些、没有键盘（键盘归画布）、clipExtra 给每段条加连线点；
+//     普通滚轮留给画布缩放，Ctrl+滚轮 = 缩放时间轴，Shift+滚轮 = 左右滚
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { snapTime, round3 } from './timeline.js';
 
@@ -55,13 +56,13 @@ export function TimelineView({ info, infoOf, labelOf, imgOf, colorOf, beats, fps
   useEffect(() => {
     const mv = e => {
       const d = drag.current; if (!d) return;
-      const dt = (e.clientX - d.x0) / zz, alt = e.altKey;
+      const dt = (e.clientX - d.x0) / d.s / zz, alt = e.altKey; // d.s = 画布缩放（卡在画布里被整体缩放时，屏幕像素 ≠ 卡里的像素）
       let { t0, t1, track } = d.it;
       if (d.mode === 'move') {
         const len = t1 - t0, a = snap(t0 + dt, d.it.id, alt), b = snap(t1 + dt, d.it.id, alt) - len;
         t0 = q(Math.abs(a - (t0 + dt)) <= Math.abs(b - (t0 + dt)) ? a : b); t1 = d.it.group ? t0 + len : q(t0 + len);
         const pageLanes = lanes.filter(l => l.page === d.it.page).length; // 顶层已经多一条空轨；展开的段落允许往下多拖出一条
-        track = Math.max(0, Math.min(d.it.depth === 0 ? pageLanes - 1 : pageLanes, d.it.track + Math.round((e.clientY - d.y0) / ROW)));
+        track = Math.max(0, Math.min(d.it.depth === 0 ? pageLanes - 1 : pageLanes, d.it.track + Math.round((e.clientY - d.y0) / d.s / ROW)));
       } else if (d.mode === 'left') t0 = Math.min(q(snap(t0 + dt, d.it.id, alt)), t1 - frame);
       else t1 = Math.max(q(snap(t1 + dt, d.it.id, alt)), t0 + frame);
       d.moved = d.moved || Math.abs(e.clientX - d.x0) > 2 || Math.abs(e.clientY - d.y0) > 4;
@@ -78,8 +79,8 @@ export function TimelineView({ info, infoOf, labelOf, imgOf, colorOf, beats, fps
   const down = (e, it) => {
     if (e.button !== 0 || e.target.closest('.tltog, .tlhandle')) return;
     e.preventDefault(); e.stopPropagation(); onSelect(it.id);
-    const r = e.currentTarget.getBoundingClientRect(), x = e.clientX - r.left;
-    drag.current = { it, mode: it.group ? 'move' : x < EDGE ? 'left' : x > r.width - EDGE ? 'right' : 'move', x0: e.clientX, y0: e.clientY, moved: false };
+    const r = e.currentTarget.getBoundingClientRect(), s = r.width / (e.currentTarget.offsetWidth || r.width) || 1, x = (e.clientX - r.left) / s;
+    drag.current = { it, s, mode: it.group ? 'move' : x < EDGE ? 'left' : x > r.width / s - EDGE ? 'right' : 'move', x0: e.clientX, y0: e.clientY, moved: false };
   };
 
   // 键盘（嵌在画布里时不接，键盘归画布）
@@ -122,9 +123,9 @@ export function TimelineView({ info, infoOf, labelOf, imgOf, colorOf, beats, fps
     const w = e => {
       if (e.ctrlKey) {
         e.preventDefault(); e.stopPropagation();
-        const r = el.getBoundingClientRect(), t = (e.clientX - r.left + el.scrollLeft) / zz, nz = Math.min(2000, Math.max(5, zz * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
-        setZ(nz); requestAnimationFrame(() => { el.scrollLeft = t * nz - (e.clientX - r.left); });
-      } else if (!e.shiftKey && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); e.stopPropagation(); el.scrollLeft += e.deltaY; }
+        const r = el.getBoundingClientRect(), s = r.width / (el.offsetWidth || r.width) || 1, mx = (e.clientX - r.left) / s, t = (mx + el.scrollLeft) / zz, nz = Math.min(2000, Math.max(5, zz * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
+        setZ(nz); requestAnimationFrame(() => { el.scrollLeft = t * nz - mx; });
+      } else if (embedded ? e.shiftKey : !e.shiftKey && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); e.stopPropagation(); el.scrollLeft += e.deltaY || e.deltaX; } // 卡里：普通滚轮留给画布缩放，Shift+滚轮才左右滚
     };
     el.addEventListener('wheel', w, { passive: false });
     return () => el.removeEventListener('wheel', w);
@@ -137,8 +138,8 @@ export function TimelineView({ info, infoOf, labelOf, imgOf, colorOf, beats, fps
   const drop = e => {
     const id = e.dataTransfer.getData('text/x-syn-tl'); if (!id || !onPlace) return;
     e.preventDefault();
-    const r = box.current.getBoundingClientRect(), t = q(snap((e.clientX - r.left + box.current.scrollLeft) / zz, id, e.altKey));
-    const lane = lanes[Math.floor((e.clientY - r.top + box.current.scrollTop - HEAD) / ROW)];
+    const r = box.current.getBoundingClientRect(), s = r.width / (box.current.offsetWidth || r.width) || 1, t = q(snap(((e.clientX - r.left) / s + box.current.scrollLeft) / zz, id, e.altKey));
+    const lane = lanes[Math.floor(((e.clientY - r.top) / s + box.current.scrollTop - HEAD) / ROW)];
     onPlace(id, { t0: round3(t), t1: round3(q(t + NEW_LEN)), track: lane && lane.page === info.id ? lane.track : 0 });
   };
 
@@ -150,7 +151,7 @@ export function TimelineView({ info, infoOf, labelOf, imgOf, colorOf, beats, fps
       {info.loose.length > 0 && <span className="tlloose" title="没写 t0 / t1 的子节点：拖到轴上就放在那个时刻">没上轴：{info.loose.map(id =>
         <span key={id} className="chip" draggable onDragStart={e => { e.dataTransfer.setData('text/x-syn-tl', id); e.dataTransfer.effectAllowed = 'copy'; }} onClick={() => onSelect(id)}>{labelOf(id)}</span>)}</span>}
     </div>}
-    <div className={'tlscroll' + (embedded ? ' nowheel nodrag' : '')} ref={box} onDragOver={e => { if (e.dataTransfer.types.includes('text/x-syn-tl')) e.preventDefault(); }} onDrop={drop} onMouseDown={e => { if (e.target === e.currentTarget || e.target.closest('svg.tlgrid')) { if (embedded) e.stopPropagation(); onSelect(null); } }}>
+    <div className={'tlscroll' + (embedded ? ' nodrag' : '')} ref={box} style={embedded ? { height: H + 14, flex: 'none' } : undefined} onDragOver={e => { if (e.dataTransfer.types.includes('text/x-syn-tl')) e.preventDefault(); }} onDrop={drop} onMouseDown={e => { if (e.target === e.currentTarget || e.target.closest('svg.tlgrid')) { if (embedded) e.stopPropagation(); onSelect(null); } }}>
       <div className="tlinner" style={{ width: W, height: H }}>
         <svg className="tlgrid" width={W} height={H}>
           {lanes.map((l, i) => <rect key={'r' + i} x={0} y={HEAD + i * ROW} width={W} height={ROW} className={(l.depth ? 'sub ' : '') + (i % 2 ? 'odd' : 'even')} />)}

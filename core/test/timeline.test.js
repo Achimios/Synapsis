@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { saveOutline, loadWorkspace, checkWorkspace, setNodeMeta, setNodeBody, addRefNode } from '../workspace.js';
-import { isTimeline, parseTime, timelineInfo, parseBeats, snapTime } from '../timeline.js';
+import { isTimeline, parseTime, timelineInfo, parseBeats, snapTime, tlCardEdges } from '../timeline.js';
+import { projectView } from '../outline.js';
 import { timeline } from '../cli.js';
 
 let pass = 0, fail = 0;
@@ -72,7 +73,7 @@ ok(all.length === 1 && all[0].page === '镜头3' && all[0].items === 5, '不带�
 ok(/1\.200–3\.480  轨0  入画/.test(timeline(ws, '镜头3').text) && /没上轴/.test(timeline(ws, '镜头3').text), '文本版 ' + timeline(ws, '镜头3').text);
 
 // 段落嵌套（👤 2026-10-24 定 A）：剪辑 → 段落（也是时间轴页）→ 镜头；段落时间 = 里面镜头的最早 ~ 最晚，自己写的不算
-saveOutline(root, '剪辑\n  段一\n    镜1\n    镜2\n  段二\n    镜3\n  空段\n    没时间');
+saveOutline(root, '参考图 -> 剪辑\n剪辑\n  段一\n    镜1 -> 参考图\n    镜2 -> 参考图, 镜1\n  段二\n    镜3 -> 参考图\n  空段\n    没时间 -> 参考图');
 runSet([['剪辑', { timeline: 'true', fps: '24', beats: '感官.json', lead: '1' }], ['剪辑/段一', { timeline: 'true', t0: '99', t1: '100' }], ['剪辑/段二', { timeline: 'true', track: '1' }], ['剪辑/空段', { timeline: 'true' }],
   ['剪辑/段一/镜1', { t0: '0', t1: '2' }], ['剪辑/段一/镜2', { t0: '2', t1: '5.5' }], ['剪辑/段二/镜3', { t0: '6', t1: '8' }]]);
 ws = loadWorkspace(root);
@@ -87,6 +88,14 @@ const ci = checkWorkspace(ws).filter(i => i.msg.startsWith('时间轴') && i.whe
 ok(ci.some(i => i.where === '剪辑/段一' && i.level === 'info' && /自动算/.test(i.msg)) && !ci.some(i => i.where === '剪辑/段二'), 'check：段落自己写了 t0 / t1 → 提示不算（info） ' + JSON.stringify(ci));
 const ex = timeline(ws, '剪辑').data.items;
 ok(ex[0].group === true && ex[0].t0 === 0 && ex[0].t1 === 5.5 && !('group' in timeline(ws, '剪辑/段一').data.items[0]), '导出：段落带 group: true、时间自动算；镜头不带 group');
+
+// 时间轴卡的连线：镜头 → 参考 的线落在卡里那段条上
+const v = projectView(ws.graph, '', new Set());
+const io = id => timelineInfo(ws.graph, id, m2);
+const ed = o => tlCardEdges(ws.graph, v, ['剪辑'], io, o).edges.map(e => `${e.from}${e.fromH ? '#' + e.fromH : ''}→${e.to}${e.toH ? '#' + e.toH : ''}×${e.count}`).sort().join(' | ');
+ok(ed({}) === '剪辑#剪辑/段一→参考图×2 | 剪辑#剪辑/段二→参考图×1 | 剪辑→参考图×1 | 参考图→剪辑×1', '段落没展开：镜头的线落在段落条上（同段聚合），没上轴的落在卡上，卡自己的线照旧 ' + ed({}));
+ok(ed({ 剪辑: ['剪辑/段一'] }) === '剪辑#剪辑/段一/镜1→参考图×1 | 剪辑#剪辑/段一/镜2→参考图×1 | 剪辑#剪辑/段二→参考图×1 | 剪辑→参考图×1 | 参考图→剪辑×1', '展开段一：落在各自的镜头条上；卡里面互相连的（镜2→镜1）不画 ' + ed({ 剪辑: ['剪辑/段一'] }));
+ok(tlCardEdges(ws.graph, v, [], io).edges === v.edges, '没有卡 = 原样');
 
 rmSync(root, { recursive: true, force: true });
 console.log(`timeline: ${pass} 过 / ${fail} 挂`); process.exit(fail ? 1 : 0);
