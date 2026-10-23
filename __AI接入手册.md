@@ -74,6 +74,8 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
   body <id> <文件|->           用文件（- = 标准输入）替换正文
   set <id> 键=值 [键=值…]      改属性（值留空 = 删掉这个键）
   rm <id>                      删除节点和子孙
+  frame <id> <视频> <时间>      从视频截一帧当这个节点的图（视频相对项目根或绝对路径；时间 = 秒或 分:秒，是素材时间）；
+                               旁边同名 .md 记来源和 src_t。ffmpeg：SYN_FFMPEG > PATH > Eidolon 虚拟环境里那个
   batch <JSON文件|->           一次跑一批写命令（一个进程，不用每条 spawn）：
                                [["add",".","感知"],["set","感知","code=../a.js#see"],["body","感知","正文文本"]]
                                body 在 batch 里第三项直接是正文；末尾可带选项对象

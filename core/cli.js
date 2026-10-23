@@ -23,6 +23,8 @@ export const USAGE = `用法：node core/cli.js <命令> [参数] [--ws <被规�
   body <id> <文件|->           用文件（- = 标准输入）替换正文
   set <id> 键=值 [键=值…]      改属性（值留空 = 删掉这个键）
   rm <id>                      删除节点和子孙
+  frame <id> <视频> <时间>      从视频截一帧当这个节点的图（视频相对项目根或绝对路径；时间 = 秒或 分:秒，是素材时间）；
+                               旁边同名 .md 记来源和 src_t。ffmpeg：SYN_FFMPEG > PATH > Eidolon 虚拟环境里那个
   batch <JSON文件|->           一次跑一批写命令（一个进程，不用每条 spawn）：
                                [["add",".","感知"],["set","感知","code=../a.js#see"],["body","感知","正文文本"]]
                                body 在 batch 里第三项直接是正文；末尾可带选项对象
@@ -40,6 +42,7 @@ import { fileURLToPath } from 'node:url';
 import { loadWorkspace, workspaceOutline, checkWorkspace, groupStatus, saveOutline, ensureWorkspaceReadme, setNodeMeta, setNodeBody, setEdgeLabel, findNodes, moveNodes, ensureGitignore, MANUAL_MARK, DIR } from './workspace.js';
 import { spaceInfo, closestPairs } from './space.js';
 import { isTimeline, timelineInfo, parseBeats, round3 } from './timeline.js';
+import { grabFrame } from './framegrab.js';
 import { ensureLauncher, PROJECT_LNK } from './launcher.js';
 import { loadSettings } from './settings.js';
 import { scaffoldPlan, scaffoldWrite } from './scaffold.js';
@@ -214,11 +217,12 @@ export function runWrite(root, cmd, args, argv = []) {
     const snap = ('evidence' in patch || 'code' in patch) && loadWorkspace(root).graph.nodes.get(a)?.meta.evidence_hash;
     return a + ' 属性已改：' + Object.keys(patch).join('、') + (snap ? `（实测：已记下 code 文件的快照，之后文件改了 check 会提示）` : '');
   }
+  if (cmd === 'frame') { const p = grabFrame(root, a, b, args[2]); return '已截帧 → __synapsis/' + p + '（旁边同名 .md 记了来源和 src_t）'; }
   return null;
 }
 
 // >v<🤖LLM接口-batch-一批写命令一个进程跑完：[[命令, 参数…, {label,kind,after,ifMissing}?], …]；遇错停下
-export const WRITE_CMDS = ['add', 'rename', 'move', 'status', 'link', 'unlink', 'body', 'set', 'rm'];
+export const WRITE_CMDS = ['add', 'rename', 'move', 'status', 'link', 'unlink', 'body', 'set', 'rm', 'frame'];
 export function runBatch(root, ops) {
   if (!Array.isArray(ops)) throw new Error('batch 要一个 JSON 数组：[["add",".","名字"], …]');
   const out = [];
