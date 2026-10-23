@@ -15,11 +15,11 @@
 //   ---
 //   正文（人写的，Synapsis 不动）
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, unlinkSync, rmdirSync, cpSync } from 'node:fs';
-import { join, dirname, relative, isAbsolute, resolve, basename } from 'node:path';
+import { join, dirname, relative, isAbsolute, resolve, basename, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { PATTERN_FILE, DEFAULT_PATTERN_WORDS, parsePatternWords, WORDS_ALL, splitWords, DEFAULT_ALL, LOCAL_WORDS, joinWords, wordsHead } from './patterns.js';
-import { parseOutline, toOutline, resolveLabel, shortRef, isDropped, withCopies, withEdge, withoutEdge, withMoved, withNode, ROOT } from './outline.js';
+import { parseOutline, toOutline, resolveLabel, labelIndex, shortRef, isDropped, withCopies, withEdge, withoutEdge, withMoved, withNode, ROOT } from './outline.js';
 import { checkSpaces } from './space.js';
 import { emptyPins, cleanPins, remapNodes } from './pins.js';
 import { WORDS_FILE, DEFAULT_WORDS, OLD_DEFAULT_WORDS, parseColorWords } from './colors.js';
@@ -82,23 +82,34 @@ export function loadWorkspace(root) {
   const base = join(root, DIR);
   const nodes = new Map([[ROOT, { id: ROOT, label: '根', parent: null, status: null, children: [], meta: {}, body: '' }]]);
   const errors = [];
-  const readNode = file => existsSync(file) ? parseFrontmatter(readFileSync(file, 'utf8')) : { meta: {}, body: '' };
+  // 每个文件夹只 readdir 一次（👤 2026-10-23 规模实测：3666 节点时逐个 existsSync / 试读 _pics_ 占了读库的大头）；listed = 文件夹 → 里面的名字
+  const listed = new Map(), raw = new Map(); // raw = 文件 → 读到的原文（saveOutline 拿它判断「变没变」，不用再读一遍盘）
+  const ls = dir => {
+    if (!listed.has(dir)) { try { const l = readdirSync(dir, { withFileTypes: true }); l.names = new Set(l.map(d => d.name)); listed.set(dir, l); } catch { listed.set(dir, null); } }
+    return listed.get(dir);
+  };
+  const has = (dir, name) => !!ls(dir)?.names.has(name);
+  const picsOf = (file, label) => { const d = picsDir(file, label); return has(dirname(d), basename(d)) ? listPics(d, base) : []; };
   const walk = (dir, parent) => {
-    if (!existsSync(dir)) return;
+    const list = ls(dir);
+    if (!list) return;
     const kids = [];
-    for (const e of readdirSync(dir)) {
+    for (const d of list) {
+      const e = d.name;
       if (e.startsWith('_') || e.startsWith('.')) continue;
       const abs = join(dir, e);
-      const isDir = statSync(abs).isDirectory();
+      const isDir = d.isSymbolicLink() ? statSync(abs).isDirectory() : d.isDirectory();
       if (!isDir && !e.endsWith('.md')) continue;
       const file = isDir ? join(abs, NODE_FILE) : abs;
-      const { meta, body } = readNode(file);
+      const text = !isDir || has(abs, NODE_FILE) ? readFileSync(file, 'utf8') : null;
+      if (text !== null) raw.set(file, text);
+      const { meta, body } = text !== null ? parseFrontmatter(text) : { meta: {}, body: '' };
       const label = meta.label || (isDir ? e : e.slice(0, -3));
       const id = parent === ROOT ? label : parent + '/' + label;
       const status = STATUS_IN[meta.status] || null;
       const order = meta.order !== undefined && meta.order !== '' ? +meta.order : Infinity;
       const { status: _s, order: _o, label: _l, ...rest } = meta;
-      const pics = listPics(picsDir(file, label), base);
+      const pics = picsOf(file, label);
       const node = { id, label, parent, status, children: [], file, isGroup: isDir, meta: rest, body, order, pics };
       nodes.set(id, node);
       kids.push(node);
@@ -110,12 +121,12 @@ export function loadWorkspace(root) {
   walk(base, ROOT);
   // 散图：每一页的 _pics/
   const loose = {};
-  for (const n of nodes.values()) { const d = pageDir(base, n); const l = d ? listPics(join(d, '_pics'), base) : []; if (l.length) loose[n.id] = l; }
-  const edges = [];
+  for (const n of nodes.values()) { const d = pageDir(base, n); const l = d && has(d, '_pics') ? listPics(join(d, '_pics'), base) : []; if (l.length) loose[n.id] = l; }
+  const edges = [], idx = labelIndex(nodes);
   for (const n of nodes.values()) {
     for (const raw of n.meta.to || []) {
       const e = parseEdge(raw);
-      const to = resolveLabel(nodes, n.id, e.to);
+      const to = resolveLabel(nodes, n.id, e.to, idx);
       if (!to) { errors.push({ file: relative(base, n.file || base), msg: '找不到连线目标：' + e.to }); continue; }
       edges.push({ id: n.id + '->' + to, from: n.id, to, label: e.label, kind: e.kind });
     }
@@ -124,9 +135,11 @@ export function loadWorkspace(root) {
   try { layout = JSON.parse(readFileSync(join(base, '_layout.json'), 'utf8')); } catch { /* 没有就空 */ }
   // 词表（👤 2026-10-12 合成一份）：每一层的 _词表.md 拆成 颜色 / 图案 两边；旧的 _配色.md / _图案.md 还在也照读（打开工作区时会迁进 _词表.md）
   //   colorWords / patternWords = 项目那份（null = 用默认）；colorWordsAt / patternWordsAt = {分组 id: 文本}（有文件就有键，哪怕那一边是空的）
+  const oldWords = new Set(); // 还有旧 _配色.md / _图案.md 的文件夹（migrateWords 只看这些）
   const level = d => {
     const all = join(d, WORDS_ALL), oc = join(d, WORDS_FILE), op = join(d, PATTERN_FILE);
-    if (!existsSync(all) && !existsSync(oc) && !existsSync(op)) return null;
+    if (has(d, WORDS_FILE) || has(d, PATTERN_FILE)) oldWords.add(d);
+    if (!has(d, WORDS_ALL) && !has(d, WORDS_FILE) && !has(d, PATTERN_FILE)) return null;
     const hasAll = existsSync(all), sp = hasAll ? splitWords(readFileSync(all, 'utf8')) : { color: '', pattern: '' };
     const old = f => existsSync(f) ? '\n' + readFileSync(f, 'utf8') : '';
     // 哪一边既没有 _词表.md 也没有旧文件 → null（项目那份 = 用默认；分组 = 这层没有）
@@ -139,7 +152,7 @@ export function loadWorkspace(root) {
     const l = level(dirname(n.file));
     if (l) { if (l.color != null) colorWordsAt[n.id] = l.color; if (l.pattern != null) patternWordsAt[n.id] = l.pattern; wordsFiles.push(n.id); }
   }
-  return { root, base, graph: { nodes, edges, errors }, layout, loose, colorWords, patternWords, colorWordsAt, patternWordsAt, wordsFiles };
+  return { root, base, graph: { nodes, edges, errors }, layout, loose, colorWords, patternWords, colorWordsAt, patternWordsAt, wordsFiles, raw, oldWords };
 }
 
 export const workspaceOutline = ws => toOutline(ws.graph);
@@ -206,6 +219,11 @@ export function saveOutline(root, text, hint = null) {
     return segs;
   };
   const writes = new Map(); // abs -> content
+  const outEdges = new Map(), idx = labelIndex(next.nodes);
+  for (const e of next.edges) { if (!outEdges.has(e.from)) outEdges.set(e.from, []); outEdges.get(e.from).push(e); }
+  // ↗ 传送门卡片的 ref: 指向的节点改名 / 搬家了 → 写的时候直接跟过去（以前写完再整库读一遍去改）
+  const refBack = {};
+  for (const [nid, cid] of map) if (cid && cid !== nid) refBack[cid] = nid;
   for (const [id, n] of next.nodes) {
     if (id === ROOT) continue;
     const old = map.get(id) ? cur.nodes.get(map.get(id)) : null;
@@ -216,9 +234,10 @@ export function saveOutline(root, text, hint = null) {
     if (fileName(n.label) !== n.label) meta.label = n.label; else delete meta.label;
     if (n.status) meta.status = n.status; else delete meta.status;
     meta.order = String(next.nodes.get(n.parent).children.indexOf(id));
-    const to = next.edges.filter(e => e.from === id).map(e => {
+    if (meta.ref && refBack[meta.ref]) meta.ref = refBack[meta.ref];
+    const to = (outEdges.get(id) || []).map(e => {
       const oe = old && curEdge.get(old.id + '->' + map.get(e.to));
-      return fmtEdge({ ref: shortRef(next, id, e.to), label: oe ? oe.label : '', kind: oe ? oe.kind : '' });
+      return fmtEdge({ ref: shortRef(next, id, e.to, idx), label: oe ? oe.label : '', kind: oe ? oe.kind : '' });
     });
     if (to.length) meta.to = to; else delete meta.to;
     writes.set(file, { content: serializeNode(meta, old ? old.body : ''), old, label: n.label });
@@ -258,9 +277,11 @@ export function saveOutline(root, text, hint = null) {
     const lp = n.isGroup ? join(dirname(n.file), '_pics') : null; // 删掉的分组页上的散图
     if (lp && existsSync(lp)) { renameSync(lp, dst.slice(0, -3) + '_散图'); report.restore.push([relative(base, dst.slice(0, -3) + '_散图'), relative(base, lp)]); }
   }
-  // 2) 写新内容（只写变了的）
+  // 2) 写新内容（只写变了的）；读库时读到的原文直接拿来比，上面挪进 .junk/ 的那些除外（盘上已经没了）
+  const junked = report.restore.map(([, from]) => join(base, from));
+  const gonePath = f => junked.some(p => f === p || f.startsWith(p + sep));
   for (const [file, { content, old }] of writes) {
-    const prev = existsSync(file) ? readFileSync(file, 'utf8') : null;
+    const prev = ws.raw.has(file) && !gonePath(file) ? ws.raw.get(file) : existsSync(file) ? readFileSync(file, 'utf8') : null;
     if (prev !== null && sameText(prev, content)) continue;
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, content);
@@ -272,9 +293,8 @@ export function saveOutline(root, text, hint = null) {
   for (const [file, { old, label }] of writes) {
     if (!old || !old.isGroup) continue;
     const from = join(dirname(old.file), '_pics');
-    if (!existsSync(from)) continue;
     let to = file.endsWith(NODE_FILE) ? join(dirname(file), '_pics') : picsDir(file, label);
-    if (to === from) continue;
+    if (to === from || !existsSync(from)) continue; // 没挪的分组先跳过，不碰盘
     if (existsSync(to)) to = join(graveyard, `${stamp()}_${label}_散图`);
     mkdirSync(dirname(to), { recursive: true });
     renameSync(from, to);
@@ -297,7 +317,7 @@ export function saveOutline(root, text, hint = null) {
     const nid = back.get(cid), nn = nid != null ? next.nodes.get(nid) : null, to = nn && nn.children.length ? join(base, ...pathOf(nid)) : null;
     for (const f of [WORDS_ALL, WORDS_FILE, PATTERN_FILE]) {
       const from = join(dirname(n.file), f);
-      if (!existsSync(from) || (to && join(to, f) === from)) continue;
+      if ((to && join(to, f) === from) || !existsSync(from)) continue;
       let dst = to ? join(to, f) : null;
       if (!dst || existsSync(dst)) { junkDir(graveyard); dst = join(graveyard, `${stamp()}_${cid.replace(/\//g, '～')}${f}`); report.restore.push([relative(base, dst), relative(base, from)]); }
       mkdirSync(dirname(dst), { recursive: true });
@@ -306,18 +326,14 @@ export function saveOutline(root, text, hint = null) {
     }
   }
   // 3) 搬走的旧文件删掉（内容已在新位置）
+  const emptied = new Set(junked.map(p => dirname(p))); // 可能变空的文件夹：挪走过东西的地方
   for (const [, { old }] of writes) {
-    if (old && old.file && !writes.has(old.file) && existsSync(old.file)) unlinkSync(old.file);
+    if (old && old.file && !writes.has(old.file) && existsSync(old.file)) { unlinkSync(old.file); emptied.add(dirname(old.file)); }
   }
-  // 4) 清空目录
-  const prune = dir => {
-    for (const e of readdirSync(dir)) {
-      if (e.startsWith('_') || e.startsWith('.')) continue;
-      const abs = join(dir, e);
-      if (statSync(abs).isDirectory()) { prune(abs); if (!readdirSync(abs).length) rmdirSync(abs); }
-    }
-  };
-  if (existsSync(base)) prune(base);
+  // 4) 清空目录：只看挪走过东西的文件夹，空了就删、再看上一层（以前每次保存整棵树扫一遍，几千节点时很慢）
+  const prunable = d => d.startsWith(base + sep) && !relative(base, d).split(sep).some(s => s.startsWith('_') || s.startsWith('.'));
+  const prune = dir => { if (prunable(dir) && existsSync(dir) && !readdirSync(dir).length) { rmdirSync(dir); prune(dirname(dir)); } };
+  for (const d of [...emptied].sort((a, b) => b.length - a.length)) prune(d);
   // 5) 布局跟着改名走
   const layout = {};
   // 新节点（cid = null）：前端可能先写了坐标（右键「在这里新建」），留着
@@ -331,7 +347,6 @@ export function saveOutline(root, text, hint = null) {
     layout['@pic:' + (hit ? picKeys[hit] + p.slice(hit.length) : p)] = ws.layout[k];
   }
   writeLayout(base, layout);
-  try { migrateRefs(root, map); } catch { /* 引用迁移失败不该拦住保存 */ } // ↗ 传送门卡片的 ref: 指向的节点改名 / 搬家了 → 跟着走
   try { migratePinsFile(root, map); } catch { /* 钉子文件坏了不该拦住保存 */ } // 📌 钉子指向的节点改名 / 搬家了 → 钉子跟着走（撤销时反向的对应表也走这里）
   return report;
 }
@@ -415,11 +430,12 @@ function writeLayout(base, layout) {
 }
 
 export function saveLayout(root, positions) {
-  const ws = loadWorkspace(root);
+  const base = join(root, DIR); // 只读 _layout.json（以前整库读一遍，几千节点时拖一下卡片要 0.4 秒）
+  let lay = {};
+  try { lay = JSON.parse(readFileSync(join(base, '_layout.json'), 'utf8')); } catch { /* 没有就空 */ }
   // 按键合并（散图的 w 宽度和 x/y 分开更新时不互相覆盖）
-  const lay = { ...ws.layout };
   for (const [k, v] of Object.entries(positions)) lay[k] = { ...lay[k], ...v };
-  writeLayout(ws.base, lay);
+  writeLayout(base, lay);
 }
 
 // >v<💾工作区-改属性-单个节点的 frontmatter 合并（贴图、spec 等大纲表达不了的东西）
@@ -489,8 +505,8 @@ export const groupWordsFile = (root, scope, file = WORDS_ALL) => {
   if (!n || !n.isGroup) throw new Error('只有分组（有子节点的）才能有自己的词表：' + scope);
   return join(dirname(n.file), file);
 };
-export function ensureWords(root, scope = ROOT) {
-  migrateWords(root);
+export function ensureWords(root, scope = ROOT, ws = null) {
+  migrateWords(root, ws);
   if (scope) { const f = groupWordsFile(root, scope); if (!existsSync(f)) writeFileSync(f, LOCAL_WORDS(loadWorkspace(root).graph.nodes.get(scope).label)); return f; }
   const f = join(root, DIR, WORDS_ALL);
   if (!existsSync(f)) { mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, DEFAULT_ALL); }
@@ -498,10 +514,11 @@ export function ensureWords(root, scope = ROOT) {
 }
 export const ensureColorWords = ensureWords, ensurePatternWords = ensureWords; // 旧名字
 // 旧的两份（_配色.md / _图案.md）→ 并进同一层的 _词表.md，旧文件备份进 _过期的/（打开工作区 / 建词表时跑一次）
-export function migrateWords(root) {
+// ws 可以传刚读好的（读库时已记下哪几层还有旧词表 oldWords，没有就不用逐层看）
+export function migrateWords(root, ws = null) {
   const base = join(root, DIR); if (!existsSync(base)) return [];
-  const ws = loadWorkspace(root), done = [];
-  const levels = [[base, ROOT, ''], ...[...ws.graph.nodes.values()].filter(n => n.id !== ROOT && n.isGroup).map(n => [dirname(n.file), n.id, n.label])];
+  ws = ws || loadWorkspace(root); const done = [];
+  const levels = [[base, ROOT, ''], ...[...ws.graph.nodes.values()].filter(n => n.id !== ROOT && n.isGroup).map(n => [dirname(n.file), n.id, n.label])].filter(([d]) => !ws.oldWords || ws.oldWords.has(d));
   for (const [d, id, label] of levels) {
     const oc = join(d, WORDS_FILE), op = join(d, PATTERN_FILE), all = join(d, WORDS_ALL);
     if (!existsSync(oc) && !existsSync(op)) continue;

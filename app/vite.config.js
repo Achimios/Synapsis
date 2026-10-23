@@ -63,8 +63,10 @@ function workspaceApi() {
   const body = req => new Promise((ok, no) => { let s = ''; req.on('data', c => s += c); req.on('end', () => { try { ok(s ? JSON.parse(s) : {}); } catch (e) { no(e); } }); });
   const payload = root => {
     // 词表文件直接放出来（以前点「词表…」才建，👤 2026-10-08 根本找不到）
-    if (existsSync(join(root, DIR))) { try { ensureWords(root); } catch { /* 只读目录就用默认 */ } } // 👤 2026-10-12 一层一份 _词表.md：没有就建；旧的 _配色.md / _图案.md 并进来（旧文件进 _过期的/）
-    const ws = loadWorkspace(root);
+    // 👤 2026-10-12 一层一份 _词表.md：没有就建；旧的 _配色.md / _图案.md 并进来（旧文件进 _过期的/）。
+    // 先读一遍库、拿它判断要不要迁移 / 补词表，真动了才再读（以前这里每次多读一遍整库，几千节点时每次保存多 0.3 秒）
+    let ws = loadWorkspace(root);
+    if (existsSync(join(root, DIR)) && (ws.oldWords.size || !ws.wordsFiles.includes(''))) { try { ensureWords(root, '', ws); ws = loadWorkspace(root); } catch { /* 只读目录就用默认 */ } }
     const nodes = {};
     // file = 相对项目根的路径（文件树和「打开 md」用）；pics = 相对 __synapsis 的图片路径
     for (const [id, n] of ws.graph.nodes) if (id) nodes[id] = { meta: n.meta, body: n.body, file: relative(root, n.file).split('\\').join('/'), pics: n.pics };

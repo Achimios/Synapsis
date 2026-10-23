@@ -38,17 +38,25 @@ export function parseOutline(text) {
     stack.push({ indent, id });
     for (const t of targets) rawEdges.push({ from: id, toLabel: t, line: i + 1 });
   });
-  const edges = [];
+  const edges = [], idx = rawEdges.length ? labelIndex(nodes) : null;
   for (const e of rawEdges) {
-    const to = resolveLabel(nodes, e.from, e.toLabel);
+    const to = resolveLabel(nodes, e.from, e.toLabel, idx);
     if (!to) { errors.push({ line: e.line, msg: '找不到目标：' + e.toLabel }); continue; }
     edges.push({ id: e.from + '->' + to, from: e.from, to });
   }
   return { nodes, edges, errors };
 }
 
-export function resolveLabel(nodes, fromId, label) {
+// 名字 → [id…]（批量解析时建一次传进 resolveLabel；全图只有一个同名的就不用逐层搜，几千节点时省下大头）
+export function labelIndex(nodes) {
+  const idx = new Map();
+  for (const [id, n] of nodes) if (id !== ROOT) { const a = idx.get(n.label); if (a) a.push(id); else idx.set(n.label, [id]); }
+  return idx;
+}
+
+export function resolveLabel(nodes, fromId, label, idx = null) {
   if (label.includes('/') && nodes.has(label)) return label;
+  if (idx) { const a = (idx.get(label) || []).filter(id => id !== fromId); if (a.length <= 1) return a[0] ?? null; } // 唯一同名 = 一定在根的子树里，逐层搜也是它
   // 从自身的父开始逐级向上，找该层子树中同名的节点（先直接子，再整个子树）
   let scope = nodes.get(fromId).parent;
   while (scope !== null) {
@@ -61,8 +69,8 @@ export function resolveLabel(nodes, fromId, label) {
 
 function findInSubtree(nodes, rootId, label, exclude) {
   const q = [...nodes.get(rootId).children];
-  while (q.length) {
-    const id = q.shift();
+  for (let i = 0; i < q.length; i++) {
+    const id = q[i];
     const n = nodes.get(id);
     if (n.label === label && id !== exclude) return id;
     q.push(...n.children);
@@ -78,10 +86,11 @@ export function toOutline(graph) {
     if (!byFrom.has(e.from)) byFrom.set(e.from, []);
     byFrom.get(e.from).push(e.to);
   }
+  const idx = graph.edges.length ? labelIndex(graph.nodes) : null;
   const walk = (id, depth) => {
     const n = graph.nodes.get(id);
     if (id !== ROOT) {
-      const tg = (byFrom.get(id) || []).map(t => shortRef(graph, id, t));
+      const tg = (byFrom.get(id) || []).map(t => shortRef(graph, id, t, idx));
       out.push('  '.repeat(depth) + (n.status ? STATUS_CH[n.status] + ' ' : '') + n.label + (tg.length ? ' -> ' + tg.join(', ') : ''));
     }
     for (const c of n.children) walk(c, id === ROOT ? 0 : depth + 1);
@@ -91,9 +100,9 @@ export function toOutline(graph) {
 }
 
 // 用名称能唯一解析回去就写名称，否则写完整路径
-export function shortRef(graph, from, to) {
+export function shortRef(graph, from, to, idx = null) {
   const label = graph.nodes.get(to).label;
-  return resolveLabel(graph.nodes, from, label) === to ? label : to;
+  return resolveLabel(graph.nodes, from, label, idx) === to ? label : to;
 }
 
 // >v<💾工作区-弃用-status: dropped（大纲里 ❌）：自己或任一祖先弃用 = 弃用；完成度汇总、check 都跳过，界面灰 + 删除线（👤 2026-10-08）

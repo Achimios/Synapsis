@@ -5,6 +5,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'; import { join } from 'node:p
 const ws = process.argv[2], BASE = 'http://localhost:5477';
 mkdirSync(join(ws, '.synapsis'), { recursive: true });
 writeFileSync(join(ws, '.synapsis', 'ai.json'), JSON.stringify({ url: 'http://127.0.0.1:9/v1', offline: true }));
+writeFileSync(join(ws, '.synapsis', 'view.json'), '{}'); // 每次从根页开始（不然记着上次停在哪一页）
 const sleep = t => new Promise(r => setTimeout(r, t));
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
@@ -47,13 +48,17 @@ log('Ctrl+F 打「代价」→ 出结果', fd, 'ms（含打字 100ms），结果
 await page.keyboard.press('Escape'); await sleep(300);
 
 // 5. 改名（属性面板标题）→ 已保存
-const b = await box('战斗节奏·代价·例3');
+// 来回改（跑第二遍不会找不到）；同时列出这一下发了哪些接口请求、各用多久
+const reqs = []; page.on('requestfinished', r => { if (r.url().includes('/api/')) reqs.push(`${r.method()} ${r.url().split('?')[0].replace(BASE + '/api', '')} ${Math.round(r.timing().responseEnd)}ms`); });
+const [from, to] = await box('战斗节奏·代价·例3') ? ['战斗节奏·代价·例3', '战斗节奏·代价·例3改'] : ['战斗节奏·代价·例3改', '战斗节奏·代价·例3'];
+const b = await box(from);
 if (b) {
   await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await sleep(400);
   const inp = await page.$('.side h3 input');
-  await inp.fill('战斗节奏·代价·例3改'); await longs();
+  await inp.fill(to); await longs(); reqs.length = 0;
   t0 = Date.now(); await inp.press('Enter');
-  log('改名 → 「已保存」', await until(async () => /已保存|已改名/.test(await save())), 'ms |', await save(), '|', await longs());
+  log('改名 → 「已保存」', await until(async () => reqs.some(r => r.includes('/outline')) && /已保存|已改名/.test(await save())), 'ms |', await save(), '|', await longs());
+  await sleep(500); log('  请求：', reqs.join('，') || '无');
 }
 // 6. 新建同级（右键空白 → 在这里新建节点 → Enter）
 const blank = [1300, 780];
