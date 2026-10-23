@@ -270,11 +270,11 @@ function workspaceApi() {
               b.dataUrl = `data:${ct};base64,${buf.toString('base64')}`;
             }
             if (url.pathname === '/loose') {
-              const r = saveLooseImage(root, b.scope ?? '', b.dataUrl);
+              const r = saveLooseImage(root, b.scope ?? '', b.dataUrl, { name: b.name, note: b.note }); // name / note：截帧等带说明的图（同名 .md）
               if (b.at && !r.node) saveLayout(root, { ['@pic:' + r.path]: b.at });
               return send(200, r);
             }
-            return send(200, { path: saveAsset(root, b.id, b.dataUrl) });
+            return send(200, { path: saveAsset(root, b.id, b.dataUrl, { name: b.name, note: b.note }) });
           }
           if (url.pathname === '/loose-remove' && req.method === 'POST') return send(200, { pair: removeLooseImage(root, (await body(req)).path) });
           // 撤销「贴图 / 拖进图片」：这几张挪进 .junk/，回 pairs 给重做时 /restore 搬回来

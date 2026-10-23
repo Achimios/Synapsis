@@ -107,6 +107,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
       {actions.pickFile && item('📎 引入…', actions.pickFile)}
       {actions.pickImagesHere && item('🖼 贴图…（散图）', actions.pickImagesHere)}
       {actions.aiImageHere && item('🎨 AI 配图…', actions.aiImageHere)}
+      {actions.frameHere && item('🎞 从视频截帧…（散图）', actions.frameHere)}
       {actions.canUp && item('↑ 返回上一层', actions.up, { key: 'Alt+W', quiet: true })}
     </div>
   );
@@ -181,6 +182,7 @@ export function ContextMenu({ menu, node, actions, onClose }) {
             </div>)}
           </div></div>
         {actions.aiImage && !node.ref && item('🎨 AI 配图…', () => actions.aiImage(node.id))}
+        {actions.frameFor && !node.ref && item('🎞 从视频截帧…', () => actions.frameFor(node.id))}
       </>}
     </div>
   );

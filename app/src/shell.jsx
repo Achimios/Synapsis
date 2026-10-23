@@ -10,6 +10,7 @@ import { patternMap, patternTables, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
 import { timelineInfo, isTimeline, parseTime, spanOf, round3, tlCardEdges } from './timeline.js';
 import { TimelineView } from './timeline.jsx';
+import { FrameGrab } from './framegrab.jsx';
 import { KeyCombo, ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, HistoryPanel, OutlineTree, HelpModal, SettingsModal, ReplaceBar, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
 const DRAG_PIC = 'application/x-synapsis-pic';
 import { initStash, useStash, putStash } from './stash.js';
@@ -631,6 +632,9 @@ export function Shell({ name, Canvas }) {
         imgAt.current = null; setSelected(id);
         setAgentPreset({ text: '给「' + (graph.nodes.get(id)?.label || id) + '」配一张图：', n: Date.now() }); setAgentOpen(true);
       },
+      // 🎞 从视频截帧（👤 2026-10-24）：选一个本机视频 → 弹窗里停在想要的时刻截一帧
+      frameHere: () => pickVideo(null, menu && cardActions.toFlow ? cardActions.toFlow({ x: menu.x, y: menu.y }) : null),
+      frameFor: id => pickVideo(id, null),
     } : {}),
     copyUiLayout: id => { // 右键 UI 框 → 复制 UI 布局：选中了好几个就一起；每个 UI 节点带四角位置，普通节点带名字和正文
       const ids = cardActions.multi?.length && cardActions.multi.includes(id) ? cardActions.multi : [id];
@@ -1061,6 +1065,10 @@ export function Shell({ name, Canvas }) {
       setWsData(await api('/ws')); setSaveState(`已${why}「${graph.nodes.get(id)?.label || id}」的图（Ctrl+Z 撤销）`);
     } catch (e) { setSaveState('❌ 删图失败：' + e.message); }
   };
+  // 🎞 截帧弹窗：target = 节点 id（null = 散图，落在 at）；连截几张时散图错开一点
+  const [frameDlg, setFrameDlg] = useState(null);
+  const openFrameGrab = (file, target, at) => setFrameDlg({ file, target, at, n: 0 });
+  const pickVideo = (target, at) => { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'video/*,.mp4,.m4v,.mov,.webm,.mkv'; inp.onchange = () => { const f = inp.files?.[0]; if (f) openFrameGrab(f, target, at); }; inp.click(); };
   const addImages = async (target, srcs, at, baseName) => {
     if (!srcs.length) return;
     try {
@@ -1213,6 +1221,14 @@ export function Shell({ name, Canvas }) {
       const t = card?.dataset.id, parent = t ? (t.startsWith('@portal:') ? t.slice(8) : t) : realScope, at = t ? null : { x: e.clientX, y: e.clientY };
       if (e.ctrlKey) pasteNodes(tids, undefined, parent, at);
       else moveInto(tids, parent, at && cardActions.toFlow ? cardActions.toFlow(at) : null);
+      return;
+    }
+    // 🎞 拖进视频 → 截帧弹窗（落在卡片上 = 截的图进那张卡；空白处 = 散图落在这里）
+    const vid = [...(dt?.files || [])].find(f => f.type.startsWith('video/') || /\.(mp4|m4v|mov|webm|mkv)$/i.test(f.name));
+    if (vid && mode === 'ws') {
+      e.preventDefault();
+      const c = e.target.closest?.('.react-flow__node')?.dataset.id, tgt = c && !c.startsWith('@') ? c : null;
+      openFrameGrab(vid, tgt, tgt ? null : cardActions.toFlow ? cardActions.toFlow({ x: e.clientX, y: e.clientY }) : null);
       return;
     }
     const files = [...(dt?.files || [])].filter(f => f.type.startsWith('image/'));
@@ -1419,6 +1435,8 @@ export function Shell({ name, Canvas }) {
       )}
       {propsOpen && !propId && !sel && <aside className="side"><div className="bar"><b>属性</b><button onClick={() => setPropsOpen(false)}>✕</button></div><div className="sidebody hint">选中一个节点看它的属性（Shift+Tab 开关）</div></aside>}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+      {frameDlg && <FrameGrab file={frameDlg.file} targetLabel={frameDlg.target ? '「' + (graph.nodes.get(frameDlg.target)?.label || frameDlg.target) + '」的图' : '这一页的散图'} onClose={() => setFrameDlg(null)}
+        onShot={s => { const k = frameDlg.n++; addImages(frameDlg.target, [s], frameDlg.at && { x: frameDlg.at.x + k * 30, y: frameDlg.at.y + k * 30 }); }} />}
       {settingsOpen && mode === 'ws' && <SettingsModal api={api} onClose={() => setSettingsOpen(false)} onHelp={() => setHelpOpen(true)} />}
       {lightbox && <div className="lightbox" onClick={() => setLightbox(null)}>
         <img src={lightbox.urls[lightbox.i]} onClick={e => e.stopPropagation()} />
