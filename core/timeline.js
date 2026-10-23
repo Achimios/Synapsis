@@ -23,20 +23,44 @@ export function parseTime(v) {
 }
 export const round3 = t => Math.round(t * 1000) / 1000;
 
+// 段落（子节点本身也是时间轴页，👤 2026-10-24 定 A）：它的时间 = 里面各段最早 t0 ~ 最晚 t1，自己写的 t0 / t1 不算（check 提示）。
+// 返回 [t0, t1] 或 null（里面一段都没上轴）；leaves = 里面所有真正带时间的节点（拖段落 = 它们一起平移）
+export function spanOf(graph, id, getMeta, seen = new Set()) {
+  if (seen.has(id)) return null; seen.add(id);
+  let t0 = Infinity, t1 = -Infinity; const leaves = [];
+  for (const c of graph.nodes.get(id)?.children || []) {
+    const m = getMeta(c) || {};
+    if (isTimeline(m)) { const s = spanOf(graph, c, getMeta, seen); if (s) { t0 = Math.min(t0, s.t0); t1 = Math.max(t1, s.t1); leaves.push(...s.leaves); } continue; }
+    const a = parseTime(m.t0), b = parseTime(m.t1);
+    if (a === null || b === null || !Number.isFinite(a) || !Number.isFinite(b)) continue;
+    t0 = Math.min(t0, a); t1 = Math.max(t1, b); leaves.push(c);
+  }
+  return leaves.length ? { t0, t1, leaves } : null;
+}
+
 // 一页时间轴：items = 有 t0 和 t1 的子节点（按 t0、track 排），loose = 没上轴的子节点
+//   子节点是段落（也是时间轴页）→ 时间自动算，item 带 group: true 和 leaves
 export function timelineInfo(graph, id, getMeta) {
   const meta = getMeta(id);
   if (!isTimeline(meta)) return null;
   const items = [], loose = [];
   for (const c of graph.nodes.get(id).children) {
-    const m = getMeta(c) || {}, t0 = parseTime(m.t0), t1 = parseTime(m.t1);
+    const m = getMeta(c) || {}, tr = parseTime(m.track), track = tr === null ? 0 : tr;
+    if (isTimeline(m)) {
+      const s = spanOf(graph, c, getMeta);
+      if (s) items.push({ id: c, label: graph.nodes.get(c).label, t0: s.t0, t1: s.t1, track, ref: m.ref ? String(m.ref) : null, group: true, leaves: s.leaves });
+      else loose.push(c);
+      continue;
+    }
+    const t0 = parseTime(m.t0), t1 = parseTime(m.t1);
     if (t0 === null || t1 === null) { loose.push(c); continue; }
-    const tr = parseTime(m.track);
-    items.push({ id: c, label: graph.nodes.get(c).label, t0, t1, track: tr === null ? 0 : tr, ref: m.ref ? String(m.ref) : null });
+    items.push({ id: c, label: graph.nodes.get(c).label, t0, t1, track, ref: m.ref ? String(m.ref) : null });
   }
   items.sort((a, b) => a.t0 - b.t0 || a.track - b.track);
-  const fps = parseTime(meta.fps);
-  return { id, items, loose, fps: Number.isFinite(fps) && fps > 0 ? fps : null, beats: meta.beats ? String(meta.beats).trim() : null };
+  // fps / beats / lead 没写就沿上级时间轴页往上找（段落页一般不写，跟「剪辑」那页）
+  const up = k => { for (let x = id; x != null; x = graph.nodes.get(x)?.parent) { const m = getMeta(x); if (!isTimeline(m)) break; if (m[k] != null && String(m[k]).trim() !== '') return String(m[k]).trim(); } return null; };
+  const fps = parseTime(up('fps'));
+  return { id, items, loose, fps: Number.isFinite(fps) && fps > 0 ? fps : null, beats: up('beats'), lead: up('lead') };
 }
 
 // 拍点源（感官.json）→ {fps, beats, downbeats, phrases, onsets}；格式不认识 → null
@@ -62,7 +86,11 @@ export function checkTimelines(graph, getMeta) {
     if (!info) continue;
     for (const c of info.loose) {
       const m = getMeta(c) || {};
-      if ((parseTime(m.t0) === null) !== (parseTime(m.t1) === null)) issues.push({ level: 'warn', where: c, msg: '时间轴：t0 / t1 只写了一个，没上轴' });
+      if (!isTimeline(m) && (parseTime(m.t0) === null) !== (parseTime(m.t1) === null)) issues.push({ level: 'warn', where: c, msg: '时间轴：t0 / t1 只写了一个，没上轴' });
+    }
+    for (const c of graph.nodes.get(id).children) {
+      const m = getMeta(c) || {};
+      if (isTimeline(m) && (m.t0 != null || m.t1 != null)) issues.push({ level: 'info', where: c, msg: '时间轴：段落的时间由里面各段自动算，这里写的 t0 / t1 不算（可以删掉）' });
     }
     for (const it of info.items) {
       if (!Number.isFinite(it.t0) || !Number.isFinite(it.t1) || !Number.isFinite(it.track)) issues.push({ level: 'warn', where: it.id, msg: `时间轴：t0 / t1 / track 要写数字（秒，或 分:秒）` });

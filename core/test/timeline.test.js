@@ -32,6 +32,7 @@ setNodeBody(root, '镜头3/入画', '人物从左入画，慢推');
 writeFileSync(join(root, '感官.json'), JSON.stringify({ fps: 24, events: { beats: [0.36, 1.16], downbeats: [0.36], phrases: [0.36] } }));
 mkdirSync(join(root, '__synapsis', '素材库', '_pics_爆炸'), { recursive: true });
 writeFileSync(join(root, '__synapsis', '素材库', '_pics_爆炸', 'a.jpg'), 'x');
+const runSet = l => l.forEach(([id, m]) => setNodeMeta(root, id, m));
 const ref = addRefNode(root, '镜头3', '素材库/爆炸');
 setNodeMeta(root, ref.id, { t0: '6.5', t1: '7', speed: '0.5' });
 setNodeMeta(root, '素材库/爆炸', { src: '样片:粒子海/20_a.mp4@1.2', speed: '2' });
@@ -69,6 +70,23 @@ ok(timeline(ws, '素材库').error && timeline(ws, '没有').error, '不是时�
 const all = timeline(ws).data;
 ok(all.length === 1 && all[0].page === '镜头3' && all[0].items === 5, '不带页 id → 列出时间轴页 ' + JSON.stringify(all));
 ok(/1\.200–3\.480  轨0  入画/.test(timeline(ws, '镜头3').text) && /没上轴/.test(timeline(ws, '镜头3').text), '文本版 ' + timeline(ws, '镜头3').text);
+
+// 段落嵌套（👤 2026-10-24 定 A）：剪辑 → 段落（也是时间轴页）→ 镜头；段落时间 = 里面镜头的最早 ~ 最晚，自己写的不算
+saveOutline(root, '剪辑\n  段一\n    镜1\n    镜2\n  段二\n    镜3\n  空段\n    没时间');
+runSet([['剪辑', { timeline: 'true', fps: '24', beats: '感官.json', lead: '1' }], ['剪辑/段一', { timeline: 'true', t0: '99', t1: '100' }], ['剪辑/段二', { timeline: 'true', track: '1' }], ['剪辑/空段', { timeline: 'true' }],
+  ['剪辑/段一/镜1', { t0: '0', t1: '2' }], ['剪辑/段一/镜2', { t0: '2', t1: '5.5' }], ['剪辑/段二/镜3', { t0: '6', t1: '8' }]]);
+ws = loadWorkspace(root);
+const m2 = id => ws.graph.nodes.get(id)?.meta;
+const top = timelineInfo(ws.graph, '剪辑', m2);
+ok(top.items.map(i => `${i.label} ${i.t0}-${i.t1} 轨${i.track}${i.group ? ' 段' : ''}`).join(' | ') === '段一 0-5.5 轨0 段 | 段二 6-8 轨1 段', '段落时间自动算、自己写的 99-100 不算 ' + top.items.map(i => i.label + i.t0 + '-' + i.t1));
+ok(top.items[0].leaves.join() === '剪辑/段一/镜1,剪辑/段一/镜2', '段落带 leaves（拖段落 = 它们一起挪）');
+ok(top.loose.includes('剪辑/空段'), '里面一段都没上轴的段落 = 没上轴');
+const sub = timelineInfo(ws.graph, '剪辑/段一', m2);
+ok(sub.fps === 24 && sub.beats === '感官.json' && sub.lead === '1', '段落页没写 fps / beats / lead → 跟上级时间轴页 ' + JSON.stringify([sub.fps, sub.beats, sub.lead]));
+const ci = checkWorkspace(ws).filter(i => i.msg.startsWith('时间轴') && i.where.startsWith('剪辑'));
+ok(ci.some(i => i.where === '剪辑/段一' && i.level === 'info' && /自动算/.test(i.msg)) && !ci.some(i => i.where === '剪辑/段二'), 'check：段落自己写了 t0 / t1 → 提示不算（info） ' + JSON.stringify(ci));
+const ex = timeline(ws, '剪辑').data.items;
+ok(ex[0].group === true && ex[0].t0 === 0 && ex[0].t1 === 5.5 && !('group' in timeline(ws, '剪辑/段一').data.items[0]), '导出：段落带 group: true、时间自动算；镜头不带 group');
 
 rmSync(root, { recursive: true, force: true });
 console.log(`timeline: ${pass} 过 / ${fail} 挂`); process.exit(fail ? 1 : 0);
