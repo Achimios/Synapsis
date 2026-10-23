@@ -830,3 +830,11 @@ svg.tlgrid text { fill: var(--dim); font-size: 10px; font-family: Consolas, mono
 .tllab, .tltime { position: relative; padding: 2px 9px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg); }
 .tllab { font-size: 12px; color: var(--strong); }
 .tltime { font-size: 10px; color: var(--dim); font-family: Consolas, monospace; }
+.tlclip.group { border-style: dashed; background: color-mix(in srgb, var(--c) 12%, transparent); }
+.tlclip.group .tllab { font-weight: 600; }
+.tltog { display: inline-block; width: 14px; margin-right: 2px; cursor: pointer; color: var(--dim); }
+.tltog:hover { color: var(--strong); }
+svg.tlgrid rect.sub { fill: color-mix(in srgb, var(--accent) 4%, transparent); }
+svg.tlgrid text.lanelab { fill: var(--faint); font-size: 10px; }
+.tlview.emb { position: relative; inset: auto; width: 100%; height: 100%; background: transparent; }
+.tlview.emb .tllab { font-size: 11px; padding-top: 1px; }

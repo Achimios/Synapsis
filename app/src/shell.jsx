@@ -8,7 +8,7 @@ import { parseOutline, projectView, breadcrumb, exportForLLM, withEdge, withNode
 import { colorMap, wordTables, hierHit, upperTable, baseColor, satOf } from './colors.js';
 import { patternMap, patternTables, PATTERNS } from './patterns.js';
 import { spaceInfo, isSpace, parseAxes, parseVec, mapsOf, direction, directionLabel, dot, angleDeg, moveInPlane, fmtVec, closestPairs } from './space.js';
-import { timelineInfo, isTimeline, parseTime } from './timeline.js';
+import { timelineInfo, isTimeline, parseTime, spanOf, round3 } from './timeline.js';
 import { TimelineView } from './timeline.jsx';
 import { KeyCombo, ContextMenu, PropsPanel, FileTree, FilePanel, TextFind, HistoryPanel, OutlineTree, HelpModal, SettingsModal, ReplaceBar, ScaffoldModal, SearchModal, DRAG_NODE, OverflowBar } from './panels.jsx';
 const DRAG_PIC = 'application/x-synapsis-pic';
@@ -163,7 +163,15 @@ export function Shell({ name, Canvas }) {
     api('/timeline/beats?p=' + encodeURIComponent(tl.beats)).then(d => setBeats({ src: tl.beats, data: d })).catch(e => { setBeats({ src: tl.beats, data: null }); setSaveState('⚠ 拍点读不到：' + e.message); });
   }, [tl?.beats, mode]);
   const tlFps = tl ? tl.fps ?? beats?.data?.fps ?? null : null;
-  const tlLead = tl && tlFps ? (parseTime(getMeta(realScope)?.lead) || 0) / tlFps : 0; // 页面 lead: N = 吸附时提前 N 帧
+  const tlInfoOf = useCallback(id => graph.nodes.has(id) ? timelineInfo(graph, id, getMeta) : null, [graph, getMeta]);
+  const tlLead = tl && tlFps ? (parseTime(tl.lead) || 0) / tlFps : 0; // 页面 lead: N = 吸附时提前 N 帧（段落页跟上级）
+  // 段落（👤 2026-10-24 定 A：时间由里面的镜头算）：拖段落 = 里面所有镜头一起挪 dt 秒（一步撤销）；上下拖 = 改段落自己的 track
+  const tlShift = (gid, dt, track) => {
+    const s = spanOf(graph, gid, getMeta), old = getMeta(gid) || {}, list = [];
+    if (s && dt) for (const id of s.leaves) { const m = getMeta(id); list.push([id, { t0: String(round3(parseTime(m.t0) + dt)), t1: String(round3(parseTime(m.t1) + dt)) }]); }
+    if (track !== undefined && String(track) !== String(old.track ?? 0)) list.push([gid, { track: track ? String(track) : null }]);
+    saveMetas(list, { desc: `挪段落「${graph.nodes.get(gid)?.label}」` + (dt ? `${dt > 0 ? '+' : ''}${dt.toFixed(3)} 秒（${s.leaves.length} 段一起）` : '换轨') });
+  };
   // 时间轴改 t0 / t1 / track：先改本地（不闪回），再走 saveMeta（进撤销栈）
   const tlCommit = (id, p) => {
     const old = getMeta(id) || {};
@@ -806,6 +814,13 @@ export function Shell({ name, Canvas }) {
     if (!opt.silent) pushOp({ op: 'meta', id, undo: Object.fromEntries(Object.keys(patch).map(k => [k, k in old ? old[k] : null])), redo: patch });
     return api('/node', { method: 'PATCH', body: JSON.stringify({ id, meta: patch }) }).then(d => { setWsData(d); setSaveState('属性已保存：' + Object.keys(patch).join('、') + '（Ctrl+Z 撤销）'); }).catch(e => setSaveState('❌ 属性保存失败：' + e.message));
   };
+  // 一次改好几个节点的属性（一步撤销）：list = [[id, patch]…]
+  const saveMetas = (list, opt = {}) => {
+    if (!list.length) return Promise.resolve();
+    if (!opt.silent) pushOp({ op: 'metas', id: list[0][0], desc: opt.desc, undo: list.map(([id, p]) => { const old = getMeta(id) || {}; return [id, Object.fromEntries(Object.keys(p).map(k => [k, k in old ? old[k] : null]))]; }), redo: list });
+    setWsData(d => ({ ...d, nodes: { ...d.nodes, ...Object.fromEntries(list.filter(([id]) => d.nodes[id]).map(([id, p]) => { const m = { ...d.nodes[id].meta }; for (const [k, v] of Object.entries(p)) if (v == null) delete m[k]; else m[k] = v; return [id, { ...d.nodes[id], meta: m }]; })) } })); // 先改本地，不闪回
+    return api('/nodes', { method: 'PATCH', body: JSON.stringify({ items: list.map(([id, meta]) => ({ id, meta })) }) }).then(d => { setWsData(d); setSaveState((opt.desc || '属性已保存') + '（Ctrl+Z 撤销）'); }).catch(e => setSaveState('❌ 属性保存失败：' + e.message));
+  };
   // 属性面板的快捷按钮：把空白模板填进「＋ 属性」那一行，改完回车
   const metaHints = id => {
     const m = getMeta(id) || {}, out = [], par = graph.nodes.get(id)?.parent, pm = par != null ? getMeta(par) : null;
@@ -842,7 +857,7 @@ export function Shell({ name, Canvas }) {
     }
     setWsData(await api('/ws'));
   };
-  const applyOp = (e, which) => e.op === 'vs' ? Promise.resolve(restoreVS(e[which])) : e.op === 'pins' || e.op === 'hooks' ? Promise.resolve(restorePins(e[which])) : e.op === 'pics' ? applyPics(e, which) : e.op === 'meta' ? saveMeta(e.id, e[which], { silent: true }) : saveBody(e.id, e[which], { silent: true });
+  const applyOp = (e, which) => e.op === 'metas' ? saveMetas(e[which], { silent: true }) : e.op === 'vs' ? Promise.resolve(restoreVS(e[which])) : e.op === 'pins' || e.op === 'hooks' ? Promise.resolve(restorePins(e[which])) : e.op === 'pics' ? applyPics(e, which) : e.op === 'meta' ? saveMeta(e.id, e[which], { silent: true }) : saveBody(e.id, e[which], { silent: true });
 
   const toggle = id => setExpanded(x => ({ ...x, [id]: !x[id] }));
   cardActions.toggle = toggle;
@@ -1368,6 +1383,7 @@ export function Shell({ name, Canvas }) {
           {showTl ? <TimelineView key={realScope} info={tl} labelOf={id => graph.nodes.get(id)?.label ?? id} colorOf={id => colors.get(id)}
             imgOf={id => images[id]?.[0] || (getMeta(id)?.ref && images[getMeta(id).ref]?.[0]) || null}
             beats={beats?.src === tl.beats ? beats.data : null} fps={tlFps} lead={tlLead} selected={sel} onSelect={id => setSelected(id)}
+            infoOf={tlInfoOf} onShift={tlShift}
             onCommit={tlCommit} onPlace={tlCommit} onOpen={id => { setSelected(id); setPropsOpen(true); }} />
           : <Canvas key={realScope} theme={theme} view={view} layout={layout} selected={sel} images={images} seeLines={seeLines} multiSel={multiIds} onMultiSel={setMultiIds}
             plane={plane && { S: plane.S, labels: plane.labels, ids: plane.pts.map(p => p.id) }}

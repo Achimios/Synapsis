@@ -111,6 +111,12 @@ function workspaceApi() {
             const b = await body(req), r = saveOutline(root, b.outline, Array.isArray(b.hint) ? new Map(b.hint) : null); // hint = 撤销 / 重做移动时的 [新id, 旧id]
             return send(r.ok ? 200 : 400, { report: r, ...(r.ok ? payload(root) : {}) });
           }
+          // 一次改好几个节点的属性（时间轴拖段落 = 里面所有镜头一起挪），只回传一次
+          if (url.pathname === '/nodes' && req.method === 'PATCH') {
+            const b = await body(req);
+            for (const it of b.items || []) if (it && it.id && it.meta) setNodeMeta(root, it.id, it.meta);
+            return send(200, payload(root));
+          }
           if (url.pathname === '/node' && req.method === 'PATCH') {
             const b = await body(req);
             if (b.meta) setNodeMeta(root, b.id, b.meta);
