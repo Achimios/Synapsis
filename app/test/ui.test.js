@@ -2083,6 +2083,65 @@ for (const kind of ['reactflow']) {
   await page.close();
   rmSync(ws, { recursive: true, force: true });
 }
+// —— 时间轴画面区 + 播放头 + 右键新建 + 切回画布按时间排（👤 2026-10-30 像 Pr：上画面下时间轴，只规划不播放）——
+{
+  console.log('== 时间轴画面');
+  const ws = mkdtempSync(join(tmpdir(), 'syn-tlmon-ui-')); noAi(ws);
+  saveOutline(ws, '镜头\n  入画\n  近景');
+  runBatch(ws, [['set', '镜头', 'timeline=true', 'fps=24'], ['set', '镜头/入画', 't0=0', 't1=2'], ['set', '镜头/近景', 't0=2', 't1=4', 'track=1']]);
+  writeFileSync(join(ws, '.synapsis', 'view.json'), JSON.stringify({ scope: '镜头' }));
+  const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.goto(`${BASE}/?ws=${encodeURIComponent(ws)}`); await sleep(2200);
+  const meta = id => { try { return parseFrontmatter(readFileSync(join(ws, '__synapsis', '镜头', id + '.md'), 'utf8')).meta; } catch { return null; } };
+  const monLabel = () => page.$eval('.tlmonbar b', e => e.innerText);
+  ok(!!(await page.$('.tlmon')) && (await monLabel()) === '入画', '上面是画面区，播放头在 0 秒 = 看「入画」 ' + await monLabel());
+  const b = await (await page.$('.tlclip:has(.tllab:text-is("近景"))')).boundingBox(), sc = await (await page.$('.tlscroll')).boundingBox();
+  await page.mouse.click(b.x + b.width / 2, sc.y + 8); await sleep(300); // 点刻度尺
+  ok((await monLabel()) === '近景', '点刻度尺 = 放播放头 → 画面区换成那一段 ' + await monLabel());
+  await page.keyboard.press('g'); await sleep(200); await page.keyboard.press('g'); await sleep(300);
+  ok((await page.$$('.tlboard')).length === 2 && !!(await page.$('.tlboard.cur:has-text("近景")')), 'G G = 故事板：每段一格，当前那段高亮');
+  await page.click('.tlboard:has-text("入画")'); await sleep(300);
+  ok((await page.$eval('.tlclip.sel .tllab', e => e.innerText)) === '入画' && (await monLabel()) === '入画', '点故事板一格 = 选中那段、播放头跳过去');
+  await page.keyboard.press('g'); await sleep(200);
+  await page.mouse.click(sc.x + 5, sc.y + 50); await sleep(200); // 点空白取消选中
+  await page.mouse.click(sc.x + b.width * 2.5, sc.y + 30 + 64 * 2 + 20, { button: 'right' }); await sleep(300); // 第三条轨（空轨）、5 秒左右
+  ok(!!(await page.$('.ctx .mi:has-text("在这个时刻新建一段")')) && !(await page.$('.ctx .mi:has-text("新建 UI 框")')), '时间轴里右键空白 = 只有「在这个时刻新建一段」');
+  await page.click('.ctx .mi:has-text("在这个时刻新建一段")'); await sleep(2500);
+  const nf = readdirSync(join(ws, '__synapsis', '镜头')).filter(f => f.endsWith('.md') && !['入画.md', '近景.md', '_node.md'].includes(f));
+  const nm = nf[0] && meta(nf[0].replace(/\.md$/, ''));
+  ok(nf.length === 1 && nm && +nm.t0 > 3 && +nm.t1 - +nm.t0 === 2 && nm.track === '2', '新建的那段带上右键处的时刻和轨（长 2 秒） ' + nf.join() + ' ' + JSON.stringify(nm));
+  await page.keyboard.press('Escape'); await sleep(300);
+  await page.mouse.click(sc.x + 5, sc.y + 50); await sleep(200);
+  await page.keyboard.press('v'); await sleep(1200);
+  const pos = async lab => (await (await page.$(`.react-flow__node[data-id="镜头/${lab}"]`))?.boundingBox()) || null;
+  const p1 = await pos('入画'), p2 = await pos('近景');
+  ok(p1 && p2 && p1.x < p2.x && p2.y > p1.y, '切回画布：按时间从左到右、一条轨一行 ' + JSON.stringify([p1?.x, p1?.y, p2?.x, p2?.y]));
+  const lay = () => JSON.parse(readFileSync(join(ws, '__synapsis', '_layout.json'), 'utf8'));
+  await page.mouse.move(p1.x + 20, p1.y + 10); await page.mouse.down(); await page.mouse.move(p1.x + 60, p1.y + 120, { steps: 6 }); await page.mouse.up(); await sleep(1000);
+  ok(lay()['镜头/入画']?.bt === 0, '在画布上拖过 = 记 bt: 0，不再跟时间 ' + JSON.stringify(lay()['镜头/入画']));
+  await page.mouse.click(700, 780, { button: 'right' }); await sleep(300);
+  await page.click('.ctx .mi:has-text("按时间重排")'); await sleep(1000);
+  ok(lay()['镜头/入画'] && !('bt' in lay()['镜头/入画']), '右键空白「按时间重排」= 去掉 bt（_layout.json 里不留 null），又跟着时间 ' + JSON.stringify(lay()['镜头/入画']));
+  const p1b = await pos('入画');
+  ok(p1b && Math.abs(p1b.x - p1.x) < 3 && Math.abs(p1b.y - p1.y) < 3, '重排后回到时间顺序的位置');
+  // 中键在节点的连接点上 = 照样平移画布（👤 2026-10-30 以前在缩放角 / 连接点上会变成拖那个东西）
+  const vp = () => page.$eval('.react-flow__viewport', e => e.style.transform);
+  const v0 = await vp(), h = await page.$('.react-flow__node .react-flow__handle'), hb = await h.boundingBox();
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2); await page.mouse.down({ button: 'middle' });
+  await page.mouse.move(hb.x + 80, hb.y + 40, { steps: 5 }); await page.mouse.up({ button: 'middle' }); await sleep(300);
+  ok((await vp()) !== v0 && !(await page.$('.react-flow__connectionline')), '中键按在连接点上拖 = 平移画布，不拉线 ' + v0 + ' → ' + await vp());
+  // 快捷键页里 Tab = 切页签，不碰左栏
+  const lh = () => page.$eval('aside.outline', e => e.style.display === 'none');
+  const l0 = await lh();
+  await page.click('button:has-text("快捷键")'); await sleep(400);
+  await page.click('.help .htabs a:has-text("用法")'); await sleep(200); // 焦点离开搜索框（以前就是这时 Tab 漏到外壳，开关了左栏）
+  await page.keyboard.press('Tab'); await sleep(300);
+  ok(!(await page.$('.helpgrid.usage')) && !!(await page.$('.help input.hkey')) && (await lh()) === l0, '快捷键页里 Tab 只切页签，左栏不动');
+  ok(errs.length === 0, '无页面报错 ' + errs.join(' | '));
+  await page.close();
+  rmSync(ws, { recursive: true, force: true });
+}
 // —— 时间轴段落 + 父页画布上的时间轴卡（👤 2026-10-24 定 A：段落时间由镜头自动算；镜头 → 参考 的线落在卡里那段条上）——
 {
   console.log('== 时间轴卡');

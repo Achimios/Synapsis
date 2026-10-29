@@ -102,12 +102,14 @@ export function ContextMenu({ menu, node, actions, onClose }) {
   }
   if (!node) return (
     <div className="ctx" style={style}>
+      {actions.tlHere ? item('＋ 在这个时刻新建一段', actions.addHere) : <>{/* 🎬 时间轴里右键空白：只有新建一段（别的都落在画布坐标上，这里没有画布） */}
       {item('＋ 在这里新建节点', actions.addHere)}
+      {actions.tlArrange && item('⇆ 按时间重排（时间轴页）', actions.tlArrange)}
       {actions.addUiHere && item('▭ 新建 UI 框', actions.addUiHere)}
       {actions.pickFile && item('📎 引入…', actions.pickFile)}
       {actions.pickImagesHere && item('🖼 贴图…（散图）', actions.pickImagesHere)}
       {actions.aiImageHere && item('🎨 AI 配图…', actions.aiImageHere)}
-      {actions.frameHere && item('🎞 从视频截帧…（散图）', actions.frameHere)}
+      {actions.frameHere && item('🎞 从视频截帧…（散图）', actions.frameHere)}</>}
       {actions.canUp && item('↑ 返回上一层', actions.up, { key: 'Alt+W', quiet: true })}
     </div>
   );

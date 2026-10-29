@@ -174,6 +174,7 @@ export function Shell({ name, Canvas }) {
     if (track !== undefined && String(track) !== String(old.track ?? 0)) list.push([gid, { track: track ? String(track) : null }]);
     saveMetas(list, { desc: `挪段落「${graph.nodes.get(gid)?.label}」` + (dt ? `${dt > 0 ? '+' : ''}${dt.toFixed(3)} 秒（${s.leaves.length} 段一起）` : '换轨') });
   };
+  useEffect(() => { const q = pendingTl.current; if (q && wsData?.nodes[q.id]) { pendingTl.current = null; tlCommit(q.id, q.p); } }, [wsData]); // 时间轴右键新建的那段：存进文件了才能写属性
   // 时间轴改 t0 / t1 / track：先改本地（不闪回），再走 saveMeta（进撤销栈）
   const tlCommit = (id, p) => {
     const old = getMeta(id) || {};
@@ -329,13 +330,21 @@ export function Shell({ name, Canvas }) {
     // 散图没坐标时排在节点右边一列
     const maxX = Math.max(0, ...Object.values(l).map(p => p.x));
     loosePics.forEach((p, i) => { l[p.id] = positions[p.id] || { x: maxX + 320, y: i * 240 }; });
+    // 🎬 时间轴页切回画布（👤 2026-10-30）：上了轴的子节点按时间从左到右排（等间距，不按时长），一条轨一行。
+    //   默认跟着时间走（每次现算）；在画布上拖过 = 记 bt: 0，留在你摆的地方；右键空白「按时间重排」= 去掉 bt: 0，全部重新跟时间
+    if (tl) {
+      const ids = new Set(top.map(n => n.id));
+      tl.items.filter(it => ids.has(it.id)).sort((a, b) => a.t0 - b.t0 || a.track - b.track).forEach((it, i) => {
+        if (positions[it.id]?.bt !== 0) l[it.id] = { ...positions[it.id], x: i * TL_X, y: it.track * TL_Y };
+      });
+    }
     // 空间页：成员的位置 = 坐标投影（卡片中心对准那个点），不用存的坐标；没坐标的旁注排在左边
     if (plane) {
       for (const p of plane.pts) l[p.id] = { x: p.x * plane.S, y: -p.y * plane.S };
       space.loose.forEach((id, i) => { l[id] = positions[id] || { x: -plane.S - 420, y: -plane.S + i * 110 }; });
     }
     return l;
-  }, [view, positions, loosePics, plane, space]);
+  }, [view, positions, loosePics, plane, space, tl]);
   const inPlane = id => !!plane && plane.pts.some(p => p.id === id);
   // 自动排出来的位置立刻固定（存起来），之后加节点别的节点不会跟着跳（空间成员的位置由坐标决定，不存）
   useEffect(() => {
@@ -418,10 +427,11 @@ export function Shell({ name, Canvas }) {
         if (!Object.keys(changes).length) return;
       }
     }
+    if (!opt.silent && tl) changes = Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, 'x' in v && !('bt' in v) && tl.items.some(it => it.id === k) ? { ...v, bt: 0 } : v])); // 时间轴页上手动拖过 = 不再跟着时间排（bt 见 layout）
     if (!opt.silent) recordMove(changes);
     setPositions(p => { const q = { ...p }; for (const [k, v] of Object.entries(changes)) q[k] = { ...p[k], ...v }; return q; }); // 按键合并：散图的 w 和 x/y 分开更新
     if (mode === 'ws') api('/layout', { method: 'PUT', body: JSON.stringify({ positions: changes }) }).catch(e => setSaveState('❌ 坐标保存失败：' + e.message));
-  }, [mode, plane, space, graph]);
+  }, [mode, plane, space, graph, tl]);
 
   // >v<🧭导航-撤销重做-Ctrl+Z / Ctrl+Shift+Z（Ctrl+Y）：一步 = 一次大纲保存（增删改名、状态、连线）或一次拖动 / 框选缩放。
   // 撤销删除 = 先把 .junk/ 里的文件搬回原处，再写回删除前的大纲（正文、属性、图片都在）。
@@ -463,7 +473,7 @@ export function Shell({ name, Canvas }) {
     if (e.restore?.length) await api('/restore', { method: 'POST', body: JSON.stringify({ pairs: e.restore }) }).then(r => { h.lost = e.restore.length - (r.restored?.length || 0); }).catch(err => setSaveState('❌ 撤销删除失败：' + err.message));
     h.applying = e.text !== lastSaved.current;
     setText(e.text);
-    const diff = Object.fromEntries(Object.entries(e.positions).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(c.positions[k])).map(([k, v]) => [k, { w: null, h: null, ...v }])); // 没有 w / h = 回到自动：服务端按键合并，要明说 null
+    const diff = Object.fromEntries(Object.entries(e.positions).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(c.positions[k])).map(([k, v]) => [k, { w: null, h: null, bt: null, ...v }])); // 没有 w / h = 回到自动：服务端按键合并，要明说 null
     if (Object.keys(diff).length) {
       setPositions(p => ({ ...p, ...diff }));
       api('/layout', { method: 'PUT', body: JSON.stringify({ positions: diff }) }).catch(() => {});
@@ -495,7 +505,7 @@ export function Shell({ name, Canvas }) {
     setSaveState(steps < 0 ? `已撤销 ${-steps} 步（历史栏）` : `已重做 ${steps} 步（历史栏）`);
   };
   // >v<🌳大纲模型-新建节点-Enter 同级 / Tab 子级（父节点原地展开）/ 工具栏＋；建完光标跳到大纲那一行、名字选中，直接打字改名
-  const pendingRename = useRef(null);
+  const pendingRename = useRef(null), pendingTl = useRef(null);
   const addNode = asChild => {
     const s = sel && !sel.startsWith('@') ? sel : null;
     const parent = s && asChild ? s : s ? graph.nodes.get(s).parent : realScope;
@@ -514,7 +524,7 @@ export function Shell({ name, Canvas }) {
   const focusLabel = (id, again) => {
     // 改名：卡片在画布上（或在展开的子级列表里）→ 就地输入；否则在大纲树里原地出输入框；「文本」页里则选中那一行的名字
     const p = graph.nodes.get(id)?.parent;
-    if (view.nodes.some(n => n.id === id) || (p != null && expE(p) && view.nodes.some(n => n.id === p))) { setCanvasRename(id); return; }
+    if (!showTl && (view.nodes.some(n => n.id === id) || (p != null && expE(p) && view.nodes.some(n => n.id === p)))) { setCanvasRename(id); return; } // 时间轴视图里没有画布卡片可改 → 走大纲
     if (leftHidden) setLeftHidden(false);
     if (leftTab !== 'text') { if (leftTab === 'files') setLeftTab('outline'); setRenaming(id); return; }
     if (leftHidden && !again) { requestAnimationFrame(() => focusLabel(id, true)); return; }
@@ -644,6 +654,9 @@ export function Shell({ name, Canvas }) {
       navigator.clipboard?.writeText(t).then(() => setSaveState('已复制 UI 布局（' + t.split('\n').length + ' 行）：贴给 LLM 就行'), () => setSaveState('❌ 复制失败：浏览器没给剪贴板权限'));
     },
     addHere: () => {
+      if (menu?.tlAt) { // 🎬 时间轴里右键空白：在那个时刻、那条轨新建一段（建好存盘后再写 t0 / t1）
+        const a = menu.tlAt, r = withNode(graph, a.page, null); pendingRename.current = r.id; pendingTl.current = { id: r.id, p: a }; setText(r.text); setSelected(r.id); return;
+      }
       const r = withNode(graph, realScope, null); pendingRename.current = r.id; setText(r.text); setSelected(r.id);
       // 放在右键点的位置（👤 2026-10-08：以前落到自动布局的空槽里）
       const p = menu && cardActions.toFlow ? cardActions.toFlow({ x: menu.x, y: menu.y }) : null;
@@ -689,6 +702,8 @@ export function Shell({ name, Canvas }) {
     convert: mode === 'ws' ? (id, to) => { const m = wsData?.nodes[id]?.meta || {}; if (to === 'ui') { saveMeta(id, { ui: 'true', w: m.w || '220', h: m.h || '140' }); if (graph.nodes.get(id)?.children.length) setFramed(x => ({ ...x, [id]: true })); } else saveMeta(id, { ui: null, w: null, h: null }); } : null,
     // 打开某一层的 _词表.md（scope = 分组 id，'' = 项目那份；没有就建）
     words: mode === 'ws' ? (scope = '') => api('/words', { method: 'POST', body: JSON.stringify({ scope }) }).then(d => { reveal(d.file, 'open'); api('/ws').then(setWsData).catch(() => {}); setSaveState('词表：' + d.file + '（改完保存，Synapsis 会自动刷新）'); }).catch(e => setSaveState('❌ ' + e.message)) : null,
+    ...(tl && !showTl && mode === 'ws' ? { tlArrange: () => { const ids = new Set(view.nodes.map(n => n.id)), c = Object.fromEntries(tl.items.filter(it => ids.has(it.id)).filter(it => positions[it.id]?.bt === 0).map(it => [it.id, { bt: null }])); if (Object.keys(c).length) { move(c); setSaveState('已按时间重排：' + Object.keys(c).length + ' 个手动摆过的回到时间顺序（Ctrl+Z 撤销）'); } else setSaveState('都已经按时间排着'); } } : {}),
+    tlHere: !!menu?.tlAt,
     toggleAll: () => setExpanded(x => { const y = { ...x }; for (const n of view.nodes) if (n.children.length) y[n.id] = !allOpen; return y; }),
   };
   const onEdgeMenu = useCallback((edgeId, x, y) => { const e = view.edges.find(q => q.id === edgeId); if (e) setMenu({ edge: e, x, y }); }, [view]);
@@ -992,7 +1007,7 @@ export function Shell({ name, Canvas }) {
       }
       if (inText) return;
       if (menu) return; // 右键菜单开着：WASD / E / Esc 归菜单（panels.jsx menuNav）
-      if (finder && e.key === 'Tab') return; // 连线 / 搜索弹窗开着：Tab 归弹窗（切页签），别当成开关左栏
+      if ((finder || helpOpen) && e.key === 'Tab') return; // 连线 / 搜索弹窗、快捷键页开着：Tab 归弹窗（切页签），别当成开关左栏（两边都挂在 window 捕获阶段，谁先跑看注册顺序，靠 stopPropagation 挡不住）
       if (helpOpen && e.key === 'Escape') { setHelpOpen(false); return; }
       if (e.key === '`' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.isComposing) { e.preventDefault(); e.stopPropagation(); if (mode === 'ws') setPinsOpen(o => !o); return; } // 👤 2026-10-09 反引号 = 钉子窗口开关
       if (e.code === 'KeyQ' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.isComposing && !e.repeat) { e.preventDefault(); e.stopPropagation(); setSeeLines(o => !o); return; } // 👤 2026-10-10 Q = 看清连线开关
@@ -1413,6 +1428,8 @@ export function Shell({ name, Canvas }) {
           </div>}
           {showTl ? <TimelineView key={realScope} info={tl} labelOf={id => graph.nodes.get(id)?.label ?? id} colorOf={id => colors.get(id)}
             imgOf={id => images[id]?.[0] || (getMeta(id)?.ref && images[getMeta(id).ref]?.[0]) || null}
+            imgsOf={id => images[id]?.length ? images[id] : (getMeta(id)?.ref && images[getMeta(id).ref]) || []}
+            onMenu={(id, x, y, at) => { if (id) onContextMenu(id, x, y); else setMenu({ id: null, x, y, tlAt: at }); }}
             beats={beats?.src === tl.beats ? beats.data : null} fps={tlFps} lead={tlLead} selected={sel} onSelect={id => setSelected(id)}
             infoOf={tlInfoOf} onShift={tlShift} open={new Set(tlOpen[realScope] || [])} onToggle={gid => tlToggle(realScope, gid)}
             onCommit={tlCommit} onPlace={tlCommit} onOpen={id => { setSelected(id); setPropsOpen(true); }} />
@@ -1519,6 +1536,7 @@ export function nodeDim(id, view, selected) {
 // 卡片上的交互回调（外壳每次渲染时填好；画布组件不用逐层传）
 // 画布右下角的导航 / 选择速查（H 开关）。只放画布上随时要用、按钮上看不到的
 const KEY_HUD = [['F', '看全局 / 回去'], ['W A S D', '选卡'], ['Shift+W A S D', '只本层'], ['Alt+W / S', '上一层 / 进去'], ['Alt+A / D', '后退 / 前进'], ['Alt(Shift)+← →', '扩选'], ['(Shift) ← → ↑ ↓', '挪卡'], ['Ctrl(Alt)+← → ↑ ↓', '卡片大小'], ['R / T', '改名 / 建子节点'], ['E', '右键菜单']];
+const TL_X = 240, TL_Y = 200; // 时间轴页切回画布：按时间排的格子（一段一格，一条轨一行）
 const NUDGE = { step: 8, fast: 4, delay: 200, interval: 100 }; // 和 core/settings.js 的 nudge 默认值一致
 export const cardActions = { toggle: () => {}, openChild: () => {}, foldPics: () => {}, resizePics: () => {}, nudge: { ...NUDGE } };
 // pointerdown 也要拦住，否则 React Flow 会把它当成选中或拖动的开始

@@ -836,6 +836,30 @@ svg.tlgrid text { fill: var(--dim); font-size: 10px; font-family: Consolas, mono
 .tltog:hover { color: var(--strong); }
 svg.tlgrid rect.sub { fill: color-mix(in srgb, var(--accent) 4%, transparent); }
 svg.tlgrid text.lanelab { fill: var(--faint); font-size: 10px; }
+/* 播放头 + 上方画面区（👤 2026-10-30 像 Pr：上画面下时间轴，只规划不播放） */
+svg.tlgrid rect.ruler { fill: transparent; cursor: col-resize; }
+.tlph { position: absolute; top: 0; width: 0; border-left: 1.5px solid var(--sel); pointer-events: none; z-index: 4; }
+.tlph span { position: absolute; top: 0; left: 2px; padding: 0 4px; border-radius: 3px; background: var(--sel); color: var(--bg); font: 10px Consolas, monospace; white-space: nowrap; }
+.tlmon { flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--panel2); }
+.tlmonbar { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 4px 10px; font-size: 11px; border-bottom: 1px solid var(--line); }
+.tlmonbar button { padding: 1px 8px; border: 1px solid var(--line2); border-radius: 4px; background: transparent; color: var(--dim); cursor: pointer; font-size: 11px; }
+.tlmonbar button.on { color: var(--strong); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.tlmonbar .hint { color: var(--dim); }
+.tlmonbody { flex: 1; min-height: 0; overflow: auto; }
+.tlmonbody.one { display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.tlmonimg { max-width: 100%; max-height: 100%; object-fit: contain; }
+.tlmonbody.pics, .tlmonbody.board { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; padding: 8px; align-content: start; }
+.tlmonbody.pics img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; cursor: pointer; border: 2px solid transparent; }
+.tlmonbody.pics img.cur { border-color: var(--sel); }
+.tlboard { display: flex; flex-direction: column; gap: 3px; cursor: pointer; border: 2px solid transparent; border-radius: 5px; padding: 2px; font-size: 11px; color: var(--text); }
+.tlboard img, .tlboard .noimg { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 3px; background: var(--bg); }
+.tlboard .noimg { display: flex; align-items: center; justify-content: center; color: var(--faint); }
+.tlboard span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tlboard.cur { border-color: var(--sel); }
+.tlmonempty { margin: auto; color: var(--dim); font-size: 12px; }
+.tlmonbody.pics .tlmonempty, .tlmonbody.board .tlmonempty { grid-column: 1 / -1; padding: 30px; text-align: center; }
+.tlmonsplit { flex: none; height: 5px; cursor: row-resize; background: var(--line); }
+.tlmonsplit:hover { background: var(--accent); }
 .tlview.emb { position: relative; inset: auto; width: 100%; height: 100%; background: transparent; }
 .tlview.emb .tllab { font-size: 11px; padding-top: 1px; }
 /* 🎬 时间轴卡：父页画布上展开的 timeline 节点（main.jsx TNode） */

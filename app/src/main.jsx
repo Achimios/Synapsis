@@ -140,6 +140,27 @@ function FlowBridge({ ovRef, setOv }) {
   cardActions.toFlow = p => rf.screenToFlowPosition(p);
   // 居中到某张卡：卡片还没量好尺寸（刚换页）就返回 false，让调用方等一下再试；force = 不等了，量没量好都居中。动画 120ms（以前 300，跳转显得拖）
   cardActions.centerOn = (id, force) => { const n = rf.getNode(id); if (!n || (!force && !n.measured?.width)) return false; rf.fitView({ nodes: [{ id }], duration: 120, padding: 1.5, maxZoom: Math.max(1, rf.getZoom()) }); return true; };
+  // 👤 2026-10-30 中键 = 永远平移画布：缩放角、连接点、时间轴卡这些带 nopan 的地方 React Flow 自己不平移，还会被它们当成左键拖
+  //   挂 document 捕获：排在 UI 框自己的中键平移（window 捕获、会 preventDefault）后面；pointerdown 只拦不 preventDefault（否则浏览器不发 mousedown）
+  useEffect(() => {
+    const at = e => e.button === 1 && e.target.closest?.('.react-flow') && e.target.closest('.nopan, .react-flow__resize-control, .react-flow__handle');
+    let pan = null;
+    const pdown = e => { if (at(e)) e.stopPropagation(); };
+    const down = e => {
+      if (!at(e) || e.defaultPrevented) return;
+      e.preventDefault(); e.stopPropagation();
+      pan = { x: e.clientX, y: e.clientY, v: rf.getViewport() };
+    };
+    const move = e => {
+      if (!pan) return;
+      if (!(e.buttons & 4)) { pan = null; return; }
+      rf.setViewport({ x: pan.v.x + e.clientX - pan.x, y: pan.v.y + e.clientY - pan.y, zoom: pan.v.zoom });
+    };
+    const up = () => { pan = null; };
+    document.addEventListener('pointerdown', pdown, true); document.addEventListener('mousedown', down, true);
+    window.addEventListener('mousemove', move, true); window.addEventListener('mouseup', up, true); window.addEventListener('blur', up);
+    return () => { document.removeEventListener('pointerdown', pdown, true); document.removeEventListener('mousedown', down, true); window.removeEventListener('mousemove', move, true); window.removeEventListener('mouseup', up, true); window.removeEventListener('blur', up); };
+  }, [rf]);
   return null;
 }
 

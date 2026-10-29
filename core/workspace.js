@@ -423,7 +423,7 @@ export function ensureGitignore(root) {
 }
 
 function writeLayout(base, layout) {
-  const sorted = Object.fromEntries(Object.keys(layout).sort().map(k => [k, { x: Math.round(layout[k].x), y: Math.round(layout[k].y), ...(layout[k].w ? { w: Math.round(layout[k].w) } : {}), ...(layout[k].h ? { h: Math.round(layout[k].h) } : {}) }])); // w = 散图宽度 / 普通节点手动大小（👤 2026-10-12），h = 普通节点手动高度；null = 回到自动
+  const sorted = Object.fromEntries(Object.keys(layout).sort().map(k => [k, { x: Math.round(layout[k].x), y: Math.round(layout[k].y), ...(layout[k].w ? { w: Math.round(layout[k].w) } : {}), ...(layout[k].h ? { h: Math.round(layout[k].h) } : {}), ...(layout[k].bt === 0 ? { bt: 0 } : {}) }])); // bt: 0 = 时间轴页上手动摆过、不跟着时间排（👤 2026-10-30） // w = 散图宽度 / 普通节点手动大小（👤 2026-10-12），h = 普通节点手动高度；null = 回到自动
   mkdirSync(base, { recursive: true });
   const file = join(base, '_layout.json');
   const content = JSON.stringify(sorted, null, 1) + '\n';
