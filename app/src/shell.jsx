@@ -1020,6 +1020,7 @@ export function Shell({ name, Canvas }) {
       else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) focusLabel(sel); }
       else if (e.code === 'KeyR' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { e.preventDefault(); e.stopPropagation(); if (sel && !sel.startsWith('@')) focusLabel(sel); } // 👤 2026-10-12 R = 改名（左手，同 Enter）；Alt+R = 改完
       else if (e.code === 'KeyF' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { e.preventDefault(); e.stopPropagation(); const n = sel && !sel.startsWith('@') && graph.nodes.get(sel); if (n?.children.length && frmE(sel)) cardActions.fitFrame?.(sel); else cardActions.overview?.(); } // 👤 2026-10-12 F = 看全局 / 再按回原来的视野；选中的节点展开了子图 = 只管它里面（同框里的 ⛶）
+      else if (e.code === 'KeyG' && !showTl && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { e.preventDefault(); e.stopPropagation(); if (sel && !cardActions.centerOn?.(sel, true)) setSaveState('选中的不在这一页画布上'); } // 👤 2026-10-30 G = 聚焦选中的卡（和 WASD 走出屏幕时自动居中一样）；时间轴视图里 G 归画面区
       else if (e.code === 'KeyE' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat && !e.isComposing) { // 👤 2026-10-12 E = 弹右键菜单（选中的卡旁边；没选中 = 画布中间的空白菜单），WASD 在菜单里走，E 确定
         e.preventDefault(); e.stopPropagation();
         const el = sel && document.querySelector(`.react-flow__node[data-id="${CSS.escape(sel)}"]`), cv = document.querySelector('.canvas')?.getBoundingClientRect();
@@ -1535,7 +1536,7 @@ export function nodeDim(id, view, selected) {
 }
 // 卡片上的交互回调（外壳每次渲染时填好；画布组件不用逐层传）
 // 画布右下角的导航 / 选择速查（H 开关）。只放画布上随时要用、按钮上看不到的
-const KEY_HUD = [['F', '看全局 / 回去'], ['W A S D', '选卡'], ['Shift+W A S D', '只本层'], ['Alt+W / S', '上一层 / 进去'], ['Alt+A / D', '后退 / 前进'], ['Alt(Shift)+← →', '扩选'], ['(Shift) ← → ↑ ↓', '挪卡'], ['Ctrl(Alt)+← → ↑ ↓', '卡片大小'], ['R / T', '改名 / 建子节点'], ['E', '右键菜单']];
+const KEY_HUD = [['F', '看全局 / 回去'], ['G', '聚焦选中'], ['W A S D', '选卡'], ['Shift+W A S D', '只本层'], ['Alt+W / S', '上一层 / 进去'], ['Alt+A / D', '后退 / 前进'], ['Alt(Shift)+← →', '扩选'], ['(Shift) ← → ↑ ↓', '挪卡'], ['Ctrl(Alt)+← → ↑ ↓', '卡片大小'], ['R / T', '改名 / 建子节点'], ['E', '右键菜单']];
 const TL_X = 240, TL_Y = 200; // 时间轴页切回画布：按时间排的格子（一段一格，一条轨一行）
 const NUDGE = { step: 8, fast: 4, delay: 200, interval: 100 }; // 和 core/settings.js 的 nudge 默认值一致
 export const cardActions = { toggle: () => {}, openChild: () => {}, foldPics: () => {}, resizePics: () => {}, nudge: { ...NUDGE } };

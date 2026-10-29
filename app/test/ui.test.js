@@ -2131,6 +2131,12 @@ for (const kind of ['reactflow']) {
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2); await page.mouse.down({ button: 'middle' });
   await page.mouse.move(hb.x + 80, hb.y + 40, { steps: 5 }); await page.mouse.up({ button: 'middle' }); await sleep(300);
   ok((await vp()) !== v0 && !(await page.$('.react-flow__connectionline')), '中键按在连接点上拖 = 平移画布，不拉线 ' + v0 + ' → ' + await vp());
+  // G = 聚焦选中的卡（👤 2026-10-30）
+  await page.click('.react-flow__node[data-id="镜头/近景"]'); await sleep(200);
+  await page.mouse.move(700, 700); await page.mouse.down({ button: 'middle' }); await page.mouse.move(400, 500, { steps: 5 }); await page.mouse.up({ button: 'middle' }); await sleep(200);
+  await page.keyboard.press('g'); await sleep(500);
+  const cv = await (await page.$('.react-flow')).boundingBox(), nb = await pos('近景');
+  ok(Math.abs(nb.x + nb.width / 2 - (cv.x + cv.width / 2)) < 30 && Math.abs(nb.y + nb.height / 2 - (cv.y + cv.height / 2)) < 30, 'G = 选中的卡移到画布中间 ' + JSON.stringify([nb.x + nb.width / 2, cv.x + cv.width / 2]));
   // 快捷键页里 Tab = 切页签，不碰左栏
   const lh = () => page.$eval('aside.outline', e => e.style.display === 'none');
   const l0 = await lh();
