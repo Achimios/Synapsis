@@ -18,7 +18,7 @@ import { runAgent, applyPlan, updateOutcome, loadChat, clearChat, setSummaryText
 import { fileURLToPath } from 'node:url';
 import { useProxy } from './proxy.js';
 const PROXY = useProxy(); // 有本机代理就让服务端的 fetch 走它（xAI 国内直连不通）；本机地址直连
-if (PROXY) console.log('[synapsis] 联网走代理', PROXY);
+if (PROXY && !process.env.SYN_IN_CLI) console.log('[synapsis] 联网走代理', PROXY);
 const STASH = new Map(); // 工作区 → 界面暂存（见 /ui/stash）
 // >v<🤖AI指令-配图-后台生成（👤 2026-10-20「生成过程中还能和内置 LLM 对话吗」「能 Shift+F 暂时关掉对话吗」）：
 //   /ai/apply 只把配图排进队就回（AI 框马上空出来，能接着聊、能关框）；这里一张张生成，做完一张 seq + 1，界面轮询 /ai/images 看到变了就重读工作区。

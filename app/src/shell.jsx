@@ -33,10 +33,13 @@ ping(); setInterval(ping, 20000);
 // >v<💾工作区-界面接入-默认读写被规划项目的 __synapsis/；?demo = 样例数据 + localStorage（自动化测试用，不碰真文件）；?ws=<目录> 指定工作区
 const Q = new URLSearchParams(location.search);
 const DEMO = Q.has('demo');
+// ?look=<页id> = core/cli.js look 用的只读打开（👤 2026-10-31 学 openfilm 的 look：让 AI 看见画布）：不发任何写请求，不用记住的视口（整页适配），&canvas = 时间轴页看画布
+const LOOK = Q.has('look');
+if (LOOK) document.documentElement.classList.add('look');
 const WSQ = Q.get('ws') ? 'ws=' + encodeURIComponent(Q.get('ws')) : '';
 const HIST_KEY = 'syn.hist.' + (WSQ || 'default'); // 撤销记录：sessionStorage（刷新不丢）+ 服务进程内存暂存（关 vault 再打开也在，退出托盘才清）
 const withWs = path => '/api' + path + (WSQ ? (path.includes('?') ? '&' : '?') + WSQ : '');
-const api = (path, opts) => fetch(withWs(path), opts && { ...opts, headers: { 'content-type': 'application/json' } })
+const api = (path, opts) => LOOK && opts?.method && opts.method !== 'GET' ? Promise.resolve({}) : fetch(withWs(path), opts && { ...opts, headers: { 'content-type': 'application/json' } })
   .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || (j.report && j.report.errors && JSON.stringify(j.report.errors)) || r.status); return j; });
 initStash(api); // 界面暂存（关窗口不丢，托盘重启才清）：先去服务端取回来
 
@@ -65,7 +68,7 @@ export function Shell({ name, Canvas }) {
   const lastSaved = useRef(null);
   const local = mode === 'demo' || mode === 'offline';
   const [text, setText] = useState(() => DEMO ? load('syn.text', SAMPLE) : '');
-  const [scope, setScope] = useState(ROOT);
+  const [scope, setScope] = useState(LOOK ? Q.get('look') || ROOT : ROOT);
   const [selected, setSelected] = useState(null);
   const [positions, setPositions] = useState(() => DEMO ? load('syn.pos.' + name, {}) : {});
   const [localImages, setImages] = useState(() => load('syn.img2', {})); // id -> [dataURL]
@@ -286,7 +289,7 @@ export function Shell({ name, Canvas }) {
   useEffect(() => {
     if (DEMO) return;
     Promise.all([api('/ws'), api('/ui/stash').catch(() => ({}))]).then(([d, stash]) => {
-      const v = d.view || {};
+      const v = LOOK ? { ...d.view, scope: Q.get('look') || ROOT, viewports: {}, tlOff: Q.has('canvas') ? { [Q.get('look') || ROOT]: true } : {} } : d.view || {};
       lastSaved.current = d.outline; setText(d.outline); setPositions(d.layout || {}); setWsData(d);
       hist2.current.committed = { text: d.outline, positions: d.layout || {} };
       // 页面刷新（开发服务重启、Ctrl+R）后接上撤销记录：只在文件和上次记下的一致时接（外面改过就不接，免得撤销盖掉别人的改动）

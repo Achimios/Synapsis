@@ -888,3 +888,5 @@ svg.tlgrid rect.ruler { fill: transparent; cursor: col-resize; }
 .help .htabs a.on { background: var(--selbg); color: var(--strong); }
 .helpgrid.usage section ol { margin: 4px 0 0; padding-left: 20px; }
 .helpgrid.usage section li { margin: 3px 0; line-height: 1.5; }
+/* cli look 截图：只留画布（侧栏、键位提示、小地图、缩放按钮会挡卡 / 占宽） */
+.look aside, .look .keyhud, .look .react-flow__minimap, .look .react-flow__controls { display: none !important; }

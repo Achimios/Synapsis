@@ -30,5 +30,6 @@ export const USAGE = [
   ]],
   ['给别的 AI 读', [
     '命令行：node core/cli.js manual 看手册；timeline <页> --json 读剪辑',
+    'look <页> = 把这页画布截图给 AI 看，顺带报卡片重叠、名字被截',
   ]],
 ];

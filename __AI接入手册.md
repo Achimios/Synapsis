@@ -47,6 +47,7 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
      - 人说「这个组里 X 用红」→ 写进那个分组自己的 `_词表.md`；说「全项目 X 用红」→ 写进项目那份。
      - `sat: 25|50|75` 是人手动标的深浅，叠在自动色上，别动。
 8. 优先用 CLI。直接改 md 文件也行，但要按 §5 的格式写，改完跑 `check`。
+9. **改完画布先看一眼再说做好了**：跑 `look <页id>`，用读图工具打开它打印的截图，对照你想要的样子看——卡有没有互相盖住、名字有没有被截、排得乱不乱、线是不是缠成一团。报告里的 ⚠ 修掉再 `look` 一次。只读，不改任何东西。
 
 ## 4. CLI
 `node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" <命令> … --ws "<被规划项目根目录>"`
@@ -62,6 +63,10 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
   check                        悬空边、无状态、code 指向不存在的文件 / 符号、时间轴 t0/t1 不对或同轨重叠
   timeline [页id] [--json]     时间轴页（timeline: true）上的条：t0 / t1（成片时间，秒）/ track / 图 / 正文，按 t0 排；
                                不带页id = 列出所有时间轴页。--json 给程序读（Eidolon edl.py 用这个）
+  look [页id] [--canvas] [--size 宽x高]
+                               ⭐看一眼：把这一页画布截成图（存 .synapsis/look/，打印路径，用读图工具打开），
+                               并报出卡片互相盖住、字被截掉、页面报错。改完图、说做好之前跑一次。
+                               只读，不改任何东西；时间轴页默认截时间轴，--canvas 截画布排布。约 5~10 秒
 写（每条都是原子的一小步；删除一律进 .junk/（关窗口时才清，期间能撤销），不真删）：
   add <父id|.> <名字> [--after <兄弟id>] [--if-missing]
                                新建节点，打印新 id；同级已有同名 → 报错（--if-missing 则直接返回已有 id）

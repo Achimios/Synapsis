@@ -27,6 +27,7 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
    - 📎 `file: 相对项目根的路径`：这个节点只是引用一个 `__synapsis` 外的项目文件（笔记 / json 等；界面里右键空白 →「引入…」建的）。要看内容就按路径自己去读，别改写路径；文件被移走时 `check` 会提示（warn）。这种节点不带 status，不算进度。
    - ↗ `ref: <另一个节点的 id>`：传送门卡片，只是在这一页放个指向别处节点的入口（界面：右键空白 →「引入…」→ 选节点；双击跳过去）；名字 `↗ 目标名`，不带 status；目标改名 / 搬家时 ref 会自动跟；目标删了 check 报 warn。**不是复制**，别当成有内容的节点。
    - ▭ `ui: true` + `w` / `h`：UI 框（界面草稿用）。在所在页里是个有宽高的线框，**里面（钻进去）是正常画布，位置用里面那一页自己的坐标**；里面可以放 UI 框，也可以放普通节点写文字说明。要读布局：`_layout.json` 里是各节点左上角坐标（`x` 向右、`y` 向下），UI 框的四个角 = 左上 (x,y)，右下 (x+w, y+h)；界面里右键 UI 框 →「复制 UI 布局」能得到整理好的文字（每一级 UI 框带四个角 + 宽高，普通节点带名字和正文）。UI 框不带 status。
+   - 🎬 **时间轴页**（剪辑用）：页面节点写 `timeline: true`（可选 `beats: 感官.json` 拍点源、`fps: 24`），它的子节点写 `t0` / `t1`（**成片时间**，秒，3 位小数；也认 `分:秒`）+ 可选 `track`（0 = 主轨）就是轴上的一段；没写的不上轴。视频片段写 `src`（剪辑表语法，如 `样片:粒子海/20_….mp4@1.2`、`原片@0:52.5`），可选 `speed`；没 src 就用第一张图当静帧。**剪辑以这些节点为准**，读用 `timeline <页id> --json`（别自己解析 md）。同一素材用两次 = 放两张传送门卡（`ref:`），各写各的 t0 / t1，别复制节点。截帧的时间码是素材时间（写 `src_t`），别和 t0 / t1 混。轴上的条不带 status；`check` 只警告 t0 ≥ t1、只写了一个、同轨重叠。**段落** = 子节点本身也是时间轴页：它的时间由里面各段自动算（最早 t0 ~ 最晚 t1），**别给段落写 t0 / t1**（写了不算，check 会提示）；导出里段落带 `"group": true`，要镜头就 `timeline <段落id>`。镜头和画布上的参考 / 描述节点用普通连线（镜头 → 参考 = 这段用了这个参考）。
    - 分组不用标状态：`overview` 按子节点汇总（全 ✅ 才 ✅）。
    - 不做了就 `status <id> dropped`（❌ 弃用，别删）：不算完成度，`check` 跳过它和它的子孙。
 3. **一次写很多节点用 `batch`**（一个 JSON 文件，一个进程跑完），别每个节点 spawn 好几次。`add` 撞名会报错；脚本可能重跑就加 `--if-missing`（batch 里是 `{"ifMissing":true}`）。
@@ -46,6 +47,7 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
      - 人说「这个组里 X 用红」→ 写进那个分组自己的 `_词表.md`；说「全项目 X 用红」→ 写进项目那份。
      - `sat: 25|50|75` 是人手动标的深浅，叠在自动色上，别动。
 8. 优先用 CLI。直接改 md 文件也行，但要按 §5 的格式写，改完跑 `check`。
+9. **改完画布先看一眼再说做好了**：跑 `look <页id>`，用读图工具打开它打印的截图，对照你想要的样子看——卡有没有互相盖住、名字有没有被截、排得乱不乱、线是不是缠成一团。报告里的 ⚠ 修掉再 `look` 一次。只读，不改任何东西。
 
 ## 4. CLI
 `node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" <命令> … --ws "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis"`
@@ -58,7 +60,13 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
   export [节点id]              节点卡（给 LLM 的结构化文本），默认全部
   get <节点id>                 单个节点：属性 + 入边/出边 + 正文
   find <关键词>                在名字 / 属性 / 正文里找
-  check                        悬空边、无状态、code 指向不存在的文件 / 符号
+  check                        悬空边、无状态、code 指向不存在的文件 / 符号、时间轴 t0/t1 不对或同轨重叠
+  timeline [页id] [--json]     时间轴页（timeline: true）上的条：t0 / t1（成片时间，秒）/ track / 图 / 正文，按 t0 排；
+                               不带页id = 列出所有时间轴页。--json 给程序读（Eidolon edl.py 用这个）
+  look [页id] [--canvas] [--size 宽x高]
+                               ⭐看一眼：把这一页画布截成图（存 .synapsis/look/，打印路径，用读图工具打开），
+                               并报出卡片互相盖住、字被截掉、页面报错。改完图、说做好之前跑一次。
+                               只读，不改任何东西；时间轴页默认截时间轴，--canvas 截画布排布。约 5~10 秒
 写（每条都是原子的一小步；删除一律进 .junk/（关窗口时才清，期间能撤销），不真删）：
   add <父id|.> <名字> [--after <兄弟id>] [--if-missing]
                                新建节点，打印新 id；同级已有同名 → 报错（--if-missing 则直接返回已有 id）
@@ -71,6 +79,8 @@ node "C:/Users/Administrator/Desktop/Obsidian_V_Synapsis/core/cli.js" get "<节�
   body <id> <文件|->           用文件（- = 标准输入）替换正文
   set <id> 键=值 [键=值…]      改属性（值留空 = 删掉这个键）
   rm <id>                      删除节点和子孙
+  frame <id> <视频> <时间>      从视频截一帧当这个节点的图（视频相对项目根或绝对路径；时间 = 秒或 分:秒，是素材时间）；
+                               旁边同名 .md 记来源和 src_t。ffmpeg：SYN_FFMPEG > PATH > Eidolon 虚拟环境里那个
   batch <JSON文件|->           一次跑一批写命令（一个进程，不用每条 spawn）：
                                [["add",".","感知"],["set","感知","code=../a.js#see"],["body","感知","正文文本"]]
                                body 在 batch 里第三项直接是正文；末尾可带选项对象

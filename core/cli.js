@@ -11,6 +11,10 @@ export const USAGE = `用法：node core/cli.js <命令> [参数] [--ws <被规�
   check                        悬空边、无状态、code 指向不存在的文件 / 符号、时间轴 t0/t1 不对或同轨重叠
   timeline [页id] [--json]     时间轴页（timeline: true）上的条：t0 / t1（成片时间，秒）/ track / 图 / 正文，按 t0 排；
                                不带页id = 列出所有时间轴页。--json 给程序读（Eidolon edl.py 用这个）
+  look [页id] [--canvas] [--size 宽x高]
+                               ⭐看一眼：把这一页画布截成图（存 .synapsis/look/，打印路径，用读图工具打开），
+                               并报出卡片互相盖住、字被截掉、页面报错。改完图、说做好之前跑一次。
+                               只读，不改任何东西；时间轴页默认截时间轴，--canvas 截画布排布。约 5~10 秒
 写（每条都是原子的一小步；删除一律进 .junk/（关窗口时才清，期间能撤销），不真删）：
   add <父id|.> <名字> [--after <兄弟id>] [--if-missing]
                                新建节点，打印新 id；同级已有同名 → 报错（--if-missing 则直接返回已有 id）
@@ -38,7 +42,7 @@ import { DEFAULT_ALL, WORDS_ALL } from './patterns.js';
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadWorkspace, workspaceOutline, checkWorkspace, groupStatus, saveOutline, ensureWorkspaceReadme, setNodeMeta, setNodeBody, setEdgeLabel, findNodes, moveNodes, ensureGitignore, MANUAL_MARK, DIR } from './workspace.js';
 import { spaceInfo, closestPairs } from './space.js';
 import { isTimeline, timelineInfo, parseBeats, round3 } from './timeline.js';
@@ -170,7 +174,7 @@ export function init(root, home = HOME) {
 }
 
 // >v<🤖LLM接口-写命令-add/rename/status/link/unlink/body/set/rm：都走「改大纲文本 → saveOutline」同一条路，和界面一致
-const FLAGS = new Set(['--ws', '--label', '--kind', '--after']);
+const FLAGS = new Set(['--ws', '--label', '--kind', '--after', '--size', '--out']);
 const UNFW = { '／': '/', '＼': '\\', '：': ':', '＊': '*', '？': '?', '＂': '"', '＜': '<', '＞': '>', '｜': '|' };
 const flag = (argv, f) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : undefined; };
 export function runWrite(root, cmd, args, argv = []) {
@@ -264,6 +268,14 @@ function main(argv) {
   if (cmd === 'manual' && argv.includes('--write')) { writeFileSync(ROOT_MANUAL, rootManualText()); console.log('已写 ' + ROOT_MANUAL); return; }
   if (cmd === 'manual') { let r = null; try { r = workspaceRoot(argv); } catch { /* 没工作区就给通用版 */ } console.log(manualText(r)); return; }
   const root = workspaceRoot(argv);
+  if (cmd === 'look') {
+    const opt = k => { const i = argv.indexOf('--' + k); return i >= 0 ? argv[i + 1] : undefined; };
+    const page = arg && arg !== '.' ? arg : '';
+    if (page && !loadWorkspace(root).graph.nodes.has(page)) { console.error(`✗ 没有页「${page}」（id 是名字路径，如 镜头/开场；find 查）`); process.exitCode = 1; return; }
+    return import(pathToFileURL(join(HOME, 'app', 'look.mjs')).href)
+      .then(({ look, lookReport }) => look(root, page, { canvas: argv.includes('--canvas'), size: opt('size'), out: opt('out') }).then(r => console.log(lookReport(r, page))))
+      .catch(e => { console.error('✗ look：' + e.message); process.exitCode = 1; });
+  }
   if (WRITE_CMDS.includes(cmd) || cmd === 'batch') {
     try { console.log(cmd === 'batch' ? runBatch(root, JSON.parse(readFileSync(!arg || arg === '-' ? 0 : arg, 'utf8'))) : runWrite(root, cmd, pos.slice(1), argv)); }
     catch (e) { console.error('✗ ' + e.message); process.exitCode = 1; }
@@ -288,4 +300,5 @@ function main(argv) {
   } else { console.log('未知命令：' + cmd); process.exitCode = 1; }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2));
+// SYN_IN_CLI = 已经在 CLI 进程里：look 在本进程里起 vite，vite.config 又会 import 这个文件 —— 那次别再跑 main（不然递归），也别打代理提示
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url) && !process.env.SYN_IN_CLI) { process.env.SYN_IN_CLI = '1'; main(process.argv.slice(2)); }
