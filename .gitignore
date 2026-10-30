@@ -3,3 +3,6 @@ dist/
 .synapsis/
 .obsidian/workspace*.json
 *.lnk
+
+# 外部参考仓库（只读学习用，不进 git）
+/_外部仓库/
