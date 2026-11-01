@@ -1,0 +1,200 @@
+/* ========== 全局标题字号 ========== */
+body {
+  --h1: 1.53rem;
+  --h2: 1.31rem;
+  --h3: 1.22rem;
+  --h4: 1.1rem;
+  --h5: 1.05rem;
+  --h6: 1rem;
+  --file-line-width: 760px !important; /* 推荐700-800px，数值越大越宽 */
+
+}
+
+/* ========== 实时预览模式 字号+行间距+边距 ========== */
+.cm-header-1, .HyperMD-header-1 { 
+  font-size: var(--h1) !important;
+  line-height: 1.15 !important;
+  margin: 0.15em 0 0.1em 0 !important;
+}
+.cm-header-2, .HyperMD-header-2 { 
+  font-size: var(--h2) !important;
+  line-height: 1.2 !important;
+  margin: 0.2em 0 0.12em 0 !important;
+}
+.cm-header-3, .HyperMD-header-3 { 
+  font-size: var(--h3) !important;
+  line-height: 1.25 !important;
+  margin: 0.22em 0 0.12em 0 !important;
+}
+.cm-header-4, .HyperMD-header-4 { 
+  font-size: var(--h4) !important;
+  line-height: 1.3 !important;
+  margin: 0.25em 0 0.15em 0 !important;
+}
+.cm-header-5, .HyperMD-header-5 { 
+  font-size: var(--h5) !important;
+  line-height: 1.3 !important;
+  margin: 0.25em 0 0.15em 0 !important;
+}
+.cm-header-6, .HyperMD-header-6 { 
+  font-size: var(--h6) !important;
+  line-height: 1.3 !important;
+  margin: 0.25em 0 0.15em 0 !important;
+}
+
+/* ========== 源码编辑 + 阅读模式 字号+行间距 ========== */
+.markdown-source-view h1,
+.markdown-preview-view h1 { 
+  font-size: var(--h1) !important;
+  line-height: 1.15 !important;
+  /*margin: 0.3em 0 0.2em 0 !important;*/
+}
+.markdown-source-view h2,
+.markdown-preview-view h2 { 
+  font-size: var(--h2) !important;
+  line-height: 1.2 !important;
+  /*margin: 0.35em 0 0.22em 0 !important;*/
+}
+.markdown-source-view h3,
+.markdown-preview-view h3 { 
+  font-size: var(--h3) !important;
+  line-height: 1.25 !important;
+  /*margin: 0.4em 0 0.25em 0 !important;*/
+}
+.markdown-source-view h4,
+.markdown-preview-view h4 { 
+  font-size: var(--h4) !important;
+  line-height: 1.3 !important;
+  /*margin: 0.45em 0 0.28em 0 !important;*/
+}
+.markdown-source-view h5,
+.markdown-preview-view h5 { 
+  font-size: var(--h5) !important;
+  line-height: 1.3 !important;
+  /*margin: 0.45em 0 0.28em 0 !important;*/
+}
+.markdown-source-view h6,
+.markdown-preview-view h6 { 
+  font-size: var(--h6) !important;
+  line-height: 1.3 !important;
+  /*margin: 0.45em 0 0.28em 0 !important;*/
+}
+
+/* ========== H1 全局统一 #c96666 ========== */
+.theme-light .cm-header-1,
+.theme-light .HyperMD-header-1,
+.theme-light .markdown-source-view h1,
+.theme-light .markdown-preview-view h1,
+.theme-dark .cm-header-1,
+.theme-dark .HyperMD-header-1,
+.theme-dark .markdown-source-view h1,
+.theme-dark .markdown-preview-view h1 {
+  color: #c96666 !important;
+  font-weight: 600 !important;
+}
+
+/* ========== H2 低饱和蓝 深浅色适配 ========== */
+.theme-light .cm-header-2,
+.theme-light .HyperMD-header-2,
+.theme-light .markdown-source-view h2,
+.theme-light .markdown-preview-view h2 {
+  color: #4c6885 !important;
+  font-weight: 550 !important;
+}
+.theme-dark .cm-header-2,
+.theme-dark .HyperMD-header-2,
+.theme-dark .markdown-source-view h2,
+.theme-dark .markdown-preview-view h2 {
+  color: #9cbfe0 !important;
+  font-weight: 550 !important;
+}
+
+/* ========== H3   ========== */
+.theme-light .cm-header-3,
+.theme-light .HyperMD-header-3,
+.theme-light .markdown-source-view h3,
+.theme-light .markdown-preview-view h3 {
+  color: #5a7a9e !important; 
+  font-weight: 550 !important;
+}
+.theme-dark .cm-header-3,
+.theme-dark .HyperMD-header-3,
+.theme-dark .markdown-source-view h3,
+.theme-dark .markdown-preview-view h3 {
+  color: #8ab4d8 !important; 
+  font-weight: 550 !important;
+}
+
+/* ========== 加粗字体 ========== */
+/* 实时预览模式 */
+.theme-light .cm-strong,
+.theme-light .HyperMD-strong,
+/* 源码+阅读模式 */
+.theme-light strong,
+.theme-light b {
+  color: #2B445E !important; /* 饱和度+20%，亮度+8% */
+  font-weight: 600 !important;
+}
+.theme-dark .cm-strong,
+.theme-dark .HyperMD-strong,
+.theme-dark strong,
+.theme-dark b {
+  color: #D4E6F1 !important; /* 深色模式对应提亮 */
+  font-weight: 600 !important;
+}
+
+/* ========== 斜体字体 缩小5% ========== */
+/* 实时预览模式 */
+.cm-em, .HyperMD-em,
+/* 源码+阅读模式 */
+em, i {
+  font-size: 0.95rem !important;
+  font-style: italic !important;
+}
+
+/* ========== 数学公式 明黄+亮蓝 全兼容版 ==========
+   行内公式：亮/暗模式均为低饱和明黄
+   块级公式：亮模式 - 深蓝灰；暗模式 - 亮低饱和蓝
+   同时兼容 MathJax 和 KaTeX */
+
+/* --- 行内公式（全局明黄，覆盖所有模式） --- */
+.theme-light mjx-container[jax="CHTML"][display="false"],
+.theme-dark  mjx-container[jax="CHTML"][display="false"],
+.theme-light .katex,
+.theme-dark  .katex,
+.theme-light .katex-display .katex,
+.theme-dark  .katex-display .katex,
+mjx-container[jax="CHTML"][display="false"],
+.katex,
+.katex-display .katex {
+  color: #f5d060 !important;
+}
+
+/* --- 块级公式 --- */
+/* 亮色模式 - 深蓝灰（原色保留，可自行调整） */
+.theme-light mjx-container[jax="CHTML"][display="true"],
+.theme-light .katex-display {
+  color: #4c6885 !important;
+  margin: 1em 0 !important;
+}
+
+/* 暗色模式 - 亮低饱和蓝 */
+.theme-dark mjx-container[jax="CHTML"][display="true"],
+.theme-dark .katex-display {
+  color: #8facc9 !important;  /* 亮度适中，低饱和，不刺眼 */
+  margin: 1em 0 !important;
+}
+
+/* 深色模式微调对比度 */
+.theme-dark mjx-container,
+.theme-dark .katex {
+  color: #f5d060 !important; /* 深色模式更亮一点 */
+}
+
+
+/* 文档顶部标题 */
+.inline-title {
+  font-size: 1.9rem !important;
+  line-height: 1.2 !important;
+  margin: 0.2em 0 0.5em 0 !important;
+}

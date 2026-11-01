@@ -1,3 +1,9 @@
 {
+  "alwaysUpdateLinks": true,
+  "readableLineLength": true,
+  "autoPairMarkdown": false,
+  "attachmentFolderPath": "./__attach",
+  "showLineNumber": false,
+  "showInlineTitle": true,
   "showUnsupportedFiles": true
 }

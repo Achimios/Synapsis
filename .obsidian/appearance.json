@@ -1,1 +1,10 @@
-{}
+{
+  "cssTheme": "PLN",
+  "theme": "moonstone",
+  "enabledCssSnippets": [
+    "更小的标题"
+  ],
+  "baseFontSizeAction": true,
+  "baseFontSize": 15,
+  "accentColor": "#6276b2"
+}

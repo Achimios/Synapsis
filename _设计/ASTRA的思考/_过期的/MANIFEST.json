@@ -1,0 +1,116 @@
+{
+  "package": "Synapsis_Design_Handoff_2026-10-08",
+  "date": "2026-10-08",
+  "author_of_additions": "ChatGPT",
+  "status": "Discussion proposals; not user-approved requirements or implementation claims",
+  "scope": "Five user-uploaded Markdown documents and the current conversation only",
+  "local_repository_accessed": false,
+  "code_changed": false,
+  "external_research_reverified_this_turn": false,
+  "preservation": "Original snapshots are byte-identical; proposal files preserve originals as complete prefixes",
+  "validation": {
+    "original_files_unchanged": true,
+    "proposal_changes_append_only": true,
+    "patch_checked_and_reproduced_in_temporary_directory": true,
+    "new_relative_markdown_links_valid": true
+  },
+  "sources": [
+    {
+      "filename": "Philosophy.md",
+      "basis": "user-uploaded conversation attachment",
+      "snapshot": "originals/Philosophy.md",
+      "bytes": 6624,
+      "sha256": "30da407fe38b8ecaf3c27aa078e98d17c4d19f43ac8f2ff850775e7ce85c4ef3"
+    },
+    {
+      "filename": "Research_Landscape.md",
+      "basis": "user-uploaded conversation attachment",
+      "snapshot": "originals/Research_Landscape.md",
+      "bytes": 10315,
+      "sha256": "02509b7ba30d35befc1b5e477f666b8c934fe41c4de6da101c3ad138e2732b3e"
+    },
+    {
+      "filename": "Spec_v1.md",
+      "basis": "user-uploaded conversation attachment",
+      "snapshot": "originals/Spec_v1.md",
+      "bytes": 2252,
+      "sha256": "07f3bb557eec7c61dd7bf41e77239b2cd01e406e9d98673ddf2a4a47e40cf598"
+    },
+    {
+      "filename": "Decision_Canvas.md",
+      "basis": "user-uploaded conversation attachment",
+      "snapshot": "originals/Decision_Canvas.md",
+      "bytes": 1877,
+      "sha256": "a57b181556a93d87f3c79b56a5a661ca09e53c15c68264852864b29588362918"
+    },
+    {
+      "filename": "Navigation.md",
+      "basis": "user-uploaded conversation attachment",
+      "snapshot": "originals/Navigation.md",
+      "bytes": 7079,
+      "sha256": "4360a9b2860e8fd03e5d7deee534497e8d87950a721f5614deda6a3aff5e6a30"
+    }
+  ],
+  "files": [
+    {
+      "path": "00_README_Claude.md",
+      "bytes": 4941,
+      "sha256": "53e39b1e3c87fb6f69188bbc8e5b45bdd9b177f0d1013d0358a02871adeae58e"
+    },
+    {
+      "path": "notes/Design_Review.md",
+      "bytes": 5350,
+      "sha256": "763829a1463aae6ad6fe95ea66bb09375567c2939b4e92f0b0c0fe1b5dec6fdb"
+    },
+    {
+      "path": "notes/Exploration_Addendum.md",
+      "bytes": 19933,
+      "sha256": "2b8f4fbf7af51916c459a270e3062cbc6145333121ac4927c1b093511010e83b"
+    },
+    {
+      "path": "notes/User_Thesis_Excerpt.md",
+      "bytes": 1528,
+      "sha256": "4b10f28fe17e584ff49573c8e82d838fe5b34067e18fc05739f529da535532df"
+    },
+    {
+      "path": "originals/Decision_Canvas.md",
+      "bytes": 1877,
+      "sha256": "a57b181556a93d87f3c79b56a5a661ca09e53c15c68264852864b29588362918"
+    },
+    {
+      "path": "originals/Navigation.md",
+      "bytes": 7079,
+      "sha256": "4360a9b2860e8fd03e5d7deee534497e8d87950a721f5614deda6a3aff5e6a30"
+    },
+    {
+      "path": "originals/Philosophy.md",
+      "bytes": 6624,
+      "sha256": "30da407fe38b8ecaf3c27aa078e98d17c4d19f43ac8f2ff850775e7ce85c4ef3"
+    },
+    {
+      "path": "originals/Research_Landscape.md",
+      "bytes": 10315,
+      "sha256": "02509b7ba30d35befc1b5e477f666b8c934fe41c4de6da101c3ad138e2732b3e"
+    },
+    {
+      "path": "originals/Spec_v1.md",
+      "bytes": 2252,
+      "sha256": "07f3bb557eec7c61dd7bf41e77239b2cd01e406e9d98673ddf2a4a47e40cf598"
+    },
+    {
+      "path": "patches/discussion_additions.patch",
+      "bytes": 13131,
+      "sha256": "fcca139af0e3c350a4719c1b73f22cc65c746c22c5f0b4dde6b222de0edf13e1"
+    },
+    {
+      "path": "proposals/Navigation.md",
+      "bytes": 11813,
+      "sha256": "04590d2b9ace73a549948e6225a7b742aaadf1c7b708795a5e21d7ce046504d2"
+    },
+    {
+      "path": "proposals/Philosophy.md",
+      "bytes": 14204,
+      "sha256": "afaeb61f080b130a7cd22065e250d56abed4dd42798f179d1b3e82b87dad74eb"
+    }
+  ]
+}
